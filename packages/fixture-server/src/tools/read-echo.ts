@@ -1,14 +1,16 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
-// Proves M4 (design.md, Decision 2) end-to-end: a tool that shells out via
-// the allowlisted executor must never let its child process's stdout reach
-// this server's own fd 1. The conformance suite's stdout-purity check
-// exercises exactly this tool (mcp-servers-bootstrap, task 9.4).
+// Example read-only tool: echoes a message back through an allowlisted
+// subprocess call. Proves the allowlisted-executor and stdout-safety
+// primitives (design.md, Decisions 2 and 4) end-to-end in every package
+// scaffolded from `templates/server/`, and is exactly the tool the shared
+// conformance suite (`mcp-testing`) calls to prove a shelled-out child
+// process can never leak onto this server's own JSON-RPC stdout.
 //
 // Kept in its own module — not inline in `server.ts` — so the conformance
 // suite can safely import `readOnlyAllowlist` for registry introspection
-// (mcp-testing, task 9.1) without triggering `server.ts`'s top-level
-// `server.connect(transport)` side effect.
+// without triggering `server.ts`'s top-level `server.connect(transport)`
+// side effect.
 import { CommandAllowlist, defineTool, runAllowlisted, validateArgv, type CommandSpec } from "@hiberus-magento/mcp-core";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";

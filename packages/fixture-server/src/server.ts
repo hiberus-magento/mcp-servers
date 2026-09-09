@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
-// Throwaway packaging-gate harness for Phase 2 of mcp-servers-bootstrap.
-// Deliberately imports ONLY the stdio transport deep paths from the SDK —
-// never the package barrel and never `server/index.js` directly — to prove
-// which parts of the SDK's dependency graph a stdio-only server actually
-// pulls into a bundle. This file is retired and regenerated from
-// `templates/server/` in Phase 11.
+// fixture-server — an MCP server for the testing domain, scaffolded from
+// `templates/server/` (server-manifest spec, "Server Template Scaffold").
+// Imports ONLY the stdio transport deep paths from the SDK — never the
+// package barrel and never `server/index.js` directly (design.md, Decision
+// 1) — so this package's bundle stays clean of express/hono/ajv/etc.
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";

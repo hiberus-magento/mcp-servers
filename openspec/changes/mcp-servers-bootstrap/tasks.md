@@ -125,15 +125,15 @@ Chain strategy: size-exception
 
 ## Phase 11: Server Manifest, Template & Generator
 
-- [ ] 11.1 Define `schema/servers.schema.json` — required per entry: `id, package, bin, version, domain, status, description, tools[]` (each tool: `name, readOnly, description`); optional: `requires:{binaries:string[], env:string[]}`, `docs` (reconciles the proposal's example fields with the design's manifest shape).
-- [ ] 11.2 RED: schema-validation test — a valid entry passes; an entry missing `description` fails and names the field.
-- [ ] 11.3 GREEN: create root `servers.json` (`{"servers":[]}` initially).
-- [ ] 11.4 Build `templates/server/**` (package.json, tsconfig, entrypoint using `mcp-core` bootstrap + `defineTool`, one template test) — must pass conformance unmodified.
-- [ ] 11.5 RED `scripts/new-server.test.mjs`: re-running `new-server` on an existing package name fails without overwriting.
-- [ ] 11.6 GREEN `scripts/new-server.mjs`: copies template, substitutes `__NAME__/__DOMAIN__/__BIN__`, appends `servers.json`, regenerates README; wire `pnpm new-server`.
-- [ ] 11.7 Regenerate `packages/fixture-server` FROM `templates/server/` (retiring Phase 2's throwaway version); add CI step asserting byte-equality on regeneration.
-- [ ] 11.8 RED: README-staleness test — edit `servers.json`, leave `README.md` stale, `scripts/gen-readme.mjs --check` exits 1 with a diff.
-- [ ] 11.9 GREEN `scripts/gen-readme.mjs`: renders between `<!-- servers:start -->`/`<!-- servers:end -->`; `--check` re-runs the same code path in memory and diffs against the committed file (single implementation, cannot drift); wire as a CI step.
+- [x] 11.1 Define `schema/servers.schema.json` — required per entry: `id, package, bin, version, domain, status, description, tools[]` (each tool: `name, readOnly, description`); optional: `requires:{binaries:string[], env:string[]}`, `docs` (reconciles the proposal's example fields with the design's manifest shape).
+- [x] 11.2 RED: schema-validation test — a valid entry passes; an entry missing `description` fails and names the field.
+- [x] 11.3 GREEN: create root `servers.json` (`{"servers":[]}` initially).
+- [x] 11.4 Build `templates/server/**` (package.json, tsconfig, entrypoint using `mcp-core` bootstrap + `defineTool`, one template test) — must pass conformance unmodified.
+- [x] 11.5 RED `scripts/new-server.test.mjs`: re-running `new-server` on an existing package name fails without overwriting.
+- [x] 11.6 GREEN `scripts/new-server.mjs`: copies template, substitutes `__NAME__/__DOMAIN__/__BIN__`, appends `servers.json`, regenerates README; wire `pnpm new-server`.
+- [x] 11.7 Regenerate `packages/fixture-server` FROM `templates/server/` (retiring Phase 2's throwaway version); add CI step asserting byte-equality on regeneration.
+- [x] 11.8 RED: README-staleness test — edit `servers.json`, leave `README.md` stale, `scripts/gen-readme.mjs --check` exits 1 with a diff.
+- [x] 11.9 GREEN `scripts/gen-readme.mjs`: renders between `<!-- servers:start -->`/`<!-- servers:end -->`; `--check` re-runs the same code path in memory and diffs against the committed file (single implementation, cannot drift); wire as a CI step.
 
 ## Phase 12: Release Pipeline
 

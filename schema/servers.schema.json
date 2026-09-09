@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hiberus-magento/mcp-servers/schema/servers.schema.json",
+  "title": "MCP Servers Manifest",
+  "description": "Single source of truth for every published @hiberus-magento MCP server package. Validated in CI; README.md is generated from this file and never hand-edited.",
+  "type": "object",
+  "required": ["servers"],
+  "additionalProperties": false,
+  "properties": {
+    "servers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/server" }
+    }
+  },
+  "$defs": {
+    "server": {
+      "type": "object",
+      "required": ["id", "package", "bin", "version", "domain", "status", "description", "tools"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$",
+          "description": "Stable slug used as the packages/<id> directory name."
+        },
+        "package": {
+          "type": "string",
+          "pattern": "^@hiberus-magento/[a-z0-9-]+$",
+          "description": "Scoped npm package name."
+        },
+        "bin": {
+          "type": "string",
+          "description": "The CLI binary name exposed by package.json's bin field."
+        },
+        "version": {
+          "type": "string",
+          "description": "Exact published version, e.g. for consumer configuration snippets to pin against."
+        },
+        "domain": {
+          "type": "string",
+          "description": "Product domain this server talks to, e.g. eds, aco."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["internal", "planned", "alpha", "published"],
+          "description": "internal: never published (e.g. fixture-server). planned: not yet built. alpha: published but unstable. published: stable."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "docs": {
+          "type": "string",
+          "description": "Optional relative path or URL to further documentation."
+        },
+        "requires": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "binaries": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "env": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "tools": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/tool" }
+        }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "readOnly", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "readOnly": { "type": "boolean" },
+        "description": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
