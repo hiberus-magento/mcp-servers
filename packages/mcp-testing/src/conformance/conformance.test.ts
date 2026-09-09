@@ -7,7 +7,7 @@
 // before this file runs).
 import { fileURLToPath } from "node:url";
 import { readOnlyAllowlist } from "@hiberus-magento/fixture-server/src/tools/read-echo.js";
-import { describeConformance } from "./conformance.js";
+import { DEFAULT_SHELL_OUT_PROBE, describeConformance } from "./conformance.js";
 
 const packageDir = fileURLToPath(new URL("../../../fixture-server", import.meta.url));
 const serverPath = fileURLToPath(new URL("../../../fixture-server/dist/server.js", import.meta.url));
@@ -22,4 +22,9 @@ describeConformance({
       expectedCommandKeys: ["/bin/echo"],
     },
   ],
+  // `shellOutProbe` is optional (mcp-conformance spec, "Stdout Purity
+  // Assertion"), but fixture-server DOES have an execFile-based read-echo
+  // tool — supply it explicitly to keep this exec-based coverage exactly as
+  // it ran before that requirement changed, unweakened.
+  shellOutProbe: DEFAULT_SHELL_OUT_PROBE,
 });

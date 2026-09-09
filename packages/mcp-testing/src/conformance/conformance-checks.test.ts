@@ -15,9 +15,11 @@
 // whose `tools/list` response is deliberately incomplete, driven through the
 // exact same `JsonRpcClient` the real suite uses.
 import { afterEach, describe, expect, it } from "vitest";
+import type { RawStdoutLine } from "../jsonrpc-client.js";
 import { JsonRpcClient } from "../jsonrpc-client.js";
 import {
   checkReadOnlyIsolation,
+  checkStdoutPurity,
   checkToolMetadataComplete,
   type McpTool,
   type ReadOnlyIntrospection,
@@ -138,5 +140,26 @@ describe("checkReadOnlyIsolation", () => {
     const violations = checkReadOnlyIsolation(introspection);
 
     expect(violations).toEqual([{ toolName: "read-echo", disallowedCommand: "/bin/rm" }]);
+  });
+});
+
+describe("checkStdoutPurity", () => {
+  it("passes when every raw stdout line is JSON-RPC", () => {
+    const lines: readonly RawStdoutLine[] = [
+      { line: '{"jsonrpc":"2.0","id":1,"result":{}}', isJsonRpc: true, parsed: { jsonrpc: "2.0", id: 1, result: {} } },
+    ];
+
+    expect(checkStdoutPurity(lines)).toEqual([]);
+  });
+
+  it("flags a non-JSON-RPC raw stdout line", () => {
+    const lines: readonly RawStdoutLine[] = [
+      { line: '{"jsonrpc":"2.0","id":1,"result":{}}', isJsonRpc: true, parsed: { jsonrpc: "2.0", id: 1, result: {} } },
+      { line: "stray console output", isJsonRpc: false },
+    ];
+
+    const violations = checkStdoutPurity(lines);
+
+    expect(violations).toEqual([{ line: "stray console output" }]);
   });
 });

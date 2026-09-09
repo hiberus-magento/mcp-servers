@@ -8,8 +8,12 @@
 // would parse frames away exactly where inspecting the raw stream IS the
 // test.
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { RawStdoutLine } from "../jsonrpc-client.js";
 import { JsonRpcClient } from "../jsonrpc-client.js";
+
+const FD1_PROBE_HARNESS_PATH = fileURLToPath(new URL("./fd1-probe-harness.mjs", import.meta.url));
 
 export interface McpTool {
   readonly name: string;
@@ -61,6 +65,71 @@ export function checkToolMetadataComplete(tools: readonly McpTool[]): readonly T
     }
   }
   return violations;
+}
+
+/** A single non-JSON-RPC raw stdout line found by {@link checkStdoutPurity}. */
+export interface StdoutPurityViolation {
+  readonly line: string;
+}
+
+/**
+ * Pure check backing the "Stdout Purity Assertion" requirement
+ * (mcp-conformance spec): nothing but JSON-RPC frames may ever reach the
+ * server's stdout stream. Extracted for the same reason as
+ * {@link checkToolMetadataComplete} — so the failure path can be exercised
+ * directly against a hand-built contaminating subject, not only relied on
+ * to never fire against a compliant server.
+ */
+export function checkStdoutPurity(lines: readonly RawStdoutLine[]): readonly StdoutPurityViolation[] {
+  return lines.filter((entry) => !entry.isJsonRpc).map((entry) => ({ line: entry.line }));
+}
+
+/** Counts contamination-attempt markers seen so far on either raw stdout
+ * (guard NOT installed — the harness's own writes leaked through) or stderr
+ * (guard installed — the harness's writes were diverted, as intended). Used
+ * only to know when the harness's fixed three attempts have all landed
+ * somewhere observable, so {@link runFd1DivertProbe} does not wait longer
+ * than necessary. */
+function countContaminationSignals(client: JsonRpcClient): number {
+  const stdoutHits = client.rawStdoutLines.filter((entry) => entry.line.includes("contamination attempt:")).length;
+  const stderrHits = (client.stderrChunks.join("").match(/contamination attempt:/g) ?? []).length;
+  return stdoutHits + stderrHits;
+}
+
+async function waitForContaminationAttempts(client: JsonRpcClient, expected = 3, timeoutMs = 2000): Promise<void> {
+  const start = Date.now();
+  while (countContaminationSignals(client) < expected) {
+    if (Date.now() - start > timeoutMs) {
+      // Best-effort: whatever violations exist by now are what the caller
+      // will see — a genuine guard-installed server never times out here.
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
+/**
+ * The domain-independent fd-1 contamination probe (design.md, Decision 1;
+ * mcp-conformance spec, "Stdout Purity Assertion"). Spawns
+ * `fd1-probe-harness.mjs <serverPath> divert` as a SECOND, independent
+ * `JsonRpcClient` session — independent of any tool the package under test
+ * defines and of whether it supplies a `shellOutProbe` — and reports
+ * whichever of the harness's own three contamination attempts reached this
+ * session's stdout instead of being diverted to stderr.
+ */
+export async function runFd1DivertProbe(options: {
+  readonly serverPath: string;
+}): Promise<readonly StdoutPurityViolation[]> {
+  const client = new JsonRpcClient({
+    command: process.execPath,
+    args: [FD1_PROBE_HARNESS_PATH, options.serverPath, "divert"],
+  });
+  try {
+    await waitForContaminationAttempts(client);
+    return checkStdoutPurity(client.rawStdoutLines);
+  } finally {
+    client.close();
+  }
 }
 
 /** A single allowlist escape found by {@link checkReadOnlyIsolation}. */
@@ -116,14 +185,20 @@ export interface ShellOutProbe {
   readonly expectedResultText: string;
 }
 
-const DEFAULT_SHELL_OUT_PROBE: ShellOutProbe = {
+/**
+ * The shell-out probe matching every template-generated server's own
+ * `read-echo` tool. NOT applied as a default inside {@link describeConformance}
+ * — `shellOutProbe` is genuinely optional (mcp-conformance spec, "Stdout
+ * Purity Assertion"), so a caller that wants this exact coverage (e.g. the
+ * `fixture-server` conformance suite) supplies it explicitly.
+ */
+export const DEFAULT_SHELL_OUT_PROBE: ShellOutProbe = {
   toolName: "read-echo",
   arguments: { message: "conformance-probe" },
   expectedResultText: "conformance-probe",
 };
 
 export function describeConformance(options: ConformanceOptions): void {
-  const shellOutProbe = options.shellOutProbe ?? DEFAULT_SHELL_OUT_PROBE;
   describe(`MCP conformance: ${options.serverPath}`, () => {
     let client: JsonRpcClient;
 
@@ -148,8 +223,24 @@ export function describeConformance(options: ConformanceOptions): void {
     });
 
     it("emits nothing but JSON-RPC frames on stdout across the whole session", async () => {
-      const nonJsonRpc = client.rawStdoutLines.filter((entry) => !entry.isJsonRpc);
-      expect(nonJsonRpc).toEqual([]);
+      const violations = checkStdoutPurity(client.rawStdoutLines);
+      expect(
+        violations,
+        violations.map((v) => `stray stdout line: ${JSON.stringify(v.line)}`).join("; "),
+      ).toEqual([]);
+    });
+
+    // Mandatory and independent of `shellOutProbe`: every package under test
+    // is exercised for stdout purity via fd inheritance, even one with no
+    // `execFile`-based tool of its own (mcp-conformance spec, "Stdout Purity
+    // Assertion" — "Domain-independent probe catches contamination with no
+    // shellOutProbe supplied").
+    it("keeps stdout pure via the domain-independent fd-1 probe, independent of shellOutProbe", async () => {
+      const violations = await runFd1DivertProbe({ serverPath: options.serverPath });
+      expect(
+        violations,
+        violations.map((v) => `stray stdout line: ${JSON.stringify(v.line)}`).join("; "),
+      ).toEqual([]);
     });
 
     it("every tool has a non-empty description, a schema, and all three annotations", async () => {
@@ -175,18 +266,25 @@ export function describeConformance(options: ConformanceOptions): void {
       }
     }
 
-    it("a tool that shells out keeps stdout pure JSON-RPC despite the child inheriting fd 1", async () => {
-      const beforeCount = client.rawStdoutLines.length;
-      const result = (await client.request("tools/call", {
-        name: shellOutProbe.toolName,
-        arguments: shellOutProbe.arguments,
-      })) as { content: Array<{ type: string; text: string }> };
+    // Supplying `shellOutProbe` is OPTIONAL (mcp-conformance spec, "Stdout
+    // Purity Assertion"): a package with no `execFile`-based tool must not
+    // be forced to ship a decorative one just to exercise this suite. When
+    // supplied, it runs exactly as it always has, unweakened.
+    if (options.shellOutProbe) {
+      const configuredShellOutProbe = options.shellOutProbe;
+      it("a tool that shells out keeps stdout pure JSON-RPC despite the child inheriting fd 1", async () => {
+        const beforeCount = client.rawStdoutLines.length;
+        const result = (await client.request("tools/call", {
+          name: configuredShellOutProbe.toolName,
+          arguments: configuredShellOutProbe.arguments,
+        })) as { content: Array<{ type: string; text: string }> };
 
-      expect(result.content[0]?.text).toBe(shellOutProbe.expectedResultText);
-      const newLines = client.rawStdoutLines.slice(beforeCount);
-      const nonJsonRpc = newLines.filter((entry) => !entry.isJsonRpc);
-      expect(nonJsonRpc).toEqual([]);
-    });
+        expect(result.content[0]?.text).toBe(configuredShellOutProbe.expectedResultText);
+        const newLines = client.rawStdoutLines.slice(beforeCount);
+        const nonJsonRpc = newLines.filter((entry) => !entry.isJsonRpc);
+        expect(nonJsonRpc).toEqual([]);
+      });
+    }
 
     it("passes the packaging gate (G1-G6: single bundle, size, forbidden deps, tarball shape)", () => {
       expect(() =>
