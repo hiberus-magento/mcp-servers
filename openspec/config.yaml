@@ -28,9 +28,10 @@ testing:
     mcp-core primitives, the mcp-testing conformance suite (CI-blocking from day
     one), the servers.json manifest + README generator + pnpm new-server scaffold,
     the release pipeline (changesets, ci.yml, release.yml, license allowlist,
-    secret scanning), and governance docs. `pnpm test` genuinely runs: 72 tests in
-    mcp-core, 17 in mcp-testing, 1 in fixture-server (via the template), plus 34
-    root-level script tests — 124 in total, all green. Domain packages (magento-cloud, eds, aco)
+    secret scanning), and governance docs. `pnpm test` genuinely runs and is green
+    across mcp-core, mcp-testing, fixture-server (via the template) and the
+    root-level script tests; run it for the current count rather than trusting a
+    number written here, which drifts with every change. Domain packages (magento-cloud, eds, aco)
     remain out of scope for this change; each ships in its own later change per
     the proposal's roadmap.
   projects:

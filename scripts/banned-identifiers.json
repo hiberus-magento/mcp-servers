@@ -1,0 +1,11 @@
+{
+  "$comment": "Hashed denylist of identifiers that must never appear in this public repository. Values are sha256 of the lowercased, separator-stripped form, so a name matches whether it is written spaced, hyphenated or concatenated. Hashes rather than plaintext, because a plaintext list of names we must not publish would itself publish them. Add an entry with: node scripts/hash-identifier.mjs \"Some Name\"",
+  "algorithm": "sha256",
+  "normalization": "lowercase, then remove every character outside [a-z0-9]",
+  "hashes": [
+    "5796e0fe4ee642f9f7ecdb1cd4243ae6e8d16e19ac4f9b5e090158cda1eee5fa",
+    "5ab863e308d2176944076953592c7d8ed4197e37fcf28a1b79421eaec5b585ef",
+    "edad2c31c0eaf0784aa22d8a2aab9800f2cffdab15c2424a8a7c20df87203c30",
+    "f9146b57ce63d5f98f9bfe2862cf7624d378e427ffd4cd1fbd1454612524e0fd"
+  ]
+}

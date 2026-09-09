@@ -3,17 +3,58 @@
 //
 // Synthetic-identifier audit (tasks.md 13.3, design.md "Real customer data
 // leaking into a public repo" risk). This repository is public — no real
-// customer/brand name or real-looking business domain may ever appear in a
-// fixture or example. Scans `packages/**/fixtures/**`,
-// `packages/**/eslint-fixtures/**`, and `**/*.example.*` for two generic,
-// name-agnostic red flags: a business-domain-shaped string not on the
-// small safe-domains allowlist, and a company-suffix pattern (Inc/Corp/LLC/
-// S.L./S.A./GmbH/Ltd) that suggests a real registered business name.
-import { globSync, readFileSync, statSync } from "node:fs";
+// customer/brand name or real-looking business domain may ever appear in it.
+//
+// Scans every human-authored text file in the repository. It originally
+// covered only fixture directories and `*.example.*` files — eight files —
+// and every real identifier leak this repository has had landed instead in
+// an `openspec/` planning artifact, which that glob list never looked at.
+// The audit reported PASS while the identifier sat in the tree.
+//
+// Three rules, in increasing specificity:
+//   1. `unrecognized-domain` — a business-domain-shaped string that is not on
+//      the small allowlist of tools, registries and vendor APIs this project
+//      itself depends on.
+//   2. `company-suffix` — Inc/Corp/LLC/S.L./S.A./GmbH/Ltd, which suggests a
+//      real registered business name.
+//   3. `known-identifier` — a denylist of identifiers we know must never be
+//      published. Stored as HASHES, because a plaintext list of the customer
+//      names we must not publish would itself publish them in a public repo,
+//      and matched on a separator-insensitive normal form, because checking a
+//      single literal spelling is exactly how one slipped through before.
+import { createHash } from "node:crypto";
+import { existsSync, globSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
+const DENYLIST_PATH = join(REPO_ROOT, "scripts", "banned-identifiers.json");
+
+// Longest identifier we look for, in words. "northwind traders" is 2; three
+// covers a longer brand without making the n-gram sweep expensive.
+const MAX_IDENTIFIER_WORDS = 3;
+
+/**
+ * Collapse an identifier to a single comparable form, so that
+ * "Northwind Traders", "northwind-traders" and "northwindtraders" all hash
+ * identically. Checking one literal spelling is exactly how a real
+ * identifier slipped through this audit before.
+ *
+ * @param {string} raw
+ * @returns {string} sha256 hex digest of the normalized form
+ */
+export function hashIdentifier(raw) {
+  const normalized = raw.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return createHash("sha256").update(normalized).digest("hex");
+}
+
+function loadBannedHashes() {
+  if (!existsSync(DENYLIST_PATH)) {
+    return new Set();
+  }
+  const parsed = JSON.parse(readFileSync(DENYLIST_PATH, "utf8"));
+  return new Set(parsed.hashes ?? []);
+}
 
 // Domains that legitimately appear in this repository's own docs/config —
 // none of them are a customer's identity, they are the tools/registries
@@ -29,6 +70,13 @@ const SAFE_DOMAINS = new Set([
   "unpkg.com",
   "adobe.com",
   "nodejs.org",
+  "adobelogin.com",
+  "ims-na1.adobelogin.com",
+  "api.commerce.adobe.com",
+  "developer.adobe.com",
+  "aem.live",
+  "admin.hlx.page",
+  "hlx.page",
 ]);
 
 const DOMAIN_PATTERN = /\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.(com|net|org|io|co|es|dev|app)\b/gi;
@@ -39,10 +87,30 @@ const COMPANY_SUFFIX_PATTERN = /\b[A-Z][A-Za-z&' -]{1,40}(Inc|Corp|Corporation|L
  * @param {string} filePath
  * @returns {Array<{file: string, line: number, rule: string, snippet: string}>}
  */
-export function scanTextForBannedIdentifiers(text, filePath) {
+export function scanTextForBannedIdentifiers(text, filePath, options = {}) {
+  const bannedHashes = options.bannedHashes ?? loadBannedHashes();
   const violations = [];
   const lines = text.split("\n");
   lines.forEach((line, index) => {
+    if (bannedHashes.size > 0) {
+      // Sweep every run of 1..MAX_IDENTIFIER_WORDS adjacent word tokens.
+      // Separators are dropped by the hash, so a match is found whether the
+      // identifier was written spaced, hyphenated or concatenated.
+      const words = line.match(/[A-Za-z0-9]+/g) ?? [];
+      let flagged = false;
+      for (let start = 0; start < words.length && !flagged; start += 1) {
+        for (let span = 1; span <= MAX_IDENTIFIER_WORDS && start + span <= words.length; span += 1) {
+          if (bannedHashes.has(hashIdentifier(words.slice(start, start + span).join("")))) {
+            // Deliberately no snippet: this runs in the CI logs of a public
+            // repository, so reporting the match would republish the very
+            // identifier it exists to keep out. The location is enough.
+            violations.push({ file: filePath, line: index + 1, rule: "known-identifier", snippet: "[REDACTED]" });
+            flagged = true;
+            break;
+          }
+        }
+      }
+    }
     for (const match of line.matchAll(DOMAIN_PATTERN)) {
       const domain = match[0].toLowerCase();
       if (!SAFE_DOMAINS.has(domain)) {
@@ -56,16 +124,28 @@ export function scanTextForBannedIdentifiers(text, filePath) {
   return violations;
 }
 
-function listCandidateFiles() {
-  // Plain-Node glob (available on Node 22 via fs.globSync) restricted to
-  // exactly the paths the task names: fixture directories and any
-  // `*.example.*` file, repo-wide.
-  const patterns = ["packages/**/fixtures/**/*", "packages/**/eslint-fixtures/**/*", "**/*.example.*"];
-  const exclude = (matched) => /node_modules|\/dist\/|\.turbo/.test(matched);
+// Text formats worth reading. Anything else (images, lockfiles, binaries) is
+// either not human-authored or too noisy to scan usefully.
+const TEXT_EXTENSIONS = /\.(md|ts|tsx|js|mjs|cjs|json|ya?ml|txt|csv|html|sh)$/i;
+// This audit's own test file is excluded for the same reason the eslint
+// fixtures are: it contains deliberate violations, and flagging them would
+// mean the check can never pass.
+const EXCLUDED_PATHS = /node_modules|\/dist\/|\.turbo|\.git\/|pnpm-lock\.yaml|CHANGELOG\.md|audit-synthetic-identifiers\.test\.mjs/;
+
+export function listCandidateFiles() {
+  // Originally this scanned only fixture directories and `*.example.*` files
+  // — eight files in total. Every real identifier leak this repository has
+  // had landed in an `openspec/` planning artifact instead, which that glob
+  // list never looked at, so the audit passed while the identifier sat in
+  // the tree. Scan every human-authored text file instead.
   const files = new Set();
-  for (const pattern of patterns) {
-    for (const match of globSync(pattern, { cwd: REPO_ROOT, exclude })) {
-      files.add(match);
+  for (const match of globSync("**/*", { cwd: REPO_ROOT })) {
+    // Filter here rather than through globSync's `exclude` option: that
+    // callback does not reliably see the full relative path, so build
+    // outputs under packages/*/dist/ survived it.
+    const normalized = match.split("\\").join("/");
+    if (TEXT_EXTENSIONS.test(normalized) && !EXCLUDED_PATHS.test(`/${normalized}`)) {
+      files.add(normalized);
     }
   }
   return [...files].sort();
@@ -90,7 +170,7 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  console.error(`audit-synthetic-identifiers: PASS — scanned ${files.length} fixture/example file(s), no banned identifiers found.`);
+  console.error(`audit-synthetic-identifiers: PASS — scanned ${files.length} text file(s), no banned identifiers found.`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
