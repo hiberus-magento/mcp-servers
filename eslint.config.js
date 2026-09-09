@@ -3,6 +3,45 @@ import js from "@eslint/js";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
+const LICENSE_HEADER_TEXT = "Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.";
+
+// Small inline plugin instead of an npm dependency: the check is a single
+// exact-string comparison against the first comment(s) in the file, so a
+// third-party rule buys nothing but an extra dependency to license-audit.
+const licenseHeaderPlugin = {
+  rules: {
+    "require-header": {
+      meta: {
+        type: "problem",
+        docs: {
+          description: "Require the Apache-2.0 copyright header comment at the top of every source file.",
+        },
+        schema: [],
+        messages: {
+          missing: `Missing the required header comment "// ${LICENSE_HEADER_TEXT}" at the top of the file.`,
+        },
+      },
+      create(context) {
+        return {
+          Program(node) {
+            const sourceCode = context.sourceCode;
+            // Look at the first two comments, not just the first, so a
+            // shebang line (`#!/usr/bin/env node`, itself sometimes surfaced
+            // as a leading comment node by the parser) never defeats the check.
+            const headerPresent = sourceCode
+              .getAllComments()
+              .slice(0, 2)
+              .some((comment) => comment.value.trim() === LICENSE_HEADER_TEXT);
+            if (!headerPresent) {
+              context.report({ node, messageId: "missing" });
+            }
+          },
+        };
+      },
+    },
+  },
+};
+
 export default tseslint.config(
   {
     // `eslint-fixtures/**` holds deliberately-violating files, excluded here
@@ -50,14 +89,31 @@ export default tseslint.config(
     },
   },
   {
+    // SDK boundary + client boundary: both enforced by `no-restricted-imports`
+    // on overlapping file sets, so they MUST live in the same rule
+    // invocation rather than two separate config blocks. Flat config merges
+    // same-named rules per file by last-match-wins, not by union — a second
+    // block declaring its own `no-restricted-imports` for
+    // `packages/**/src/**` would silently replace this one wherever the two
+    // globs overlap (see Phase 9's mcp-testing checkpoint for where this bug
+    // was first hit and fixed).
+    //
     // SDK boundary: only packages/mcp-core/src may reach into
     // @modelcontextprotocol/sdk's barrel or its server/index.js — that deep
     // path is the one that statically pulls in express/hono/ajv/etc (see
     // design.md, Decision 1). Every other package must go through the
-    // mcp-core bootstrap instead. `eslint-fixtures/**` is intentionally
-    // covered too: it holds deliberately-violating files asserted against
-    // programmatically in `eslint-fixtures.test.ts`, proving this rule
-    // actually fires before any package outside mcp-core exists yet.
+    // mcp-core bootstrap instead.
+    //
+    // Client boundary (design.md, Decision 6): code outside a package's own
+    // `client/` directory must import another package's client surface only
+    // through its public `client/index.ts`/`client/index.js` entrypoint,
+    // never a deeper path. No domain package has a `client/` directory yet —
+    // this is fixture-proven ahead of `eds-package` exercising it for real.
+    //
+    // `eslint-fixtures/**` is intentionally covered too: it holds
+    // deliberately-violating files asserted against programmatically in
+    // `eslint-fixtures.test.ts`, proving both rules actually fire before any
+    // package outside mcp-core exists yet.
     files: ["packages/**/src/**/*.{ts,tsx}", "packages/*/eslint-fixtures/**/*.{ts,tsx}"],
     ignores: ["packages/mcp-core/src/**"],
     rules: {
@@ -77,9 +133,30 @@ export default tseslint.config(
               message:
                 "Do not import @modelcontextprotocol/sdk's server/index.js directly outside packages/mcp-core/src — it statically pulls in express/hono/ajv/etc. Use the mcp-core bootstrap instead.",
             },
+            {
+              group: ["**/client/**", "!**/client/index.js", "!**/client/index.ts"],
+              message:
+                "Import another package's public client entrypoint only (client/index.ts) — deep client/ paths are not part of the public contract.",
+            },
           ],
         },
       ],
+    },
+  },
+  {
+    // License-header rule (design.md, Decision 6 / workspace-scaffolding
+    // spec). Scoped to every real source file repo-wide; `eslint-fixtures/**`
+    // is included too so `missing-license-header.ts` proves the rule fires.
+    // Config/build files that intentionally have no header (package.json,
+    // tsconfig.json, markdown, generated output) are not matched by these
+    // globs to begin with, so no explicit `ignores` is needed beyond the
+    // global ignore block above.
+    files: ["packages/**/*.{ts,tsx,js,mjs,cjs}", "scripts/**/*.mjs", "templates/**/*.{ts,tsx,js,mjs,cjs}", "*.{js,mjs,cjs}"],
+    plugins: {
+      "license-header": licenseHeaderPlugin,
+    },
+    rules: {
+      "license-header/require-header": "error",
     },
   },
   {

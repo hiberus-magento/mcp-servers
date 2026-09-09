@@ -1,3 +1,4 @@
+// Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "tsup";
 

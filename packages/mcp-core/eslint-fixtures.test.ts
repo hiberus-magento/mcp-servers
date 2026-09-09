@@ -57,3 +57,26 @@ describe("exec-boundary eslint-fixtures", () => {
     expect(ruleIds).toContain("no-restricted-syntax");
   });
 });
+
+describe("client-boundary eslint-fixtures", () => {
+  it("flags a deep import into another package's client/ directory with no-restricted-imports", async () => {
+    const result = await lintFixture("./eslint-fixtures/deep-client-import-violation.ts");
+    const ruleIds = result.messages.map((message) => message.ruleId);
+    expect(ruleIds).toContain("no-restricted-imports");
+  });
+
+  it("names the client boundary in the violation message, not the SDK-barrel one", async () => {
+    const result = await lintFixture("./eslint-fixtures/deep-client-import-violation.ts");
+    const restrictedImportMessages = result.messages.filter((message) => message.ruleId === "no-restricted-imports");
+    expect(restrictedImportMessages).toHaveLength(1);
+    expect(restrictedImportMessages[0]?.message).toContain("client/index");
+  });
+});
+
+describe("license-header eslint-fixtures", () => {
+  it("flags a source file missing the Apache-2.0 header with license-header/require-header", async () => {
+    const result = await lintFixture("./eslint-fixtures/missing-license-header.ts");
+    const ruleIds = result.messages.map((message) => message.ruleId);
+    expect(ruleIds).toContain("license-header/require-header");
+  });
+});

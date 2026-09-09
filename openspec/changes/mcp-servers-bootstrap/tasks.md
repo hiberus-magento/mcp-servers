@@ -118,10 +118,10 @@ Chain strategy: size-exception
 
 ## Phase 10: Client-Boundary Lint (fixture-proven for packages that don't exist yet)
 
-- [ ] 10.1 RED `packages/mcp-core/eslint-fixtures/deep-client-import-violation.ts`: imports `.../client/internal-helper` instead of `client/index`.
-- [ ] 10.2 GREEN: `no-restricted-imports` boundary block in `eslint.config.js` scoped to `packages/*/src/{adapters,tools}/**`.
-- [ ] 10.3 RED `packages/mcp-core/eslint-fixtures/missing-license-header.ts`.
-- [ ] 10.4 GREEN: license-header eslint rule (Apache-2.0 header); extend 2.11's programmatic test to assert all three fixture rule IDs (boundary, SDK-barrel, license-header) fire.
+- [x] 10.1 RED `packages/mcp-core/eslint-fixtures/deep-client-import-violation.ts`: imports `.../client/internal-helper` instead of `client/index`.
+- [x] 10.2 GREEN: `no-restricted-imports` boundary block in `eslint.config.js` scoped to `packages/*/src/{adapters,tools}/**`.
+- [x] 10.3 RED `packages/mcp-core/eslint-fixtures/missing-license-header.ts`.
+- [x] 10.4 GREEN: license-header eslint rule (Apache-2.0 header); extend 2.11's programmatic test to assert all three fixture rule IDs (boundary, SDK-barrel, license-header) fire.
 
 ## Phase 11: Server Manifest, Template & Generator
 
