@@ -19,7 +19,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const FORBIDDEN_PACKAGES = [
+export const FORBIDDEN_PACKAGES = [
   "express",
   "hono",
   "@hono/node-server",
@@ -30,10 +30,10 @@ const FORBIDDEN_PACKAGES = [
   "ajv-formats",
 ];
 
-const MAX_BUNDLE_BYTES = 2 * 1024 * 1024;
+export const MAX_BUNDLE_BYTES = 2 * 1024 * 1024;
 const SHEBANG = "#!/usr/bin/env node";
 
-class PackagingGateError extends Error {
+export class PackagingGateError extends Error {
   constructor(gate, message) {
     super(`[${gate}] ${message}`);
     this.name = "PackagingGateError";
@@ -55,7 +55,7 @@ function findDistJsFiles(distDir) {
   return readdirSync(distDir).filter((name) => name.endsWith(".js"));
 }
 
-function gateG1SingleBundle(distDir) {
+export function gateG1SingleBundle(distDir) {
   const jsFiles = findDistJsFiles(distDir);
   if (jsFiles.length !== 1) {
     throw new PackagingGateError(
@@ -66,7 +66,7 @@ function gateG1SingleBundle(distDir) {
   return jsFiles[0];
 }
 
-function gateG2BundleSize(bundlePath) {
+export function gateG2BundleSize(bundlePath) {
   const { size } = statSync(bundlePath);
   if (size > MAX_BUNDLE_BYTES) {
     throw new PackagingGateError(
@@ -93,7 +93,7 @@ function forbiddenInputRegex() {
   return new RegExp(`node_modules/(${alternation})/`);
 }
 
-function gateG3NoForbiddenModules(distDir, bundlePath) {
+export function gateG3NoForbiddenModules(distDir, bundlePath) {
   const metafilePath = findMetafile(distDir);
   const metafile = JSON.parse(readFileSync(metafilePath, "utf8"));
   const regex = forbiddenInputRegex();
@@ -117,7 +117,7 @@ function gateG3NoForbiddenModules(distDir, bundlePath) {
   }
 }
 
-async function gateG5BundleShebang(bundlePath) {
+export async function gateG5BundleShebang(bundlePath) {
   const head = await readFirstBytes(bundlePath, SHEBANG.length);
   if (!head.startsWith(SHEBANG)) {
     throw new PackagingGateError("G5", `bundle does not start with "${SHEBANG}", got: ${JSON.stringify(head)}`);
@@ -143,7 +143,7 @@ function listTarball(tarballPath) {
     .filter(Boolean);
 }
 
-function gateG4TarballDependencies(extractedPackageJsonPath) {
+export function gateG4TarballDependencies(extractedPackageJsonPath) {
   const pkg = JSON.parse(readFileSync(extractedPackageJsonPath, "utf8"));
   const deps = pkg.dependencies;
   const isEmpty = deps === undefined || Object.keys(deps).length === 0;
@@ -155,7 +155,7 @@ function gateG4TarballDependencies(extractedPackageJsonPath) {
   }
 }
 
-async function gateG5TarballShebang(extractedBundlePath) {
+export async function gateG5TarballShebang(extractedBundlePath) {
   const head = await readFirstBytes(extractedBundlePath, SHEBANG.length);
   if (!head.startsWith(SHEBANG)) {
     throw new PackagingGateError(
@@ -165,7 +165,7 @@ async function gateG5TarballShebang(extractedBundlePath) {
   }
 }
 
-function gateG6LicenseInTarball(entries) {
+export function gateG6LicenseInTarball(entries) {
   const hasLicense = entries.some((entry) => /(^|\/)LICENSE$/.test(entry.replace(/^package\//, "")));
   if (!hasLicense) {
     throw new PackagingGateError("G6", `tarball is missing a LICENSE file. Entries: ${entries.join(", ")}`);
