@@ -23,7 +23,18 @@ These three acronyms are adjacent, are **not** the same thing, and Adobe has ren
 
 
 
-_No servers are published yet._
+### @hiberus-magento/eds
+
+Edge Delivery Services (EDS) Admin API client — CLI and MCP server.
+
+- Domain: eds
+- Status: internal
+- Binary: `hiberus-eds-mcp`
+
+Tools:
+
+- `noop` (read-only) — A no-op tool used only to exercise the packaging gate.
+- `read-echo` (read-only) — Echoes a message back through an allowlisted read-only subprocess call, proving stdout stays pure JSON-RPC even though a child process is spawned.
 
 <!-- servers:end -->
 

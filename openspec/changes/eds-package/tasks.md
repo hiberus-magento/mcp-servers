@@ -33,10 +33,10 @@ Chain strategy: size-exception
 
 ## Phase 1: Scaffold & Template Hygiene
 
-- [ ] 1.1 Run `pnpm new-server eds --domain eds --bin hiberus-eds-mcp --description "Edge Delivery Services (EDS) Admin API client — CLI and MCP server."` to scaffold `packages/eds/**`, register it in `servers.json`, and regenerate `README.md`.
-- [ ] 1.2 Rename `packages/eds/src/server.ts` to `packages/eds/src/mcp.ts`; update `packages/eds/tsup.config.ts`'s `entry` from `src/server.ts` to `src/mcp.ts`.
-- [ ] 1.3 Delete `packages/eds/src/tools/read-echo.ts` and `packages/eds/src/tools/read-echo.test.ts`; remove the `noop` and `read-echo` tool registrations from `packages/eds/src/mcp.ts` — EDS ships no decorative tool.
-- [ ] 1.4 Note (no edit needed): `scripts/fixture-server-regeneration.test.mjs` (read-only) couples `templates/server/` to `packages/fixture-server/` only — the eds tool removal in 1.3 is package-local and does not touch that coupling.
+- [x] 1.1 Run `pnpm new-server eds --domain eds --bin hiberus-eds-mcp --description "Edge Delivery Services (EDS) Admin API client — CLI and MCP server."` to scaffold `packages/eds/**`, register it in `servers.json`, and regenerate `README.md`.
+- [x] 1.2 Rename `packages/eds/src/server.ts` to `packages/eds/src/mcp.ts`; update `packages/eds/tsup.config.ts`'s `entry` from `src/server.ts` to `src/mcp.ts`. Also updated `packages/eds/package.json`'s `bin.hiberus-eds-mcp` from `dist/server.js` to `dist/mcp.js` to match the renamed entry (not explicit in this task's text, but required for the entry rename to build a correctly-named bin target).
+- [x] 1.3 Delete `packages/eds/src/tools/read-echo.ts` and `packages/eds/src/tools/read-echo.test.ts`; remove the `noop` and `read-echo` tool registrations from `packages/eds/src/mcp.ts` — EDS ships no decorative tool.
+- [x] 1.4 Note (no edit needed): `scripts/fixture-server-regeneration.test.mjs` (read-only) couples `templates/server/` to `packages/fixture-server/` only — the eds tool removal in 1.3 is package-local and does not touch that coupling.
 
 ## Phase 2: mcp-conformance — Domain-Independent fd-1 Purity Probe
 
