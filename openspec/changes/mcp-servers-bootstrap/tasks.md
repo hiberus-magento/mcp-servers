@@ -92,10 +92,10 @@ Chain strategy: size-exception
 
 ## Phase 7: mcp-core — Linear-Time Secret Redaction
 
-- [ ] 7.1 RED `packages/mcp-core/src/redact/redact.test.ts`: `token=abc123secret` masked; `https://user:hunter2@example.test` → userinfo masked, `hunter2` absent.
-- [ ] 7.2 GREEN `packages/mcp-core/src/redact/redact.ts`: one pre-compiled alternation, disjoint bounded-quantifier character classes, no nesting; no `MCP_NO_REDACT` escape hatch.
-- [ ] 7.3 RED: backtracking-safety property test — redact a 1MB adversarial near-match input and a 100KB one; assert `time(1MB)/time(100KB) < 15` (linear predicts ~10×; this makes the time-vs-input-length property concretely testable without a fixed attack string).
-- [ ] 7.4 GREEN: confirm 7.3 passes; iterate the pattern under 7.2 until it does.
+- [x] 7.1 RED `packages/mcp-core/src/redact/redact.test.ts`: `token=abc123secret` masked; `https://user:hunter2@example.test` → userinfo masked, `hunter2` absent.
+- [x] 7.2 GREEN `packages/mcp-core/src/redact/redact.ts`: one pre-compiled alternation, disjoint bounded-quantifier character classes, no nesting; no `MCP_NO_REDACT` escape hatch.
+- [x] 7.3 RED: backtracking-safety property test — redact a 1MB adversarial near-match input and a 100KB one; assert `time(1MB)/time(100KB) < 15` (linear predicts ~10×; this makes the time-vs-input-length property concretely testable without a fixed attack string).
+- [x] 7.4 GREEN: confirm 7.3 passes; iterate the pattern under 7.2 until it does.
 
 ## Phase 8: mcp-core — Credential Loading
 
