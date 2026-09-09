@@ -63,8 +63,12 @@ describe("JsonRpcClient", () => {
     const script = "process.stderr.write('diagnostic output\\n');";
     client = new JsonRpcClient({ command: process.execPath, args: ["-e", script] });
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    expect(client.stderrChunks.join("")).toContain("diagnostic output");
+    // Poll rather than sleeping a fixed interval: spawning the child and
+    // draining its stderr can take longer than any fixed guess on a loaded
+    // CI machine, and this suite blocks CI. Polling passes as soon as the
+    // output arrives and only spends the full budget when it never does.
+    await expect
+      .poll(() => client?.stderrChunks.join("") ?? "", { timeout: 10_000, interval: 10 })
+      .toContain("diagnostic output");
   });
 });
