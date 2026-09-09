@@ -1,0 +1,61 @@
+# openspec/config.yaml
+schema: spec-driven
+
+context: |
+  Project: mcp-servers (hiberus-magento/mcp-servers)
+  Status: greenfield — repo has a remote and an empty master branch, zero commits, no source yet.
+  Stack (SEEDED from init brief, not observed): TypeScript, Node 22 LTS, ESM-only ("type": "module").
+  Package manager: pnpm workspaces via corepack, version pinned in root packageManager.
+  Build graph: turbo. Bundler: tsup (esbuild), one bundled file per entrypoint, dependencies: {} in published packages.
+  Tests: vitest. Lint: eslint (no-restricted-imports boundaries + license-header plugin).
+  Release: changesets, publish to npm under @hiberus-magento scope, provenance enabled.
+  CI: GitHub Actions (ci.yml, release.yml) on ubuntu-latest. License: Apache-2.0.
+  Shape: monorepo, packages/* = mcp-core, mcp-testing, magento-cloud, eds, aco.
+
+strict_tdd: true
+
+execution:
+  mode: auto
+  artifact_store: hybrid
+  delivery_strategy: exception-ok
+  review_budget_lines: none # explicit exception — no PR size budget; orchestrator owns quality review directly, no PRs required
+
+testing:
+  test_command: "pnpm test" # vitest via turbo from repo root — SEEDED, not yet runnable (no code/scripts exist)
+  status: declared-not-implemented
+  note: >
+    Repository is currently empty. This command and the tool chain below are the
+    declared target from the initialization brief. The first scaffolding change
+    (root package.json, pnpm-workspace.yaml, turbo.json, tsup/vitest/eslint configs)
+    must create this command before it can actually run. Strict TDD is enabled per
+    explicit user directive; the workspace-level `pnpm test` command is treated as
+    covering every future in-scope package under packages/*.
+  projects: []  # zero packages exist yet; will be populated as packages/* are scaffolded
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Treat the first proposal as monorepo bootstrap (root config, workspace wiring, CI, first package skeleton)
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale, especially package boundaries (mcp-core, mcp-testing, magento-cloud, eds, aco)
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+    - Delivery strategy is exception-ok: no PR size budget, no PRs required — do not force chained-PR slicing
+  apply:
+    guidelines:
+      - Follow the declared target stack exactly (TS/Node22/ESM/pnpm/turbo/tsup/vitest/eslint/changesets)
+      - Enforce package boundary rules via eslint no-restricted-imports as packages are created
+      - Apply the Apache-2.0 license header via the lint plugin from the first source file onward
+    tdd: true # Strict TDD Mode enabled per explicit user directive
+    test_command: "pnpm test"
+  verify:
+    test_command: "pnpm test"
+    build_command: "pnpm build" # via turbo + tsup, to be wired by scaffolding
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas
