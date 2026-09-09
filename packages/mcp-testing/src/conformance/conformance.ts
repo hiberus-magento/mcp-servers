@@ -11,7 +11,7 @@ import { execFileSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { JsonRpcClient } from "../jsonrpc-client.js";
 
-interface McpTool {
+export interface McpTool {
   readonly name: string;
   readonly description?: string;
   readonly inputSchema?: unknown;
@@ -24,6 +24,63 @@ interface McpTool {
 
 interface ToolsListResult {
   readonly tools: readonly McpTool[];
+}
+
+/** A single tool-metadata gap found by {@link checkToolMetadataComplete}. */
+export interface ToolMetadataViolation {
+  readonly toolName: string;
+  readonly reason: string;
+}
+
+/**
+ * Pure check backing the "Tool Metadata Completeness" requirement
+ * (mcp-conformance spec): every tool must carry a non-empty description, a
+ * schema, and all three MCP annotations. Extracted out of the `it()` block
+ * below (mirroring the sibling gate scripts' export pattern, e.g.
+ * `scripts/verify-bundle.mjs`) specifically so the failure path — which by
+ * construction never fires against a `defineTool()`-built server — can be
+ * exercised directly against a hand-built non-compliant subject.
+ */
+export function checkToolMetadataComplete(tools: readonly McpTool[]): readonly ToolMetadataViolation[] {
+  const violations: ToolMetadataViolation[] = [];
+  for (const tool of tools) {
+    if (!tool.description) {
+      violations.push({ toolName: tool.name, reason: "missing description" });
+    }
+    if (!tool.inputSchema) {
+      violations.push({ toolName: tool.name, reason: "missing input schema" });
+    }
+    if (tool.annotations?.readOnlyHint === undefined) {
+      violations.push({ toolName: tool.name, reason: "missing readOnlyHint" });
+    }
+    if (tool.annotations?.destructiveHint === undefined) {
+      violations.push({ toolName: tool.name, reason: "missing destructiveHint" });
+    }
+    if (tool.annotations?.idempotentHint === undefined) {
+      violations.push({ toolName: tool.name, reason: "missing idempotentHint" });
+    }
+  }
+  return violations;
+}
+
+/** A single allowlist escape found by {@link checkReadOnlyIsolation}. */
+export interface ReadOnlyIsolationViolation {
+  readonly toolName: string;
+  readonly disallowedCommand: string;
+}
+
+/**
+ * Pure check backing the "Read-Only Tool Isolation" requirement
+ * (mcp-conformance spec): a `readOnlyHint: true` tool's registered command
+ * keys must all be inside its declared read allowlist. Extracted for the
+ * same reason as {@link checkToolMetadataComplete}.
+ */
+export function checkReadOnlyIsolation(
+  introspection: ReadOnlyIntrospection,
+): readonly ReadOnlyIsolationViolation[] {
+  return introspection.registeredCommandKeys
+    .filter((key) => !introspection.expectedCommandKeys.includes(key))
+    .map((key) => ({ toolName: introspection.toolName, disallowedCommand: key }));
 }
 
 /** Minimal shape shared with `mcp-core`'s `CommandAllowlist` — this module
@@ -41,9 +98,32 @@ export interface ConformanceOptions {
   /** Directory containing the package's `package.json`, for the packaging-gate step. */
   readonly packageDir: string;
   readonly readOnlyIntrospections?: readonly ReadOnlyIntrospection[];
+  /**
+   * The tool + arguments used to probe that a tool which shells out keeps
+   * stdout pure JSON-RPC even though the child process inherits fd 1.
+   * Defaults to `read-echo` / `{ message: "conformance-probe" }`, matching
+   * every template-generated server's own tool — override this for a
+   * domain package whose read-only probe tool has a different name or
+   * argument shape.
+   */
+  readonly shellOutProbe?: ShellOutProbe;
 }
 
+/** See {@link ConformanceOptions.shellOutProbe}. */
+export interface ShellOutProbe {
+  readonly toolName: string;
+  readonly arguments: Record<string, unknown>;
+  readonly expectedResultText: string;
+}
+
+const DEFAULT_SHELL_OUT_PROBE: ShellOutProbe = {
+  toolName: "read-echo",
+  arguments: { message: "conformance-probe" },
+  expectedResultText: "conformance-probe",
+};
+
 export function describeConformance(options: ConformanceOptions): void {
+  const shellOutProbe = options.shellOutProbe ?? DEFAULT_SHELL_OUT_PROBE;
   describe(`MCP conformance: ${options.serverPath}`, () => {
     let client: JsonRpcClient;
 
@@ -74,24 +154,23 @@ export function describeConformance(options: ConformanceOptions): void {
 
     it("every tool has a non-empty description, a schema, and all three annotations", async () => {
       const result = (await client.request("tools/list")) as ToolsListResult;
-      for (const tool of result.tools) {
-        expect(tool.description, `tool "${tool.name}" is missing a description`).toBeTruthy();
-        expect(tool.inputSchema, `tool "${tool.name}" is missing an input schema`).toBeTruthy();
-        expect(tool.annotations?.readOnlyHint, `tool "${tool.name}" is missing readOnlyHint`).toBeDefined();
-        expect(tool.annotations?.destructiveHint, `tool "${tool.name}" is missing destructiveHint`).toBeDefined();
-        expect(tool.annotations?.idempotentHint, `tool "${tool.name}" is missing idempotentHint`).toBeDefined();
-      }
+      const violations = checkToolMetadataComplete(result.tools);
+      expect(
+        violations,
+        violations.map((v) => `tool "${v.toolName}" is ${v.reason}`).join("; "),
+      ).toEqual([]);
     });
 
     if (options.readOnlyIntrospections) {
       for (const introspection of options.readOnlyIntrospections) {
         it(`read-only tool "${introspection.toolName}" registers only allowlisted read commands`, () => {
-          for (const key of introspection.registeredCommandKeys) {
-            expect(
-              introspection.expectedCommandKeys,
-              `"${introspection.toolName}" registered "${key}", outside its declared read allowlist`,
-            ).toContain(key);
-          }
+          const violations = checkReadOnlyIsolation(introspection);
+          expect(
+            violations,
+            violations
+              .map((v) => `"${v.toolName}" registered "${v.disallowedCommand}", outside its declared read allowlist`)
+              .join("; "),
+          ).toEqual([]);
         });
       }
     }
@@ -99,11 +178,11 @@ export function describeConformance(options: ConformanceOptions): void {
     it("a tool that shells out keeps stdout pure JSON-RPC despite the child inheriting fd 1", async () => {
       const beforeCount = client.rawStdoutLines.length;
       const result = (await client.request("tools/call", {
-        name: "read-echo",
-        arguments: { message: "conformance-probe" },
+        name: shellOutProbe.toolName,
+        arguments: shellOutProbe.arguments,
       })) as { content: Array<{ type: string; text: string }> };
 
-      expect(result.content[0]?.text).toBe("conformance-probe");
+      expect(result.content[0]?.text).toBe(shellOutProbe.expectedResultText);
       const newLines = client.rawStdoutLines.slice(beforeCount);
       const nonJsonRpc = newLines.filter((entry) => !entry.isJsonRpc);
       expect(nonJsonRpc).toEqual([]);
