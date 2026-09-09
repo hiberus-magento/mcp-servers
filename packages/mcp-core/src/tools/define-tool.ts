@@ -14,6 +14,7 @@
 // parameters instead. `TIn extends z.ZodObject` (no explicit shape argument)
 // is the v4-idiomatic equivalent constraint.
 import type { z } from "zod";
+import { truncate } from "../truncate/truncate.js";
 
 export type NonEmpty<S extends string> = S extends "" ? never : S;
 
@@ -66,6 +67,12 @@ export interface RegisteredTool<TIn extends z.ZodObject, TOut> {
   invoke(rawArgs: unknown, ctx: ToolContext): Promise<ToolCallResult>;
 }
 
+// Backstop cap (design.md, Decision 6): applied to every tool's output
+// regardless of whether its author remembered pagination. A tool that needs
+// to return more than this should paginate instead of relying on a larger
+// cap — see `../tools/pagination.ts`.
+const DEFAULT_MAX_OUTPUT_BYTES = 100_000;
+
 function toTextContent(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
@@ -82,7 +89,8 @@ export function defineTool<TIn extends z.ZodObject, TOut, const D extends string
     async invoke(rawArgs, ctx) {
       const parsed = def.inputSchema.parse(rawArgs) as z.infer<TIn>;
       const result = await def.handler(parsed, ctx);
-      return { content: [{ type: "text", text: toTextContent(result) }] };
+      const text = truncate(toTextContent(result), DEFAULT_MAX_OUTPUT_BYTES);
+      return { content: [{ type: "text", text }] };
     },
   };
 }

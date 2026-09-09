@@ -85,10 +85,10 @@ Chain strategy: size-exception
 
 ## Phase 6: mcp-core — Truncation & Pagination
 
-- [ ] 6.1 RED `packages/mcp-core/src/truncate/truncate.test.ts`: cuts at a UTF-8 boundary, appends marker `[truncated: N of M bytes — request page 2]`.
-- [ ] 6.2 GREEN `packages/mcp-core/src/truncate/truncate.ts` (defineTool wrapper backstop, applies even if the tool author forgot pagination).
-- [ ] 6.3 GREEN `packages/mcp-core/src/tools/pagination.ts`: zod fragment `{page:int≥1 default 1, pageSize:int 1..200 default 50}` (concrete defaults — proposal/design left unspecified), `nextPage` in result.
-- [ ] 6.4 RED: paginated tool test — page 2 returns only that page's items.
+- [x] 6.1 RED `packages/mcp-core/src/truncate/truncate.test.ts`: cuts at a UTF-8 boundary, appends marker `[truncated: N of M bytes — request page 2]`.
+- [x] 6.2 GREEN `packages/mcp-core/src/truncate/truncate.ts` (defineTool wrapper backstop, applies even if the tool author forgot pagination).
+- [x] 6.3 GREEN `packages/mcp-core/src/tools/pagination.ts`: zod fragment `{page:int≥1 default 1, pageSize:int 1..200 default 50}` (concrete defaults — proposal/design left unspecified), `nextPage` in result.
+- [x] 6.4 RED: paginated tool test — page 2 returns only that page's items.
 
 ## Phase 7: mcp-core — Linear-Time Secret Redaction
 
