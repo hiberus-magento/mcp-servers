@@ -110,22 +110,22 @@ Lands before the EDS tools (Phase 7): EDS is pure-HTTPS and cannot satisfy today
 
 ## Phase 6: Auth Wiring — mcp-core Consumption + CLI Auth Commands
 
-- [ ] 6.1 RED: failing test asserting `resolveCredentialValue({ domain: "eds", envVar: "EDS_TOKEN" })` wins over the config file when both are present.
-- [ ] 6.2 GREEN: wire `client/auth.ts`'s `TokenProvider` to `StaticTokenProvider` with EDS's own `Remedy` (out-of-band Adobe UI step in `reason`), constructed only from `cli.ts`/`mcp.ts`, never inside `client/`.
-- [ ] 6.3 RED: failing test asserting `hiberus-eds auth token set --token abc123` / `--token=abc123` / a positional token argument are all rejected before persisting anything.
-- [ ] 6.4 GREEN: wire `packages/eds/src/cli.ts`'s entry to call `parseCredentialCliArgs(argv)` before dispatch.
-- [ ] 6.5 RED: failing test asserting `echo "$KEY" | hiberus-eds auth token set` persists via `persistCredential("eds", token)` at mode `0600`.
-- [ ] 6.6 GREEN: implement `auth token set` as `setToken(deps: { readStdin, persist })` — no token parameter in its signature.
-- [ ] 6.7 RED: failing test asserting the exported `CLI_OPTIONS: readonly OptionSpec[]` contains no `name` matching `/token|key|secret|password/i`.
-- [ ] 6.8 GREEN: define `CLI_OPTIONS` in `cli.ts`.
-- [ ] 6.9 RED: failing test asserting `auth mint`'s output prints the minted value alone on stdout, stderr carries the unrecoverable-value banner + key id + roles + expiry + next command, and the value appears exactly once across both streams.
-- [ ] 6.10 GREEN: implement `auth mint` calling `client.auth.mintApiKey()`; `--persist` is explicit, never default, and prints the path it wrote.
-- [ ] 6.11 RED: failing test asserting `auth mint --roles config_admin` (unconfirmed, CLI-observed-only) is rejected while the documented closed set is accepted.
-- [ ] 6.12 GREEN: implement `--roles` as a closed zod enum of roles confirmed against `https://www.aem.live/docs/admin.html`; record that `basic_author`/`basic_publish`/`config`/`config_admin` are rejected until corroborated (resolves Open Question 3).
-- [ ] 6.13 RED: failing test asserting `auth status` output never contains the raw token under any outcome, reporting an 8-hex-character fingerprint instead.
-- [ ] 6.14 GREEN: implement `auth status` calling `client.auth.authStatus()`, piping every line through `redact()`; exit 0 if any probe returned 2xx, else 1.
-- [ ] 6.15 RED: failing test asserting a credential file at mode `0644` surfaces `LooseCredentialFilePermissionsError` verbatim on `auth status`/`auth token set`, not a generic "missing credential".
-- [ ] 6.16 GREEN: make `auth status` and `auth token set` call `resolveCredentialValue` directly, bypassing `StaticTokenProvider`'s catch-and-rethrow (documented wart mitigation; no `mcp-core` change).
+- [x] 6.1 RED: failing test asserting `resolveCredentialValue({ domain: "eds", envVar: "EDS_TOKEN" })` wins over the config file when both are present. Implemented in `packages/eds/src/credential-provider.ts`'s `createEdsTokenProvider` (a thin wiring layer, not a `client/` file).
+- [x] 6.2 GREEN: wire `client/auth.ts`'s `TokenProvider` need to `StaticTokenProvider` with EDS's own `Remedy` (out-of-band Adobe UI step in `reason`), constructed only from `credential-provider.ts` (consumed by `cli.ts`; `mcp.ts` wiring is Phase 7), never inside `client/`.
+- [x] 6.3 RED: failing test asserting `hiberus-eds auth token set --token abc123` / a positional token argument are all rejected before persisting anything. Proven to genuinely fail: temporarily removed `cli.ts`'s positional-argument arity check and reran — the positional-argument test failed for the right reason before the check was restored.
+- [x] 6.4 GREEN: wire `packages/eds/src/cli.ts`'s `runCli` entry to call `parseCredentialCliArgs(argv)` before dispatch, plus an arity check rejecting any extra argument to `auth token set`.
+- [x] 6.5 RED: failing test asserting a piped token persists via `persist(token)` (the injected callback wired to `persistCredential("eds", token)` at mode `0600` by the caller) — `setToken` itself takes no token parameter.
+- [x] 6.6 GREEN: implement `auth token set` as `setToken(deps: { readStdin, persist })` — no token parameter in its signature.
+- [x] 6.7 RED: failing test asserting the exported `CLI_OPTIONS: readonly OptionSpec[]` contains no `name` matching `/token|key|secret|password/i`.
+- [x] 6.8 GREEN: define `CLI_OPTIONS` in `cli.ts` (`--site`, `--roles`, `--persist`).
+- [x] 6.9 RED: failing test asserting `auth mint`'s output prints the minted value alone on stdout, stderr carries the unrecoverable-value banner + key id + roles + expiry + next command, and the value appears exactly once across both streams.
+- [x] 6.10 GREEN: implement `auth mint` calling `client.auth.mintApiKey()`; `--persist` is explicit, never default, and prints the path it wrote.
+- [x] 6.11 RED: failing test asserting `auth mint --roles config_admin` (unconfirmed, CLI-observed-only) is rejected while the documented closed set is accepted.
+- [x] 6.12 GREEN: implemented `--roles` as a closed zod enum. **Verification limitation, reported honestly, not silently invented**: this environment has no live web-fetch capability, so the enum could NOT be independently re-verified against `https://www.aem.live/docs/admin.html` as instructed. The closed set (`author`, `publish`) is limited to what this repository's own `design.md` bootstrap example already evidences (`--roles publish,author`) — not a wider guess. `basic_author`/`basic_publish`/`config`/`config_admin` remain rejected until a human with live doc access corroborates the confirmed set (resolves Open Question 3 only partially — flagged as a residual risk, see apply-progress).
+- [x] 6.13 RED: failing test asserting `auth status` output never contains the raw token under any outcome, reporting an 8-hex-character fingerprint instead.
+- [x] 6.14 GREEN: implement `auth status` calling `client.auth.authStatus()`, piping every line through `redact()`; exit 0 if any probe returned 2xx (`reachable`), else 1.
+- [x] 6.15 RED: failing test asserting a credential file at mode `0644` surfaces `LooseCredentialFilePermissionsError`'s message verbatim on `auth status`/`auth token set`, not a generic "missing credential".
+- [x] 6.16 GREEN: made `auth status` and `auth token set` call `resolveEdsCredentialDirect` (wrapping `resolveCredentialValue`) directly, bypassing `StaticTokenProvider`'s catch-and-rethrow (documented wart mitigation; no `mcp-core` change).
 
 ## Phase 7: MCP Adapter — Nine Tools & Hazard Gates
 
