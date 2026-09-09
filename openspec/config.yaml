@@ -21,16 +21,22 @@ execution:
   review_budget_lines: none # explicit exception — no PR size budget; orchestrator owns quality review directly, no PRs required
 
 testing:
-  test_command: "pnpm test" # vitest via turbo from repo root — SEEDED, not yet runnable (no code/scripts exist)
-  status: declared-not-implemented
+  test_command: "pnpm test" # vitest via turbo from repo root, plus root-level scripts/*.test.mjs
+  status: implemented
   note: >
-    Repository is currently empty. This command and the tool chain below are the
-    declared target from the initialization brief. The first scaffolding change
-    (root package.json, pnpm-workspace.yaml, turbo.json, tsup/vitest/eslint configs)
-    must create this command before it can actually run. Strict TDD is enabled per
-    explicit user directive; the workspace-level `pnpm test` command is treated as
-    covering every future in-scope package under packages/*.
-  projects: []  # zero packages exist yet; will be populated as packages/* are scaffolded
+    `mcp-servers-bootstrap` implemented the workspace, the packaging gate, the six
+    mcp-core primitives, the mcp-testing conformance suite (CI-blocking from day
+    one), the servers.json manifest + README generator + pnpm new-server scaffold,
+    the release pipeline (changesets, ci.yml, release.yml, license allowlist,
+    secret scanning), and governance docs. `pnpm test` genuinely runs: 67 tests in
+    mcp-core, 11 in mcp-testing, 1 in fixture-server (via the template), plus 19
+    root-level script tests — all green. Domain packages (magento-cloud, eds, aco)
+    remain out of scope for this change; each ships in its own later change per
+    the proposal's roadmap.
+  projects:
+    - mcp-core
+    - mcp-testing
+    - fixture-server
 
 rules:
   proposal:
