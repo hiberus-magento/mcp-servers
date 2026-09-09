@@ -258,7 +258,7 @@ templates/server ──generate──► packages/fixture-server ──tsup─�
 | Unit | Allowlist exact-match (prefix rejected), `--` rejected, `db:dump`/`ssh`/`tunnel` rejected at registration, timeout/maxOutputBytes enforced, redaction correctness + sub-quadratic scaling, credential precedence, `0600` mode + refusal on loose modes, truncation UTF-8 boundary | vitest, no network, no `$HOME` access (temp `XDG_CONFIG_HOME`) |
 | Lint | Boundary/`exec`/`console` rules actually fire | eslint run programmatically over `eslint-fixtures/`, asserting rule IDs |
 | Integration | Built bundle answers `initialize`/`tools/list`; **only** JSON-RPC on stdout; annotations present; scaffolded package passes unmodified | conformance suite against `dist/server.js` as a subprocess |
-| CI/artifact | G1–G7, tarball `dependencies: {}`, shebang, `LICENSE`, README staleness, license allowlist, secret scan, `changesets publish --dry-run` | `verify:package` + workflow steps, every build |
+| CI/artifact | G1–G7, tarball `dependencies: {}`, shebang, `LICENSE`, README staleness, license allowlist, secret scan, `changeset status` + config/workflow validation (the real changesets CLI has no `--dry-run` flag for `publish`; see Migration/Rollout) | `verify:package` + workflow steps, every build |
 
 ---
 
@@ -278,7 +278,7 @@ templates/server ──generate──► packages/fixture-server ──tsup─�
 
 ## Migration / Rollout
 
-No migration — greenfield, zero commits, nothing published. The release workflow is verified by `changesets publish --dry-run` and `npm pack` only. If rung (c) is reached and still fails, stop before `eds-package` and reopen packaging as its own change rather than weakening `dependencies: {}` silently.
+No migration — greenfield, zero commits, nothing published. **Correction (post-verify)**: this section originally asserted the release workflow would be verified by `changeset publish --dry-run`. That flag does not exist — the real changesets CLI's `publish --help` lists no `--dry-run` option for `publish`, confirmed directly against the installed CLI. No substitute dry-run was invented. What IS verifiable without a real publish, and what was actually run: `changeset status` (confirms the CLI resolves the workspace and reports changeset state correctly), `.changeset/config.json` schema/parse validity, and `ci.yml`/`release.yml` workflow syntax, alongside `npm pack` for packaging shape. The underlying safety property — that this change publishes no real versions — holds structurally today (every package `private: true`, every `version: "0.0.0"`, zero changeset files) but is not covered by an automated regression test; see the release-pipeline WARNING in `tasks.md` 12.9. If rung (c) is reached and still fails, stop before `eds-package` and reopen packaging as its own change rather than weakening `dependencies: {}` silently.
 
 ---
 
