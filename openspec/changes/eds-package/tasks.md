@@ -77,30 +77,30 @@ Lands before the EDS tools (Phase 7): EDS is pure-HTTPS and cannot satisfy today
 
 ## Phase 4: Client — Operations, Jobs, Cursor, Paths, Tolerant Shapes
 
-- [ ] 4.1 RED: failing test asserting a job `GET` returning `202` is treated as success, plus a source-scan test asserting no `=== 200` literal governs job success under `client/**`.
-- [ ] 4.2 GREEN: create `packages/eds/src/client/jobs.ts` — envelope parsing, `waitForJob` polling `response.ok` (2xx), polling `links.self` verbatim, terminal on `state ∈ {completed, stopped}`, `timeoutMs` 300000 / `pollIntervalMs` 1000 injected, `JobTimeoutError` on timeout carrying `progress` + `self`.
-- [ ] 4.3 RED: failing test asserting `waitForJob`'s `onProgress` callback fires while the client itself writes nowhere.
-- [ ] 4.4 GREEN: wire `onProgress?: (p: JobProgress) => void` through `jobs.ts`.
-- [ ] 4.5 RED: failing test asserting a paginated response's `nextToken` round-trips through `fetchPage`.
-- [ ] 4.6 GREEN: create `packages/eds/src/client/cursor.ts` — `fetchPage` returning `{ entries, nextToken }`, never auto-draining.
-- [ ] 4.7 RED: failing test asserting `code` endpoints address by `{owner}/{repo}` and snapshot paths reject a `ref` parameter (pinned to `main`).
-- [ ] 4.8 GREEN: create `packages/eds/src/client/paths.ts`.
-- [ ] 4.9 RED: failing test asserting a bare-array site-list response and `{ sites: [...] }` both normalize to the same shape.
-- [ ] 4.10 GREEN: create `packages/eds/src/client/types.ts` — wire/domain types plus `parseSiteList()`.
-- [ ] 4.11 RED: failing test asserting a `GET` precedes any config `PUT`, and a caught `409` is never the sole existence check (recorder asserts call order).
-- [ ] 4.12 GREEN: create `packages/eds/src/client/operations/site-config.ts` — `getSiteConfig()` before any write; aggregates site doc + CDN + effective config for `eds_get_site_config`.
-- [ ] 4.13 RED: failing test asserting a snapshot-creating POST always carries a non-empty JSON body with a `content-type` header, with or without caller-supplied paths.
-- [ ] 4.14 GREEN: create `packages/eds/src/client/operations/snapshots.ts` — list/show/add/remove/publish/review/delete, always an explicit body.
-- [ ] 4.15 RED: failing test asserting a bulk publish response naming `/.helix/config` among ignored paths surfaces it in the result.
-- [ ] 4.16 GREEN: create `packages/eds/src/client/operations/live.ts` (bulk publish/unpublish, `ignoredPaths`) and `packages/eds/src/client/operations/status.ts` (single + bulk status).
-- [ ] 4.17 RED: failing test asserting `eds_reindex`'s full-site branch never sends a bodyless POST, and the paths branch sends submitted paths verbatim.
-- [ ] 4.18 GREEN: create `packages/eds/src/client/operations/index-ops.ts` — always an explicit body on both branches.
-- [ ] 4.19 RED: failing test asserting the audit-log operation passes through `since`/`nextToken` and returns the response's `nextToken`.
-- [ ] 4.20 GREEN: create `packages/eds/src/client/operations/audit-log.ts`.
-- [ ] 4.21 RED: failing test asserting `mintApiKey()` returns `{ id, value, roles, expiresAt }` as a plain object (no rendering), and `authStatus()` probes `GET /config/{org}.json`, `GET /config/{org}/sites.json`, and — when a site is configured — `GET /status/{org}/{site}/main/`, returning per-probe path/status/verdict, never the token.
-- [ ] 4.22 GREEN: create `packages/eds/src/client/auth.ts` — `TokenProvider` wiring, `mintApiKey`, `authStatus`.
-- [ ] 4.23 RED: failing test asserting `packages/eds/src/client/index.ts` exports exactly `createEdsClient`, `EdsClient`, `EdsClientDeps`, every error class, and every `*Result` type — nothing else.
-- [ ] 4.24 GREEN: create `client/index.ts`, assembling `createEdsClient(deps: EdsClientDeps)` from Phases 3–4's modules.
+- [x] 4.1 RED: failing test asserting a job `GET` returning `202` is treated as success, plus a source-scan test asserting no `=== 200` literal governs job success under `client/**`. First `jobs.ts` pass deliberately used a strict-equality check against the literal HTTP 200 status code; both the 202-fixture test and the source-scan test genuinely failed against it before the fix.
+- [x] 4.2 GREEN: create `packages/eds/src/client/jobs.ts` — envelope parsing, `waitForJob` polling `response.ok` (2xx), polling `links.self` verbatim, terminal on `state ∈ {completed, stopped}`, `timeoutMs` 300000 / `pollIntervalMs` 1000 injected, `JobTimeoutError` on timeout carrying `progress` + `self`.
+- [x] 4.3 RED: failing test asserting `waitForJob`'s `onProgress` callback fires while the client itself writes nowhere.
+- [x] 4.4 GREEN: wire `onProgress?: (p: JobProgress) => void` through `jobs.ts`.
+- [x] 4.5 RED: failing test asserting a paginated response's `nextToken` round-trips through `fetchPage`.
+- [x] 4.6 GREEN: create `packages/eds/src/client/cursor.ts` — `fetchPage` returning `{ entries, nextToken }`, never auto-draining.
+- [x] 4.7 RED: failing test asserting `code` endpoints address by `{owner}/{repo}` and snapshot paths reject a `ref` parameter (pinned to `main`) — including a type-level `@ts-expect-error` on a `ref` field.
+- [x] 4.8 GREEN: create `packages/eds/src/client/paths.ts` (`sitePath` generalized over a `resource` verb, `codePath`, `snapshotPath`).
+- [x] 4.9 RED: failing test asserting a bare-array site-list response and `{ sites: [...] }` both normalize to the same shape.
+- [x] 4.10 GREEN: create `packages/eds/src/client/types.ts` — wire/domain types plus `parseSiteList()`.
+- [x] 4.11 RED: failing test asserting a `GET` precedes any config `PUT`, and a caught `409` is never the sole existence check (recorder asserts call order). First `site-config.ts` pass deliberately caught a 409 from the PUT as its existence check; the test genuinely failed (no GET was ever recorded) before the fix.
+- [x] 4.12 GREEN: create `packages/eds/src/client/operations/site-config.ts` — `getSiteConfig()` before any write; aggregates site doc + CDN + effective config for `eds_get_site_config`.
+- [x] 4.13 RED: failing test asserting a snapshot-creating POST always carries a non-empty JSON body with a `content-type` header, with or without caller-supplied paths.
+- [x] 4.14 GREEN: create `packages/eds/src/client/operations/snapshots.ts` — list/show/add/remove/publish/review/delete, always an explicit body (`paths` defaults to `[]`, never an omitted body).
+- [x] 4.15 RED: failing test asserting a bulk publish response naming `/.helix/config` among ignored paths surfaces it in the result.
+- [x] 4.16 GREEN: create `packages/eds/src/client/operations/live.ts` (bulk publish/unpublish, `ignoredPaths`) and `packages/eds/src/client/operations/status.ts` (single + bulk status).
+- [x] 4.17 RED: failing test asserting `eds_reindex`'s full-site branch never sends a bodyless POST, and the paths branch sends submitted paths verbatim.
+- [x] 4.18 GREEN: create `packages/eds/src/client/operations/index-ops.ts` — always an explicit body on both branches.
+- [x] 4.19 RED: failing test asserting the audit-log operation passes through `since`/`nextToken` and returns the response's `nextToken`.
+- [x] 4.20 GREEN: create `packages/eds/src/client/operations/audit-log.ts`.
+- [x] 4.21 RED: failing test asserting `mintApiKey()` returns `{ id, value, roles, expiresAt }` as a plain object (no rendering), and `authStatus()` probes `GET /config/{org}.json`, `GET /config/{org}/sites.json`, and — when a site is configured — `GET /status/{org}/{site}/main/`, returning per-probe path/status/verdict, never the token.
+- [x] 4.22 GREEN: create `packages/eds/src/client/auth.ts` — `TokenProvider` wiring (consumed via `EdsClientDeps.tokenProvider`, from `mcp-core`, unmodified), `mintApiKey`, `authStatus`.
+- [x] 4.23 RED: failing test asserting `packages/eds/src/client/index.ts`'s value exports include `createEdsClient` and every error class. Note (deviation, documented not silent): a runtime test can only assert VALUE exports — TypeScript interfaces/types are erased at runtime, so "exactly … every `*Result` type — nothing else" for pure type exports is enforced by this file's own type-only export list and manual review, not by a runtime assertion. `retry.ts`/`rate-limiter.ts`/`paths.ts` internals are deliberately NOT re-exported.
+- [x] 4.24 GREEN: create `client/index.ts`, assembling `createEdsClient(deps: EdsClientDeps): EdsClient` from Phases 3–4's modules into a grouped `{ http, jobs, cursor, auth, operations: { siteConfig, snapshots, live, status, indexOps, auditLog } }` surface.
 
 ## Phase 5: Client Purity & Boundary Lint
 

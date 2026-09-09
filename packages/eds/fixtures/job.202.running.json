@@ -1,0 +1,11 @@
+{
+  "job": {
+    "name": "job-1",
+    "topic": "preview",
+    "state": "running",
+    "progress": { "total": 4, "processed": 1, "failed": 0 }
+  },
+  "links": {
+    "self": "https://admin.hlx.page/job/acme-demo-org/acme-demo-site-eu/main/preview/job-1"
+  }
+}
