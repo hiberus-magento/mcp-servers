@@ -6,6 +6,7 @@
 // Imports ONLY the stdio transport deep paths from the SDK — never the
 // package barrel and never `server/index.js` directly (design.md, Decision
 // 1) — so this package's bundle stays clean of express/hono/ajv/etc.
+import { createStdioServer } from "@hiberus-magento/mcp-core";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
@@ -64,5 +65,10 @@ server.registerTool(
   },
 );
 
-const transport = new StdioServerTransport();
+// Install the stdout guard BEFORE connecting: it takes the real stdout
+// handle away from the whole process and hands it back only here, so the
+// transport is the one writer that can reach fd 1. Anything else that writes
+// to stdout is diverted to stderr instead of corrupting the JSON-RPC stream.
+const { stdout } = createStdioServer();
+const transport = new StdioServerTransport(process.stdin, stdout);
 await server.connect(transport);
