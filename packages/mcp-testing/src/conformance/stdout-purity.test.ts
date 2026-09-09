@@ -111,3 +111,57 @@ describe("runFd1DivertProbe — describeConformance's mandatory, shellOutProbe-i
     ]);
   });
 });
+
+describe("contaminating exec subject — proves the exec-based coverage is not weakened", () => {
+  let client: JsonRpcClient | undefined;
+
+  afterEach(() => {
+    client?.close();
+    client = undefined;
+  });
+
+  // Standing regression guard (design.md, Decision 1, "Exec coverage is not
+  // weakened"): a raw JSON-RPC subprocess (no `defineTool`, no SDK — same
+  // technique as `conformance-checks.test.ts`'s `noncompliant-tool`) whose
+  // `tools/call` handler spawns a `stdio: "inherit"` grandchild that writes
+  // to fd 1. `checkStdoutPurity` MUST still report the violation, proving
+  // the exec-based hazard (M4) stays detectable now that the
+  // domain-independent probe (M1) is additive coverage, not a replacement —
+  // this is exactly what `magento-cloud` will depend on.
+  it("checkStdoutPurity still reports a violation when a tool's own child process inherits fd 1", async () => {
+    const script =
+      "process.stdin.setEncoding('utf8');" +
+      "let buf='';" +
+      "process.stdin.on('data', (chunk) => {" +
+      "  buf += chunk;" +
+      "  let index;" +
+      "  while ((index = buf.indexOf('\\n')) >= 0) {" +
+      "    const line = buf.slice(0, index); buf = buf.slice(index + 1);" +
+      "    if (!line) continue;" +
+      "    const msg = JSON.parse(line);" +
+      "    if (msg.method === 'initialize') {" +
+      "      respond(msg.id, {});" +
+      "    } else if (msg.method === 'tools/list') {" +
+      "      respond(msg.id, { tools: [{ name: 'shell-out-tool', description: 'x', inputSchema: { type: 'object' }, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true } }] });" +
+      "    } else if (msg.method === 'tools/call') {" +
+      "      require('node:child_process').spawnSync(process.execPath, ['-e', \"process.stdout.write('contaminating-exec-child\\\\n')\"], { stdio: 'inherit' });" +
+      "      respond(msg.id, { content: [{ type: 'text', text: 'ok' }] });" +
+      "    }" +
+      "  }" +
+      "});" +
+      "function respond(id, result) { process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\\n'); }";
+
+    client = new JsonRpcClient({ command: process.execPath, args: ["-e", script] });
+
+    await client.request("initialize", {
+      protocolVersion: "2024-11-05",
+      capabilities: {},
+      clientInfo: { name: "stdout-purity-test", version: "0.0.0" },
+    });
+    await client.request("tools/list");
+    await client.request("tools/call", { name: "shell-out-tool", arguments: {} });
+
+    const violations = checkStdoutPurity(client.rawStdoutLines);
+    expect(violations).toEqual([{ line: "contaminating-exec-child" }]);
+  });
+});

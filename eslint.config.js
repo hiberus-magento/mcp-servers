@@ -217,4 +217,38 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // fd-1 hazard boundary (eds-package design.md, Decision 1): `stdio:
+    // "inherit"` hands a spawned child this process's raw file descriptors,
+    // bypassing the in-process stdout guard (M1) entirely — exactly the M4
+    // hazard the domain-independent conformance probe exists to catch. The
+    // one legitimate use in this repository is the probe itself,
+    // `fd1-probe-harness.mjs`, which needs the real hazard to prove its
+    // positive control has teeth.
+    //
+    // `ignores` also carves out `packages/mcp-core/src/exec/**` and its two
+    // dedicated fixtures: those paths already carry their own
+    // `no-restricted-syntax` array in the exec-boundary block above, and
+    // flat config merges same-named rules per file by last-match-wins, not
+    // by union — letting this broader block also reach them would silently
+    // replace that array instead of adding to it (the exact bug class this
+    // file already documents at the exec-boundary block).
+    files: ["packages/**/src/**/*.{ts,tsx,js,mjs,cjs}", "packages/*/eslint-fixtures/**/*.{ts,tsx}"],
+    ignores: [
+      "packages/mcp-core/src/exec/**",
+      "packages/mcp-core/eslint-fixtures/exec-import-violation.ts",
+      "packages/mcp-core/eslint-fixtures/prefix-match-violation.ts",
+      "packages/mcp-testing/src/conformance/fd1-probe-harness.mjs",
+    ],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "Property[key.name='stdio'][value.value='inherit']",
+          message:
+            "stdio: \"inherit\" is banned under packages/**/src/** — it hands a spawned child this process's raw file descriptors, bypassing the stdout guard. Use \"pipe\" instead (design.md, Decision 1). The one exception is fd1-probe-harness.mjs, the domain-independent purity probe itself.",
+        },
+      ],
+    },
+  },
 );

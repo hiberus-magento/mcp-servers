@@ -4,12 +4,14 @@
 export {
   describeConformance,
   checkReadOnlyIsolation,
+  checkStdoutPurity,
   checkToolMetadataComplete,
   type ConformanceOptions,
   type McpTool,
   type ReadOnlyIntrospection,
   type ReadOnlyIsolationViolation,
   type ShellOutProbe,
+  type StdoutPurityViolation,
   type ToolMetadataViolation,
 } from "./conformance/conformance.js";
 export { JsonRpcClient, type JsonRpcClientOptions, type RawStdoutLine } from "./jsonrpc-client.js";
