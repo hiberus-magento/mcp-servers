@@ -61,19 +61,19 @@ Lands before the EDS tools (Phase 7): EDS is pure-HTTPS and cannot satisfy today
 
 ## Phase 3: Client — Errors, Auth Header, Pacing & Retry
 
-- [ ] 3.1 Create `packages/eds/src/testing/fetch-double.ts` — a route-table fetch double + call recorder, outside `client/` so the purity scan and boundary lint stay clean.
-- [ ] 3.2 RED: failing test asserting a raw `429` maps to `AdminRateLimitError`, a `503` with `x-error` containing `"(429)"` maps to `ContentSourceThrottledError`, and a `503` without it maps to `UpstreamUnavailableError` (three assertions).
-- [ ] 3.3 GREEN: create `packages/eds/src/client/errors.ts` (the `EdsError` hierarchy) and add `mapThrottle(status, headers)` to `packages/eds/src/client/http.ts` as the sole construction site for both throttle classes.
-- [ ] 3.4 RED: type-level test in `packages/eds/src/client/errors.test-d.ts` (`vitest --typecheck`) asserting a `switch` on `throttledBy` missing a case is a compile error under `@ts-expect-error` on the exhaustive branch.
-- [ ] 3.5 GREEN: adjust `errors.ts`'s literal discriminants until 3.4 passes.
-- [ ] 3.6 RED: type-level test in `packages/eds/src/client/retry.test-d.ts` asserting `ContentSourceThrottledError` is rejected (`@ts-expect-error`) by the retry policy's input type.
-- [ ] 3.7 GREEN: create `packages/eds/src/client/retry.ts` — pure `(outcome, attempt) -> {retry, delayMs}` over `AdminRateLimitError | TransientNetworkError | GatewayError`, max 3 attempts, full-jitter backoff (base 250 ms, cap 4 s), honoring `retry-after`, gated on a required `idempotent: true` field.
-- [ ] 3.8 RED: failing test asserting the retry policy never retries a descriptor with `idempotent: false`.
-- [ ] 3.9 GREEN: confirm/adjust `retry.ts`'s guard until 3.8 passes.
-- [ ] 3.10 RED: failing test under `vi.useFakeTimers()` asserting more than 10 queued requests never exceed 10 sent within any one-second window.
-- [ ] 3.11 GREEN: create `packages/eds/src/client/rate-limiter.ts` — token bucket (`ratePerSecond: 10, burst: 10`) over injected `now`/`sleep`.
-- [ ] 3.12 RED: failing test asserting every Admin API request carries `X-Auth-Token: <key>` using a caller-supplied key, never `process.env`.
-- [ ] 3.13 GREEN: build `packages/eds/src/client/http.ts`'s `send()` boundary — attaches the auth header, awaits the rate limiter, is the single request-building function.
+- [x] 3.1 Create `packages/eds/src/testing/fetch-double.ts` — a route-table fetch double + call recorder, outside `client/` so the purity scan and boundary lint stay clean.
+- [x] 3.2 RED: failing test asserting a raw `429` maps to `AdminRateLimitError`, a `503` with `x-error` containing `"(429)"` maps to `ContentSourceThrottledError`, and a `503` without it maps to `UpstreamUnavailableError` (three assertions). Confirmed RED via module-not-found (`errors.js`/`http.js` did not exist yet) before implementing.
+- [x] 3.3 GREEN: create `packages/eds/src/client/errors.ts` (the `EdsError` hierarchy: `AdminRateLimitError`, `ContentSourceThrottledError`, `UpstreamUnavailableError`, `TransientNetworkError`, `GatewayError`, `JobTimeoutError`) and add `mapThrottle(status, headers)` to `packages/eds/src/client/http.ts` as the sole construction site for both throttle classes.
+- [x] 3.4 RED: type-level test in `packages/eds/src/client/errors.test-d.ts` (`vitest --typecheck`) asserting a `switch` on `throttledBy` missing a case is a compile error under `@ts-expect-error` on the exhaustive branch.
+- [x] 3.5 GREEN: adjust `errors.ts`'s literal discriminants until 3.4 passes — passed on first run given the literal `as const` discriminants already in place.
+- [x] 3.6 RED: type-level test in `packages/eds/src/client/retry.test-d.ts` asserting `ContentSourceThrottledError` is rejected (`@ts-expect-error`) by the retry policy's input type.
+- [x] 3.7 GREEN: create `packages/eds/src/client/retry.ts` — pure `(outcome, attempt) -> {retry, delayMs}` over `AdminRateLimitError | TransientNetworkError | GatewayError`, max 3 attempts (`MAX_RETRY_ATTEMPTS`), full-jitter backoff (base 250 ms, cap 4 s), honoring `retryAfterMs`, gated on a required `idempotent: boolean` field.
+- [x] 3.8 RED: failing test asserting the retry policy never retries a descriptor with `idempotent: false`.
+- [x] 3.9 GREEN: confirm/adjust `retry.ts`'s guard until 3.8 passes — passed on first run.
+- [x] 3.10 RED: failing test under `vi.useFakeTimers()` asserting more than 10 queued requests never exceed 10 sent within any one-second window. First implementation attempt (continuous-refill token bucket) genuinely FAILED this test (19 sends observed in one window) — a real finding, not a scripted RED, documented in `rate-limiter.ts`'s header comment.
+- [x] 3.11 GREEN: create `packages/eds/src/client/rate-limiter.ts` — sliding-window request log (`ratePerSecond: 10, burst: 10`) over injected `now`/`sleep`; switched from a continuous-refill token bucket after 3.10 proved that design allows `burst + ratePerSecond` sends in a window straddling the initial burst, which a sliding-window log cannot do by construction.
+- [x] 3.12 RED: failing test asserting every Admin API request carries `X-Auth-Token: <key>` using a caller-supplied key, never `process.env`.
+- [x] 3.13 GREEN: build `packages/eds/src/client/http.ts`'s `send()` boundary — attaches the auth header, awaits the rate limiter, is the single request-building function.
 
 ## Phase 4: Client — Operations, Jobs, Cursor, Paths, Tolerant Shapes
 
