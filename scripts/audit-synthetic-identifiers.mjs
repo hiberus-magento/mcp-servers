@@ -87,11 +87,32 @@ const COMPANY_SUFFIX_PATTERN = /\b[A-Z][A-Za-z&' -]{1,40}(Inc|Corp|Corporation|L
  * @param {string} filePath
  * @returns {Array<{file: string, line: number, rule: string, snippet: string}>}
  */
+// In source files a property read like an options object's org field is not a
+// business domain, and
+// flagging those would make this check unusable — an unusable check gets
+// switched off. So in code, the DOMAIN rule looks only inside string literals,
+// with `${...}` interpolations stripped out, because a template's interpolation
+// is code too: a path template interpolating an org slug is property access
+// that merely happens to sit inside a literal.
+//
+// This narrowing applies to the domain rule alone. The company-suffix rule and
+// the hashed denylist still read the whole line, comments included — a real
+// customer name written in a comment is exactly the leak this audit exists to
+// catch, and neither of those rules can be confused by property access.
+const CODE_EXTENSIONS = /\.(ts|tsx|js|mjs|cjs)$/i;
+const STRING_LITERAL_PATTERN = /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'|`([^`\\]|\\.)*`/g;
+const TEMPLATE_INTERPOLATION_PATTERN = /\$\{[^}]*\}/g;
+
 export function scanTextForBannedIdentifiers(text, filePath, options = {}) {
   const bannedHashes = options.bannedHashes ?? loadBannedHashes();
+  const isCode = CODE_EXTENSIONS.test(filePath);
   const violations = [];
   const lines = text.split("\n");
   lines.forEach((line, index) => {
+    // What the domain rule is allowed to see on this line.
+    const domainScope = isCode
+      ? (line.match(STRING_LITERAL_PATTERN) ?? []).join(" ").replace(TEMPLATE_INTERPOLATION_PATTERN, " ")
+      : line;
     if (bannedHashes.size > 0) {
       // Sweep every run of 1..MAX_IDENTIFIER_WORDS adjacent word tokens.
       // Separators are dropped by the hash, so a match is found whether the
@@ -111,7 +132,7 @@ export function scanTextForBannedIdentifiers(text, filePath, options = {}) {
         }
       }
     }
-    for (const match of line.matchAll(DOMAIN_PATTERN)) {
+    for (const match of domainScope.matchAll(DOMAIN_PATTERN)) {
       const domain = match[0].toLowerCase();
       if (!SAFE_DOMAINS.has(domain)) {
         violations.push({ file: filePath, line: index + 1, rule: "unrecognized-domain", snippet: match[0] });

@@ -83,3 +83,34 @@ describe("audit scope", () => {
     expect(scanned.some((file) => /node_modules|\/dist\/|\.turbo/.test(file))).toBe(false);
   });
 });
+
+describe("code files: property access is not a domain", () => {
+  // Broadening this audit from 8 fixture files to every text file in the
+  // repository put it in contact with ordinary source code, where `x.org`
+  // is a property read and not a business domain. Flagging those would make
+  // the check unusable, and an unusable check gets switched off.
+  it("does not flag property access on a code file", () => {
+    const text = "const site = options.org;\nreturn deps.org ?? params.org;\n";
+    const violations = scanTextForBannedIdentifiers(text, "packages/eds/src/client/auth.ts");
+    expect(violations.filter((v) => v.rule === "unrecognized-domain")).toEqual([]);
+  });
+
+  it("still flags a domain inside a string literal in a code file", () => {
+    const text = 'const host = "customer-shop.example-tld.com";\n';
+    const violations = scanTextForBannedIdentifiers(text, "packages/eds/src/client/http.ts");
+    expect(violations.some((v) => v.rule === "unrecognized-domain")).toBe(true);
+  });
+
+  it("still flags a bare domain in prose, where there is no property access to confuse it with", () => {
+    const text = "The backend runs at customer-shop.example-tld.com in production.\n";
+    const violations = scanTextForBannedIdentifiers(text, "docs/notes.md");
+    expect(violations.some((v) => v.rule === "unrecognized-domain")).toBe(true);
+  });
+
+  it("still applies the hashed denylist to code outside string literals", () => {
+    const bannedHashes = new Set([hashIdentifier("northwind traders")]);
+    const text = "const northwindTraders = 1;\n";
+    const violations = scanTextForBannedIdentifiers(text, "packages/eds/src/client/auth.ts", { bannedHashes });
+    expect(violations.some((v) => v.rule === "known-identifier")).toBe(true);
+  });
+});

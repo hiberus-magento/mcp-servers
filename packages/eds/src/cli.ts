@@ -67,16 +67,25 @@ export async function setToken(deps: SetTokenDeps): Promise<CliRunResult> {
   return { exitCode: 0, stderr: `Token persisted to ${path} (mode 0600).` };
 }
 
-// Confirmed only against this repository's own design.md bootstrap example
-// (`hiberus-eds auth mint --scope site --roles publish,author`) — NOT
-// independently re-verified against https://www.aem.live/docs/admin.html in
-// this session (no live web-fetch capability was available here). The four
-// CLI-observed-only roles (basic_author, basic_publish, config, config_admin)
-// are deliberately excluded and rejected until corroborated by a human with
-// access to the live docs (design.md, Open Question 3). Reported as a
-// residual risk in this batch's apply summary — do not treat this list as
-// independently doc-verified.
-const CONFIRMED_ROLES = ["author", "publish"] as const;
+// Verified against the Admin Service API reference at
+// https://www.aem.live/docs/admin.html: the OrgConfig schema's `roles`
+// property declares this exact enum, and the same set applies to both
+// org-scoped and site-scoped key creation. This closes design.md's Open
+// Question 3, which had left the list narrowed to the two roles the
+// bootstrap example happened to show.
+//
+// Ordered from most to least privileged, so a reader sees the blast radius
+// before the convenience.
+const CONFIRMED_ROLES = [
+  "admin",
+  "config_admin",
+  "config",
+  "develop",
+  "author",
+  "publish",
+  "basic_author",
+  "basic_publish",
+] as const;
 const rolesSchema = z.array(z.enum(CONFIRMED_ROLES)).min(1);
 
 function parseRoles(raw: string): { readonly ok: true; readonly roles: string[] } | { readonly ok: false; readonly message: string } {

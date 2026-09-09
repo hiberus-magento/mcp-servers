@@ -129,7 +129,7 @@ describe("auth mint", () => {
     expect(occurrences).toBe(1);
   });
 
-  it("rejects an unconfirmed role (e.g. config_admin) while accepting the documented set", async () => {
+  it("rejects a role outside the documented enum", async () => {
     const client = createEdsClient({
       fetch: createFetchDouble({}).fetch,
       now: () => Date.now(),
@@ -139,7 +139,7 @@ describe("auth mint", () => {
       org: "acme-demo-org",
     });
 
-    const result = await runCli(["auth", "mint", "--site", "acme-demo-site-eu", "--roles", "config_admin"], {
+    const result = await runCli(["auth", "mint", "--site", "acme-demo-site-eu", "--roles", "superuser"], {
       readStdin: async () => "",
       persist: () => "/dev/null",
       configDir: undefined,
@@ -148,7 +148,7 @@ describe("auth mint", () => {
     });
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/config_admin/);
+    expect(result.stderr).toMatch(/superuser/);
   });
 });
 
