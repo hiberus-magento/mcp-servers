@@ -155,6 +155,6 @@ Chain strategy: size-exception
 
 ## Phase 14: Closeout & Verification
 
-- [ ] 14.1 Flip `openspec/config.yaml` `testing.status` → `implemented`; populate `projects: [mcp-core, mcp-testing, fixture-server]`.
-- [ ] 14.2 Full clean-clone run on Node 22: `pnpm install && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm verify:package` — all green.
-- [ ] 14.3 Walk every checkbox in `proposal.md` Success Criteria and confirm each is satisfied.
+- [x] 14.1 Flip `openspec/config.yaml` `testing.status` → `implemented`; populate `projects: [mcp-core, mcp-testing, fixture-server]`.
+- [x] 14.2 Full clean-clone run on Node 22: `pnpm install && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm verify:package` — all green. Verified for real via a fresh `git clone` into a scratch directory (not the working tree) — every command exited 0, 67+11+1 package tests plus 19 root script tests all passed, packaging gate PASS.
+- [x] 14.3 Walk every checkbox in `proposal.md` Success Criteria and confirm each is satisfied. All 11 confirmed — see the apply-progress artifact for the per-item evidence trail. Notably `pnpm new-server produces a package that passes conformance unmodified` was verified end-to-end in a second disposable clone: scaffolded `example-domain`, built it, and ran the shared `describeConformance` suite against it unmodified — 5/5 passed.
