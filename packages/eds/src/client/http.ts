@@ -5,7 +5,7 @@
 // design.md, Decision 4, for why that shape defeats mcp-core's own
 // redaction), awaits the rate limiter, and is `mapThrottle`'s only caller
 // (design.md, Decision 3). Every configuration value is injected via
-// `EdsClientDeps` — this module never reads `process.env`.
+// `EdsClientDeps` — this module never reads an environment variable directly.
 import type { TokenProvider } from "@hiberus-magento/mcp-core";
 import { AdminRateLimitError, ContentSourceThrottledError, GatewayError, TransientNetworkError, UpstreamUnavailableError } from "./errors.js";
 import { TokenBucketRateLimiter } from "./rate-limiter.js";

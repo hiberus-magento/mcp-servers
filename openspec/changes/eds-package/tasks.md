@@ -104,9 +104,9 @@ Lands before the EDS tools (Phase 7): EDS is pure-HTTPS and cannot satisfy today
 
 ## Phase 5: Client Purity & Boundary Lint
 
-- [ ] 5.1 RED: failing source-scan test asserting no file under `packages/eds/src/client/**` contains `console.`, `process.exit`, `process.env`, a prompt-library import, or an ANSI escape sequence.
-- [ ] 5.2 GREEN: fix any call sites 5.1 surfaces (expected to already comply by construction — this proves it, not introduces it).
-- [ ] 5.3 Create `packages/eds/eslint-fixtures/deep-client-import.ts` (a real violation importing `../src/client/http.js` directly) and `packages/eds/eslint-fixtures.test.ts` asserting `no-restricted-imports` fires against it, naming `client/index`.
+- [x] 5.1 RED: failing source-scan test asserting no file under `packages/eds/src/client/**` contains `console.`, `process.exit`, `process.env`, a prompt-library import, or an ANSI escape sequence. Genuinely failed on first run — `http.ts`'s own header comment mentioned "process.env" in prose, which the scan correctly flagged; the comment was reworded (no production code was ever affected).
+- [x] 5.2 GREEN: fixed the one call site 5.1 surfaced (a comment, not code) — the client was already compliant by construction; the test proves it.
+- [x] 5.3 Create `packages/eds/eslint-fixtures/deep-client-import.ts` (a real violation importing `../src/client/http.js` directly) and `packages/eds/eslint-fixtures.test.ts` asserting `no-restricted-imports` fires against it, naming `client/index`.
 
 ## Phase 6: Auth Wiring — mcp-core Consumption + CLI Auth Commands
 

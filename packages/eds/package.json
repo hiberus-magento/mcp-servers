@@ -26,9 +26,13 @@
   },
   "dependencies": {},
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@hiberus-magento/mcp-core": "workspace:*",
+    "@hiberus-magento/mcp-testing": "workspace:*",
     "@modelcontextprotocol/sdk": "1.30.0",
+    "eslint": "10.10.0",
     "tsup": "^8.5.1",
+    "typescript-eslint": "8.70.0",
     "zod": "^4.5.4"
   }
 }
