@@ -11,6 +11,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { readEchoTool } from "./tools/read-echo.js";
 
 // The SDK constructs a real `AjvJsonSchemaValidator` at server-construction
 // time unless an explicit `jsonSchemaValidator` is supplied (server/index.js:51).
@@ -42,11 +43,25 @@ server.registerTool(
   {
     description: "A no-op tool used only to exercise the packaging gate.",
     inputSchema: {},
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
   },
   async () => {
     return {
       content: [{ type: "text", text: z.literal("noop").parse("noop") }],
     };
+  },
+);
+
+server.registerTool(
+  readEchoTool.name,
+  {
+    description: readEchoTool.description,
+    inputSchema: readEchoTool.inputSchema.shape,
+    annotations: readEchoTool.annotations,
+  },
+  async (args: z.infer<typeof readEchoTool.inputSchema>) => {
+    const result = await readEchoTool.invoke(args, {});
+    return { content: [...result.content], isError: result.isError };
   },
 );
 

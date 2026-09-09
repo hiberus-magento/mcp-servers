@@ -110,11 +110,11 @@ Chain strategy: size-exception
 
 ## Phase 9: mcp-testing Conformance Suite
 
-- [ ] 9.1 RED `packages/mcp-testing/src/conformance/conformance.test.ts`: `tools/list` responds; stdout-purity (only JSON-RPC frames); every tool has description+schema+3 annotations; `readOnlyHint` tools stay inside the read allowlist; tarball G4–G6; bundle-size/forbidden-string gate.
-- [ ] 9.2 GREEN `describeConformance({serverPath})` factory + `~120`-line `packages/mcp-testing/src/jsonrpc-client.ts` (raw newline-framed stream, not the SDK `Client`); spawn `node dist/server.js` with `stdio:['pipe','pipe','pipe']`, sanitized env; run against `packages/fixture-server`.
-- [ ] 9.3 Wire conformance as a blocking `turbo test` step (`dependsOn:["^build"]`) so CI fails on regression from day one.
-- [ ] 9.4 RED: conformance case — a fixture-server tool that shells out via the allowlisted executor; assert stdout stays pure JSON-RPC despite the child inheriting fd 1 (closes the threat-matrix "subprocess stream integrity" case end-to-end).
-- [ ] 9.5 GREEN: shared synthetic `packages/mcp-testing/src/fixtures/catalog-views.csv` + `synthetic-identifiers.ts` (synthetic org/site/domain constants) consumed by both fixture-server and future domain packages.
+- [x] 9.1 RED `packages/mcp-testing/src/conformance/conformance.test.ts`: `tools/list` responds; stdout-purity (only JSON-RPC frames); every tool has description+schema+3 annotations; `readOnlyHint` tools stay inside the read allowlist; tarball G4–G6; bundle-size/forbidden-string gate.
+- [x] 9.2 GREEN `describeConformance({serverPath})` factory + `~120`-line `packages/mcp-testing/src/jsonrpc-client.ts` (raw newline-framed stream, not the SDK `Client`); spawn `node dist/server.js` with `stdio:['pipe','pipe','pipe']`, sanitized env; run against `packages/fixture-server`.
+- [x] 9.3 Wire conformance as a blocking `turbo test` step (`dependsOn:["^build"]`) so CI fails on regression from day one.
+- [x] 9.4 RED: conformance case — a fixture-server tool that shells out via the allowlisted executor; assert stdout stays pure JSON-RPC despite the child inheriting fd 1 (closes the threat-matrix "subprocess stream integrity" case end-to-end).
+- [x] 9.5 GREEN: shared synthetic `packages/mcp-testing/src/fixtures/catalog-views.csv` + `synthetic-identifiers.ts` (synthetic org/site/domain constants) consumed by both fixture-server and future domain packages.
 
 ## Phase 10: Client-Boundary Lint (fixture-proven for packages that don't exist yet)
 

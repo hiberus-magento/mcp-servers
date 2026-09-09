@@ -1,0 +1,27 @@
+{
+  "name": "@hiberus-magento/mcp-testing",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./fixtures/catalog-views.csv": "./src/fixtures/catalog-views.csv"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@hiberus-magento/fixture-server": "workspace:*",
+    "eslint": "10.10.0",
+    "typescript-eslint": "8.70.0"
+  }
+}

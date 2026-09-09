@@ -46,4 +46,11 @@ export class CommandAllowlist {
   resolve(bin: string, subcommand: readonly string[]): CommandSpec<z.ZodTypeAny> | undefined {
     return this.#commands.get(commandKey(bin, subcommand));
   }
+
+  /** For registry introspection (e.g. a conformance suite asserting a
+   * read-only tool's executor never registered a command outside its
+   * declared read allowlist) — never used by the executor itself. */
+  listCommandKeys(): string[] {
+    return [...this.#commands.keys()];
+  }
 }

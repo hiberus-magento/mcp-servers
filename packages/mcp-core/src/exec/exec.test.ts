@@ -100,6 +100,13 @@ describe("CommandAllowlist", () => {
     expect(allowlist.resolve("/usr/bin/git", ["status"])).toBe(spec);
   });
 
+  it("lists every registered command's exact key, for registry introspection", () => {
+    const allowlist = new CommandAllowlist();
+    allowlist.register(statusSpec());
+
+    expect(allowlist.listCommandKeys()).toEqual(["/usr/bin/git status"]);
+  });
+
   it("does not resolve a prefix-like but distinct subcommand", () => {
     const allowlist = new CommandAllowlist();
     allowlist.register(statusSpec());
