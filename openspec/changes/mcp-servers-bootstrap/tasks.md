@@ -137,15 +137,15 @@ Chain strategy: size-exception
 
 ## Phase 12: Release Pipeline
 
-- [ ] 12.1 `.changeset/config.json`: independent versioning, `access:public`, `provenance:true`, `@hiberus-magento` scope.
-- [ ] 12.2 `.github/workflows/ci.yml`: install → lint → typecheck → test → build → `verify:package` → conformance → license-allowlist → secret-scan, `ubuntu-latest`, fails on any step.
-- [ ] 12.3 `.github/workflows/release.yml`: `changeset publish`, `permissions:{id-token:write,contents:write}`, OIDC trusted publishing preferred; document scoped `NPM_TOKEN` fallback as a temporary deviation.
-- [ ] 12.4 RED `scripts/check-licenses.test.mjs`: a `GPL-3.0` dependency fails, naming package + license.
-- [ ] 12.5 GREEN `scripts/check-licenses.mjs`: allowlist `MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;0BSD`; wire as CI step.
-- [ ] 12.6 Add secret-scanning CI step over the diff; RED fixture with a credential-shaped string, GREEN step fails and reports file+line.
-- [ ] 12.7 RED: missing `THIRD-PARTY-NOTICES.txt` fails the build/license check.
-- [ ] 12.8 GREEN: per-package `THIRD-PARTY-NOTICES.txt` generator listing resolved licenses, reproducing any bundled Apache-2.0 dependency's NOTICE verbatim.
-- [ ] 12.9 Verify `changesets publish --dry-run` succeeds locally — no real npm publish in this change.
+- [x] 12.1 `.changeset/config.json`: independent versioning, `access:public`, `provenance:true`, `@hiberus-magento` scope.
+- [x] 12.2 `.github/workflows/ci.yml`: install → lint → typecheck → test → build → `verify:package` → conformance → license-allowlist → secret-scan, `ubuntu-latest`, fails on any step.
+- [x] 12.3 `.github/workflows/release.yml`: `changeset publish`, `permissions:{id-token:write,contents:write}`, OIDC trusted publishing preferred; document scoped `NPM_TOKEN` fallback as a temporary deviation.
+- [x] 12.4 RED `scripts/check-licenses.test.mjs`: a `GPL-3.0` dependency fails, naming package + license.
+- [x] 12.5 GREEN `scripts/check-licenses.mjs`: allowlist `MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;0BSD`; wire as CI step.
+- [x] 12.6 Add secret-scanning CI step over the diff; RED fixture with a credential-shaped string, GREEN step fails and reports file+line.
+- [x] 12.7 RED: missing `THIRD-PARTY-NOTICES.txt` fails the build/license check.
+- [x] 12.8 GREEN: per-package `THIRD-PARTY-NOTICES.txt` generator listing resolved licenses, reproducing any bundled Apache-2.0 dependency's NOTICE verbatim.
+- [x] 12.9 PARTIAL — `changeset --help`/`status` confirm the CLI and config are wired correctly (config parses, workspace packages are discovered, `status --since master` correctly reports "packages have changed, no changesets found" against the current uncommitted diff). The literal `changeset publish --dry-run` invocation this task names does not exist in the real changesets CLI (`--help` lists no `--dry-run` flag for `publish`), and the sandbox's auto-mode classifier blocked every attempt to run `changeset publish` itself (even though it is a structural no-op here since every package is `private: true`, so nothing would ever reach the registry). Not resolved by working around the block — reported honestly instead. No real npm publish occurred.
 
 ## Phase 13: Governance & Synthetic-Data Audit
 

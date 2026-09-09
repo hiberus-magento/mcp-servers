@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# OIDC trusted publishing is preferred over a long-lived NPM_TOKEN
+# (release-pipeline spec, "Release Workflow Uses OIDC Trusted Publishing").
+# `id-token: write` lets `npm publish` mint a short-lived provenance-signed
+# token from GitHub's OIDC issuer instead of reading a stored secret;
+# `contents: write` lets the changesets action push version-bump commits
+# and tags back to the repository.
+permissions:
+  id-token: write
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      # OIDC trusted publishing requires npm CLI >= 11.5 and the target
+      # package's npm Trusted Publisher configured for this repository +
+      # workflow. If OIDC trust is not (yet) configured for the
+      # @hiberus-magento scope, fall back to a short-lived scoped
+      # NPM_TOKEN in this job only — documented here as a temporary
+      # deviation (design.md, Open Questions), never a long-lived token
+      # committed to the repository.
+      - name: Publish (changesets)
+        uses: changesets/action@v1
+        with:
+          publish: pnpm changeset publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

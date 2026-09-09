@@ -23,18 +23,7 @@ These three acronyms are adjacent, are **not** the same thing, and Adobe has ren
 
 
 
-### @hiberus-magento/example-domain
-
-A synthetic example domain server.
-
-- Domain: example
-- Status: internal
-- Binary: `example-domain`
-
-Tools:
-
-- `noop` (read-only) — A no-op tool used only to exercise the packaging gate.
-- `read-echo` (read-only) — Echoes a message back through an allowlisted read-only subprocess call, proving stdout stays pure JSON-RPC even though a child process is spawned.
+_No servers are published yet._
 
 <!-- servers:end -->
 

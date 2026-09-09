@@ -6,6 +6,7 @@
 // registers it in `servers.json`, and regenerates README.md. Fails without
 // writing anything if the package name already exists.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderTemplate } from "./template-lib.mjs";
 import { writeReadme } from "./gen-readme.mjs";
@@ -48,7 +49,14 @@ export function runNewServer(options) {
     status = "internal",
     packagesDir = DEFAULT_PACKAGES_DIR,
     serversJsonPath = DEFAULT_MANIFEST_PATH,
-    readmePath = DEFAULT_README_PATH,
+    // Deliberately NOT a plain default parameter: defaulting unconditionally
+    // to the real repo README.md would mean any caller that customizes
+    // `serversJsonPath` (e.g. a test, using a temp manifest) but forgets
+    // `readmePath` silently regenerates the REAL committed README from
+    // throwaway data — exactly the bug this comment replaced (found for
+    // real during Phase 12 verification). Only fall back to the repo
+    // README when `serversJsonPath` is ALSO left at its default.
+    readmePath = serversJsonPath === DEFAULT_MANIFEST_PATH ? DEFAULT_README_PATH : join(dirname(serversJsonPath), "README.md"),
     templateDir,
     regenerateReadme = true,
   } = options;

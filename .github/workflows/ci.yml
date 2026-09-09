@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # Includes the conformance suite (packages/mcp-testing), CI-blocking
+      # from day one — turbo's `test` task depends on `^build`, so the
+      # bundle fixture-server's conformance suite spawns always exists
+      # first (design.md, "turbo graph").
+      - name: Test (includes conformance)
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Verify package (packaging gate G1-G6)
+        run: pnpm verify:package
+
+      - name: Validate servers.json against schema
+        run: node scripts/validate-manifest.mjs
+
+      - name: Check README is not stale
+        run: node scripts/gen-readme.mjs --check
+
+      - name: License allowlist + THIRD-PARTY-NOTICES.txt freshness
+        run: node scripts/check-licenses.mjs
+
+      - name: Secret scan (over the diff)
+        run: node scripts/scan-secrets.mjs "origin/${{ github.event.pull_request.base.ref || 'main' }}"

@@ -4,11 +4,21 @@
 // package name fails without overwriting (server-manifest spec, "Generator
 // rejects a name collision"). Uses temp directories so the test never
 // touches the real `packages/` or `servers.json`.
+//
+// IMPORTANT: every call below passes an explicit `readmePath` pointing
+// inside the temp dir. `runNewServer`'s `readmePath` default is the REAL
+// repository `README.md` — a call that supplies `serversJsonPath` but
+// omits `readmePath` will silently regenerate the real committed README
+// from a throwaway test manifest. This was caught for real during Phase 12
+// verification: the committed README ended up with a stray
+// `example-domain` entry after a test run.
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runNewServer } from "./new-server.mjs";
+
+const README_SKELETON = "# test\n\n<!-- servers:start -->\n<!-- servers:end -->\n";
 
 let workDir;
 
@@ -23,19 +33,22 @@ function setup() {
   workDir = mkdtempSync(join(tmpdir(), "new-server-test-"));
   const packagesDir = join(workDir, "packages");
   const serversJsonPath = join(workDir, "servers.json");
+  const readmePath = join(workDir, "README.md");
   writeFileSync(serversJsonPath, JSON.stringify({ servers: [] }, null, 2) + "\n", "utf8");
-  return { packagesDir, serversJsonPath };
+  writeFileSync(readmePath, README_SKELETON, "utf8");
+  return { packagesDir, serversJsonPath, readmePath };
 }
 
 describe("runNewServer", () => {
   it("scaffolds a new package and registers it in servers.json", () => {
-    const { packagesDir, serversJsonPath } = setup();
+    const { packagesDir, serversJsonPath, readmePath } = setup();
     const result = runNewServer({
       name: "example-domain",
       domain: "example",
       description: "A synthetic example domain server.",
       packagesDir,
       serversJsonPath,
+      readmePath,
     });
     expect(result.ok).toBe(true);
     const manifest = JSON.parse(readFileSync(serversJsonPath, "utf8"));
@@ -45,13 +58,14 @@ describe("runNewServer", () => {
   });
 
   it("rejects a name collision without overwriting the existing package or manifest", () => {
-    const { packagesDir, serversJsonPath } = setup();
+    const { packagesDir, serversJsonPath, readmePath } = setup();
     runNewServer({
       name: "example-domain",
       domain: "example",
       description: "A synthetic example domain server.",
       packagesDir,
       serversJsonPath,
+      readmePath,
     });
     const packageJsonPath = join(packagesDir, "example-domain", "package.json");
     const before = readFileSync(packageJsonPath, "utf8");
@@ -63,6 +77,7 @@ describe("runNewServer", () => {
       description: "A different description that must never land.",
       packagesDir,
       serversJsonPath,
+      readmePath,
     });
 
     expect(second.ok).toBe(false);
