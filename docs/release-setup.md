@@ -1,0 +1,153 @@
+# Release setup
+
+One-time setup a maintainer performs outside this repository, before the first
+package can be published to npm. Everything here is a human action on the npm
+and GitHub websites — no part of it can be automated from CI, because the whole
+point is to establish the trust that CI will later rely on.
+
+## What trusted publishing is
+
+Normally, publishing to npm from CI means storing a long-lived npm access token
+in a GitHub secret. That token is a standing credential: anyone who can read the
+secret, or influence a workflow that can read it, can publish as you. It does not
+expire on its own, and it works from anywhere.
+
+Trusted publishing replaces that with OpenID Connect. GitHub Actions proves to
+npm, cryptographically and per run, that a specific workflow file in a specific
+repository is asking to publish. npm checks that claim against a rule you
+configured in advance and issues a short-lived credential valid only for that
+run. Nothing durable is stored anywhere.
+
+Two things follow from that:
+
+- **There is no token to leak.** A compromised repository secret stops being a
+  way to publish, because there is no secret.
+- **You get provenance for free.** Public packages published this way carry a
+  signed attestation naming the exact repository, commit and workflow that built
+  the artifact. Consumers can verify that the tarball on npm really came from
+  this source, rather than trusting that whoever held the token was honest.
+
+The second point is why this repository's `publishConfig` sets
+`provenance: true`. Provenance requires a public repository and OIDC; it is not
+available with a plain token.
+
+## The ordering problem: npm needs the package to exist first
+
+**npm will not let you configure a trusted publisher for a package that has never
+been published.** The configuration lives on the package's own settings page, and
+that page does not exist until there is a package.
+
+This is a genuine chicken-and-egg: OIDC cannot be configured until the package
+exists, and we wanted the package to be published via OIDC. There is no
+scope-wide setting that avoids it — the rule is per package, and this repository
+publishes several packages independently.
+
+So the first publish of each package is done the old way, once, by hand. After
+that, every subsequent release goes through OIDC.
+
+This is not a workaround anyone invented; it is a documented npm limitation, and
+[npm/cli#8544](https://github.com/npm/cli/issues/8544) tracks the request to lift it.
+
+## What to do
+
+### 1. Confirm the organization
+
+The `hiberus-magento` organization must exist on npm with two-factor
+authentication required at the organization level. 2FA is mandatory for
+publishing regardless of the method.
+
+### 2. Publish each package once, by hand
+
+From a clean checkout, signed in locally with `npm login`:
+
+```bash
+pnpm install
+pnpm build
+cd packages/<package>
+npm publish --access public
+```
+
+`--access public` matters: scoped packages default to private on their first
+publish, and a private publish on the free plan is rejected outright. This
+repository's `publishConfig` already sets `access: public`, but passing it
+explicitly on a manual publish removes any doubt.
+
+Publish a real `0.0.1` rather than an empty placeholder. A placeholder version
+occupies the version number permanently — npm does not allow republishing a
+version, even after unpublishing it — and leaves something meaningless in the
+registry forever.
+
+### 3. Configure the trusted publisher
+
+For each published package, on npmjs.com:
+
+1. Open the package page → **Settings**.
+2. Find the **Trusted Publisher** section.
+3. Choose **GitHub Actions**.
+4. Fill in:
+   - **Organization or user**: `hiberus-magento`
+   - **Repository**: `mcp-servers`
+   - **Workflow filename**: `release.yml` — the filename only, with its
+     extension, not a path.
+   - **Environment name**: leave empty. This repository's release workflow does
+     not use a GitHub deployment environment; filling this in would make the
+     rule never match.
+
+Repeat per package. A package accepts at most ten trusted publishers, which is
+far more than we need.
+
+**A configured trusted publisher cannot be edited.** To change any field you
+delete the entry and create a new one. Take care with the workflow filename in
+particular — a typo there fails at publish time, not at configuration time, with
+an error that looks like a permissions problem rather than a typo.
+
+### 4. Remove the fallback token
+
+Once every package publishes through OIDC, delete the `NPM_TOKEN` repository
+secret and drop it from `release.yml`. A standing token that nothing uses is
+still a standing token, and leaving it in place forfeits most of what trusted
+publishing bought.
+
+## Two known gaps in this repository's release workflow
+
+Both are recorded here rather than silently patched, because neither can be
+verified until the packages actually exist on npm.
+
+### The runner's bundled npm is too old
+
+OIDC publishing requires npm CLI 11.5.1 or newer and Node 22.14.0 or newer.
+Node 22 ships npm 10.x, so `release.yml` needs an explicit upgrade step —
+something equivalent to `npm install -g npm@latest` — before publishing.
+Without it the publish falls back to token authentication silently, or fails,
+depending on the CLI version.
+
+`.nvmrc` currently pins the major version only (`22`). GitHub's runners resolve
+that to a recent 22.x, which satisfies the floor today, but pinning a full
+version removes the dependency on that continuing to be true.
+
+### pnpm 11 and OIDC
+
+This repository publishes via `pnpm changeset publish`, and pnpm 11 has a
+reported regression where OIDC publishing fails with a 404 that did not occur in
+pnpm 10 — see [pnpm#11513](https://github.com/pnpm/pnpm/issues/11513). This
+repository pins pnpm 11.
+
+Decide this when the first real publish is attempted, with evidence rather than
+in advance. The options, in rough order of preference:
+
+1. Confirm whether the regression still affects the pinned pnpm version. It may
+   already be fixed.
+2. Have changesets invoke `npm publish` per package instead of `pnpm publish`.
+   pnpm is the workspace and build tool here; it does not have to be the thing
+   that talks to the registry.
+3. Pin pnpm to a version known to work for publishing.
+
+Until this is settled, the `NPM_TOKEN` fallback in `release.yml` is what makes
+releases work at all. That is why step 4 above is last: remove the token when
+OIDC is proven, not before.
+
+## Verifying it worked
+
+After the first OIDC release, the package page on npm shows a provenance badge
+linking to the workflow run that built it. No badge means the publish fell back
+to the token, whatever the workflow logs say.

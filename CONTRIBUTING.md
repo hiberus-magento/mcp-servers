@@ -49,6 +49,8 @@ Run `pnpm new-server <name> --domain <domain> --description "<text>"`. This scaf
 
 This repository uses [changesets](https://github.com/changesets/changesets) for independent per-package versioning. Run `pnpm changeset` to record a change that should trigger a release before merging a pull request that touches a publishable package.
 
+Publishing runs on npm trusted publishing (OIDC) rather than a stored token, which is also what produces the provenance attestation on each published package. The one-time maintainer setup, and two known gaps in the release workflow that are still open, are documented in [`docs/release-setup.md`](./docs/release-setup.md).
+
 ## Related Repositories
 
 - [`hiberus-magento/ai-tools`](https://github.com/hiberus-magento/ai-tools) — skills and agents (knowledge, edited daily, not published as a package).
