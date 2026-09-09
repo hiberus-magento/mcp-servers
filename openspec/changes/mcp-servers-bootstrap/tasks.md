@@ -76,12 +76,12 @@ Chain strategy: size-exception
 
 ## Phase 5: mcp-core — Allowlisted Command Executor
 
-- [ ] 5.1 RED `packages/mcp-core/src/exec/exec.test.ts`: exact-match allow; prefix-match (`status-extended`) reject; `ssh`/`tunnel`/`db:dump` rejected at registration (module init throws); `--` rejected; schema-invalid argument rejected; `timeoutMs`/`maxOutputBytes` enforced with `SIGKILL`.
-- [ ] 5.2 GREEN `packages/mcp-core/src/exec/{command-spec,validate-argv,run-allowlisted}.ts`: non-exported `unique symbol` brand → `Argv`; `Map` keyed on full `[bin,...subcommand].join(' ')`; `execFile` with `shell:false`.
-- [ ] 5.3 RED: property test — `validateArgv`'s returned string is byte-identical to the captured `execFile` argv (no normalize-then-execute-raw divergence).
-- [ ] 5.4 GREEN: `validateArgv` returns the same array it validated, never a re-derived copy.
-- [ ] 5.5 RED fixtures `packages/mcp-core/eslint-fixtures/{exec-import,prefix-match}-violation.ts`: `child_process.exec/execSync/spawnSync` import; `RegExp`/`.startsWith`/`.includes`/`.test` under `src/exec/**`.
-- [ ] 5.6 GREEN: `no-restricted-imports` + `no-restricted-syntax` eslint rules for `src/exec/**`; extend 2.11's programmatic test to assert these rule IDs fire too.
+- [x] 5.1 RED `packages/mcp-core/src/exec/exec.test.ts`: exact-match allow; prefix-match (`status-extended`) reject; `ssh`/`tunnel`/`db:dump` rejected at registration (module init throws); `--` rejected; schema-invalid argument rejected; `timeoutMs`/`maxOutputBytes` enforced with `SIGKILL`.
+- [x] 5.2 GREEN `packages/mcp-core/src/exec/{command-spec,validate-argv,run-allowlisted}.ts`: non-exported `unique symbol` brand → `Argv`; `Map` keyed on full `[bin,...subcommand].join(' ')`; `execFile` with `shell:false`.
+- [x] 5.3 RED: property test — `validateArgv`'s returned string is byte-identical to the captured `execFile` argv (no normalize-then-execute-raw divergence).
+- [x] 5.4 GREEN: `validateArgv` returns the same array it validated, never a re-derived copy.
+- [x] 5.5 RED fixtures `packages/mcp-core/eslint-fixtures/{exec-import,prefix-match}-violation.ts`: `child_process.exec/execSync/spawnSync` import; `RegExp`/`.startsWith`/`.includes`/`.test` under `src/exec/**`.
+- [x] 5.6 GREEN: `no-restricted-imports` + `no-restricted-syntax` eslint rules for `src/exec/**`; extend 2.11's programmatic test to assert these rule IDs fire too.
 
 ## Phase 6: mcp-core — Truncation & Pagination
 

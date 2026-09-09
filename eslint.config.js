@@ -82,4 +82,62 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // Exec boundary (design.md, Decision 4): `execFile` — never `exec`,
+    // `execSync`, or `spawnSync` — is the only process-spawn primitive
+    // `mcp-core/src/exec/**` may use, and prefix/regex allowlist matching
+    // can never be reintroduced there. Only the two exec-specific fixtures
+    // are covered here — not the whole `eslint-fixtures/**` directory —
+    // because a broader glob would overwrite the SDK-boundary block's
+    // `no-restricted-imports` config for the SDK fixture (flat config
+    // merges same-named rules per file by last-match-wins, not by union).
+    files: [
+      "packages/mcp-core/src/exec/**/*.{ts,tsx}",
+      "packages/mcp-core/eslint-fixtures/exec-import-violation.ts",
+      "packages/mcp-core/eslint-fixtures/prefix-match-violation.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "node:child_process",
+              importNames: ["exec", "execSync", "spawnSync"],
+              message:
+                "Use execFile only under packages/mcp-core/src/exec/** — never exec, execSync, or spawnSync (design.md, Decision 4).",
+            },
+          ],
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "NewExpression[callee.name='RegExp']",
+          message:
+            "Regex allowlist matching is banned under src/exec/** — use an exact Map lookup (design.md, Decision 4).",
+        },
+        {
+          selector: "Literal[regex]",
+          message:
+            "Regex literals are banned under src/exec/** — use an exact Map lookup (design.md, Decision 4).",
+        },
+        {
+          selector: "CallExpression[callee.property.name='startsWith']",
+          message:
+            "Prefix matching (.startsWith) is banned under src/exec/** — use an exact Map lookup (design.md, Decision 4).",
+        },
+        {
+          selector: "CallExpression[callee.property.name='includes']",
+          message:
+            "Substring matching (.includes) is banned under src/exec/** — use an exact Map lookup (design.md, Decision 4).",
+        },
+        {
+          selector: "CallExpression[callee.property.name='test']",
+          message:
+            "Regex .test() is banned under src/exec/** — use an exact Map lookup (design.md, Decision 4).",
+        },
+      ],
+    },
+  },
 );

@@ -43,3 +43,17 @@ describe("SDK-boundary eslint-fixtures", () => {
     expect(restrictedImportMessages[0]?.message).toContain("server/index.js");
   });
 });
+
+describe("exec-boundary eslint-fixtures", () => {
+  it("flags a node:child_process exec import with no-restricted-imports", async () => {
+    const result = await lintFixture("./eslint-fixtures/exec-import-violation.ts");
+    const ruleIds = result.messages.map((message) => message.ruleId);
+    expect(ruleIds).toContain("no-restricted-imports");
+  });
+
+  it("flags .startsWith prefix matching with no-restricted-syntax", async () => {
+    const result = await lintFixture("./eslint-fixtures/prefix-match-violation.ts");
+    const ruleIds = result.messages.map((message) => message.ruleId);
+    expect(ruleIds).toContain("no-restricted-syntax");
+  });
+});
