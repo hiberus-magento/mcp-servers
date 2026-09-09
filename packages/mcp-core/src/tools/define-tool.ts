@@ -14,6 +14,7 @@
 // parameters instead. `TIn extends z.ZodObject` (no explicit shape argument)
 // is the v4-idiomatic equivalent constraint.
 import type { z } from "zod";
+import { CredentialExpiredError, MissingCredentialError } from "../credentials/token-provider.js";
 import { truncate } from "../truncate/truncate.js";
 
 export type NonEmpty<S extends string> = S extends "" ? never : S;
@@ -88,7 +89,18 @@ export function defineTool<TIn extends z.ZodObject, TOut, const D extends string
     handler: def.handler,
     async invoke(rawArgs, ctx) {
       const parsed = def.inputSchema.parse(rawArgs) as z.infer<TIn>;
-      const result = await def.handler(parsed, ctx);
+      let result: TOut;
+      try {
+        result = await def.handler(parsed, ctx);
+      } catch (error) {
+        if (error instanceof MissingCredentialError || error instanceof CredentialExpiredError) {
+          // An immediate, actionable failure — never a hang waiting for
+          // input an MCP server has no TTY to provide (design.md,
+          // Decision 5).
+          return { content: [{ type: "text", text: error.message }], isError: true };
+        }
+        throw error;
+      }
       const text = truncate(toTextContent(result), DEFAULT_MAX_OUTPUT_BYTES);
       return { content: [{ type: "text", text }] };
     },

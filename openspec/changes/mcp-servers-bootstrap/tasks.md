@@ -99,14 +99,14 @@ Chain strategy: size-exception
 
 ## Phase 8: mcp-core — Credential Loading
 
-- [ ] 8.1 RED `packages/mcp-core/src/credentials/resolve.test.ts`: env wins over config file for same domain; fails when neither present (no third branch, never prompts).
-- [ ] 8.2 GREEN `packages/mcp-core/src/credentials/{token-provider,resolve}.ts`: `TokenProvider`, `StaticTokenProvider`, `MintedTokenProvider` (single-flight coalescing, generation stamp, required `mintTimeoutMs`).
-- [ ] 8.3 RED: persisted-file test — `$XDG_CONFIG_HOME/hiberus/<domain>.json` written mode `0600`, dir `0700`; a loose-mode file is refused, not warned about.
-- [ ] 8.4 GREEN: atomic `writeFileSync(tmp,{mode:0o600})` + `rename`, `stat`-mode refusal on read.
-- [ ] 8.5 RED `packages/mcp-core/src/credentials/cli.test.ts`: `--token <value>` exits non-zero, message points to stdin/env — no `--token` flag exists at all.
-- [ ] 8.6 GREEN: CLI parser omits `--token`; export `readTokenFromStdin()`; no argv-token function exists anywhere in `mcp-core`.
-- [ ] 8.7 RED: `MissingCredentialError`/`CredentialExpiredError` map to `CallToolResult{isError:true}` with remedy text (`cliCommand`,`envVar`,`configPath`,`reason`).
-- [ ] 8.8 GREEN: `defineTool` wrapper catches both, formats from `describeRemedy()`.
+- [x] 8.1 RED `packages/mcp-core/src/credentials/resolve.test.ts`: env wins over config file for same domain; fails when neither present (no third branch, never prompts).
+- [x] 8.2 GREEN `packages/mcp-core/src/credentials/{token-provider,resolve}.ts`: `TokenProvider`, `StaticTokenProvider`, `MintedTokenProvider` (single-flight coalescing, generation stamp, required `mintTimeoutMs`).
+- [x] 8.3 RED: persisted-file test — `$XDG_CONFIG_HOME/hiberus/<domain>.json` written mode `0600`, dir `0700`; a loose-mode file is refused, not warned about.
+- [x] 8.4 GREEN: atomic `writeFileSync(tmp,{mode:0o600})` + `rename`, `stat`-mode refusal on read.
+- [x] 8.5 RED `packages/mcp-core/src/credentials/cli.test.ts`: `--token <value>` exits non-zero, message points to stdin/env — no `--token` flag exists at all.
+- [x] 8.6 GREEN: CLI parser omits `--token`; export `readTokenFromStdin()`; no argv-token function exists anywhere in `mcp-core`.
+- [x] 8.7 RED: `MissingCredentialError`/`CredentialExpiredError` map to `CallToolResult{isError:true}` with remedy text (`cliCommand`,`envVar`,`configPath`,`reason`).
+- [x] 8.8 GREEN: `defineTool` wrapper catches both, formats from `describeRemedy()`.
 
 ## Phase 9: mcp-testing Conformance Suite
 

@@ -7,6 +7,15 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineTool } from "./define-tool.js";
 import { paginate, paginationSchema } from "./pagination.js";
+import { MissingCredentialError, type Remedy } from "../credentials/token-provider.js";
+
+const REMEDY: Remedy = {
+  domain: "example-domain",
+  cliCommand: "hiberus-example auth token set",
+  envVar: "EXAMPLE_DOMAIN_TOKEN",
+  configPath: "$XDG_CONFIG_HOME/hiberus/example-domain.json",
+  reason: "not found",
+};
 
 describe("defineTool().invoke", () => {
   it("parses input against the schema and returns the handler result as text content", async () => {
@@ -56,5 +65,24 @@ describe("defineTool().invoke", () => {
     expect(parsed.items).toEqual(catalog.slice(10, 20));
     expect(parsed.items).toHaveLength(10);
     expect(parsed.nextPage).toBe(3);
+  });
+
+  it("maps a MissingCredentialError to an isError CallToolResult naming the remedy, never a thrown exception", async () => {
+    const tool = defineTool({
+      name: "needs-a-token",
+      description: "Requires a credential that is not configured.",
+      inputSchema: z.object({}),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+      handler: async () => {
+        throw new MissingCredentialError(REMEDY);
+      },
+    });
+
+    const result = await tool.invoke({}, {});
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain(REMEDY.cliCommand);
+    expect(result.content[0]?.text).toContain(REMEDY.envVar);
+    expect(result.content[0]?.text).toContain(REMEDY.configPath);
   });
 });
