@@ -149,9 +149,9 @@ Chain strategy: size-exception
 
 ## Phase 13: Governance & Synthetic-Data Audit
 
-- [ ] 13.1 Root `LICENSE` (Apache-2.0 full text).
-- [ ] 13.2 `CONTRIBUTING.md`, `CODEOWNERS`, `AGENTS.md`.
-- [ ] 13.3 Audit every fixture/example/sample repo-wide against `synthetic-identifiers.ts` (9.5); replace any accidental real-looking identifier; add a CI grep step over `packages/**/fixtures/**` and `**/*.example.*` that fails on a banned real-identifier pattern list.
+- [x] 13.1 Root `LICENSE` (Apache-2.0 full text). Already present from an earlier batch — not duplicated.
+- [x] 13.2 `CONTRIBUTING.md`, `CODEOWNERS`, `AGENTS.md`.
+- [x] 13.3 Audit every fixture/example/sample repo-wide against `synthetic-identifiers.ts` (9.5); replace any accidental real-looking identifier; add a CI grep step over `packages/**/fixtures/**` and `**/*.example.*` that fails on a banned real-identifier pattern list. Implemented as `scripts/audit-synthetic-identifiers.mjs` (name-agnostic: flags any business-domain-shaped string not on a small safe-domains allowlist, plus a company-suffix pattern Inc/Corp/LLC/S.L./S.A./GmbH/Ltd) — audit found zero violations across all 8 current fixture/example files.
 
 ## Phase 14: Closeout & Verification
 

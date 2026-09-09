@@ -59,3 +59,6 @@ jobs:
 
       - name: Secret scan (over the diff)
         run: node scripts/scan-secrets.mjs "origin/${{ github.event.pull_request.base.ref || 'main' }}"
+
+      - name: Synthetic-identifier audit
+        run: node scripts/audit-synthetic-identifiers.mjs

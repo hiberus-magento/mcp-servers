@@ -1,0 +1,12 @@
+# Default owners for everything in this repository, unless a later match
+# takes precedence. See https://docs.github.com/articles/about-code-owners
+* @hiberus-magento/mcp-servers-maintainers
+
+# The shared policy library and conformance suite gate every server
+# package's safety properties — changes here need extra scrutiny.
+/packages/mcp-core/ @hiberus-magento/mcp-servers-maintainers
+/packages/mcp-testing/ @hiberus-magento/mcp-servers-maintainers
+
+# Release and CI configuration.
+/.github/ @hiberus-magento/mcp-servers-maintainers
+/.changeset/ @hiberus-magento/mcp-servers-maintainers
