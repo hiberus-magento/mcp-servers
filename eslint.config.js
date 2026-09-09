@@ -27,6 +27,17 @@ export default tseslint.config(
     files: ["packages/**/src/**/*.{ts,tsx}"],
     rules: {
       "no-console": "error",
+    },
+  },
+  {
+    // `no-restricted-properties` bans direct `process.stdout` access
+    // everywhere EXCEPT `packages/mcp-core/src/bootstrap/**`, which is the
+    // one place allowed to touch it: it IS the stdout-diversion mechanism
+    // (design.md, Decision 2, M1). Every other package must go through the
+    // exported logger instead.
+    files: ["packages/**/src/**/*.{ts,tsx}"],
+    ignores: ["packages/mcp-core/src/bootstrap/**"],
+    rules: {
       "no-restricted-properties": [
         "error",
         {

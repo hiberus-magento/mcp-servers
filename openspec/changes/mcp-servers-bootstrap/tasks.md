@@ -60,12 +60,12 @@ Chain strategy: size-exception
 
 ## Phase 3: mcp-core — Stdout Safety
 
-- [ ] 3.1 RED `packages/mcp-core/src/bootstrap/stdout-guard.test.ts`: after bootstrap, `process.stdout.write` forwards to stderr prefixed `[stdout-diverted]`.
-- [ ] 3.2 GREEN `packages/mcp-core/src/bootstrap/stdout-guard.ts`: `createStdioServer()` captures real `stdout.write`, wraps it in a private `Writable` given only to `StdioServerTransport`.
-- [ ] 3.3 RED `packages/mcp-core/src/bootstrap/logger.test.ts`: exported logger writes to stderr only, never stdout.
-- [ ] 3.4 GREEN `packages/mcp-core/src/bootstrap/logger.ts`; add repo-wide `no-console` eslint rule.
-- [ ] 3.5 RED `packages/mcp-core/src/exec/exec.test.ts`: executor spawns with `stdio:'pipe'`, never `'inherit'`.
-- [ ] 3.6 GREEN: enforce `stdio:'pipe'` unconditionally in `runAllowlisted` (closes the child-fd-1-inheritance gap).
+- [x] 3.1 RED `packages/mcp-core/src/bootstrap/stdout-guard.test.ts`: after bootstrap, `process.stdout.write` forwards to stderr prefixed `[stdout-diverted]`.
+- [x] 3.2 GREEN `packages/mcp-core/src/bootstrap/stdout-guard.ts`: `createStdioServer()` captures real `stdout.write`, wraps it in a private `Writable` given only to `StdioServerTransport`.
+- [x] 3.3 RED `packages/mcp-core/src/bootstrap/logger.test.ts`: exported logger writes to stderr only, never stdout.
+- [x] 3.4 GREEN `packages/mcp-core/src/bootstrap/logger.ts`; add repo-wide `no-console` eslint rule.
+- [x] 3.5 RED `packages/mcp-core/src/exec/exec.test.ts`: executor spawns with `stdio:'pipe'`, never `'inherit'`.
+- [x] 3.6 GREEN: enforce `stdio:'pipe'` unconditionally in `runAllowlisted` (closes the child-fd-1-inheritance gap).
 
 ## Phase 4: mcp-core — defineTool Compile-Time Annotations
 
