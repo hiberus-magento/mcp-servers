@@ -69,10 +69,10 @@ Chain strategy: size-exception
 
 ## Phase 4: mcp-core — defineTool Compile-Time Annotations
 
-- [ ] 4.1 RED `packages/mcp-core/src/tools/define-tool.test-d.ts`: `@ts-expect-error` above calls missing `idempotentHint`, mismatched `readOnlyHint:true/destructiveHint:true`, and `description:""`.
-- [ ] 4.2 GREEN `packages/mcp-core/src/tools/define-tool.ts`: `NonEmpty<S>`, `ToolAnnotations` discriminated union, `defineTool()`.
-- [ ] 4.3 Wire `vitest --typecheck` (`include:['**/*.test-d.ts']`) into root `pnpm test`.
-- [ ] 4.4 Add `expectTypeOf` positive-case assertions in 4.1's file.
+- [x] 4.1 RED `packages/mcp-core/src/tools/define-tool.test-d.ts`: `@ts-expect-error` above calls missing `idempotentHint`, mismatched `readOnlyHint:true/destructiveHint:true`, and `description:""`.
+- [x] 4.2 GREEN `packages/mcp-core/src/tools/define-tool.ts`: `NonEmpty<S>`, `ToolAnnotations` discriminated union, `defineTool()`.
+- [x] 4.3 Wire `vitest --typecheck` (`include:['**/*.test-d.ts']`) into root `pnpm test`.
+- [x] 4.4 Add `expectTypeOf` positive-case assertions in 4.1's file.
 
 ## Phase 5: mcp-core — Allowlisted Command Executor
 
