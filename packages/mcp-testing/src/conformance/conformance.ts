@@ -10,6 +10,7 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { COLD_START_BUDGET_MS, checkColdStart, measureMedianColdStart } from "./cold-start.js";
 import type { RawStdoutLine } from "../jsonrpc-client.js";
 import { JsonRpcClient } from "../jsonrpc-client.js";
 
@@ -294,5 +295,17 @@ export function describeConformance(options: ConformanceOptions): void {
         }),
       ).not.toThrow();
     });
+
+    // Cold-start budget (mcp-conformance spec, "Cold-Start Time Budget";
+    // design.md, Decision 8): 5 independent cold spawns of the SAME built
+    // entrypoint, compared by MEDIAN against `COLD_START_BUDGET_MS`
+    // (`cold-start.ts`, which also records the methodology and raw numbers
+    // behind the threshold). Independent of the main `beforeAll` session —
+    // each sample is its own fresh process, no warm pool.
+    it(`has a median cold-start (5 samples) at or under the ${COLD_START_BUDGET_MS} ms budget`, async () => {
+      const { samples, medianMs } = await measureMedianColdStart(options.serverPath);
+      const violation = checkColdStart(medianMs, COLD_START_BUDGET_MS);
+      expect(violation, `median ${medianMs.toFixed(1)} ms over budget; samples (ms): ${samples.map((s) => s.toFixed(1)).join(", ")}`).toBeUndefined();
+    }, 20_000);
   });
 }

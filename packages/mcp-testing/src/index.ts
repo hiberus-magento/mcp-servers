@@ -14,6 +14,13 @@ export {
   type StdoutPurityViolation,
   type ToolMetadataViolation,
 } from "./conformance/conformance.js";
+export {
+  COLD_START_BUDGET_MS,
+  checkColdStart,
+  measureMedianColdStart,
+  measureOneColdStart,
+  type ColdStartViolation,
+} from "./conformance/cold-start.js";
 export { JsonRpcClient, type JsonRpcClientOptions, type RawStdoutLine } from "./jsonrpc-client.js";
 export {
   SYNTHETIC_DOMAIN,
