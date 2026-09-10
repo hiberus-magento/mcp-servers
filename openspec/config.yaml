@@ -38,6 +38,7 @@ testing:
     - mcp-core
     - mcp-testing
     - fixture-server
+    - eds
 
 rules:
   proposal:

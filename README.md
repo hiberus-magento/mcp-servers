@@ -28,13 +28,42 @@ These three acronyms are adjacent, are **not** the same thing, and Adobe has ren
 Edge Delivery Services (EDS) Admin API client — CLI and MCP server.
 
 - Domain: eds
-- Status: internal
+- Status: planned
 - Binary: `hiberus-eds-mcp`
 
 Tools:
 
-- `noop` (read-only) — A no-op tool used only to exercise the packaging gate.
-- `read-echo` (read-only) — Echoes a message back through an allowlisted read-only subprocess call, proving stdout stays pure JSON-RPC even though a child process is spawned.
+- `eds_get_status` (read-only) — Use this when you need one path's current status across edit/preview/live/code/index on a single site — the smallest, cheapest status call.
+- `eds_get_status_bulk` (read-only) — Use this when you need status for several paths on a site at once instead of calling eds_get_status in a loop.
+- `eds_set_live_state` — Use this to publish or unpublish one or more paths on a site. Destructive: it changes what is publicly live.
+- `eds_get_site_config` (read-only) — Use this when you need a site's full effective configuration — the site document alone does not resolve inheritance.
+- `eds_reindex` — Use this to re-run indexing for specific paths, or — only with explicit double confirmation — the entire site.
+- `eds_get_audit_log` (read-only) — Use this to review recent changes to a site. Returns one page of entries plus a nextToken cursor.
+- `eds_get_snapshots` (read-only) — Use this to list a site's snapshots, or to inspect one by id.
+- `eds_manage_snapshot` — Use this to add paths to a snapshot, remove them, publish it, submit a review decision, or delete it.
+- `eds_get_job_status` (read-only) — Use this to check on a specific job by its site/ref/topic/name address, e.g. one returned earlier by eds_set_live_state or eds_reindex.
+
+Configure in an MCP client. Pin the exact version; pass secrets as environment variable references, never literal values:
+
+```json
+{
+  "mcpServers": {
+    "hiberus-eds-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@hiberus-magento/eds@0.0.0"
+      ],
+      "env": {
+        "EDS_ORG": "${EDS_ORG}",
+        "EDS_TOKEN": "${EDS_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+Docs: docs/eds-onboarding.md
 
 <!-- servers:end -->
 

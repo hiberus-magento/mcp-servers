@@ -168,11 +168,11 @@ Lands before the EDS tools (Phase 7): EDS is pure-HTTPS and cannot satisfy today
 
 ## Phase 10: Manifest, README, Config, Docs
 
-- [ ] 10.1 Edit the `eds` entry in `servers.json` (added by Phase 1 with placeholder `TEMPLATE_TOOLS`) to list the real nine tools with `readOnly` flags and "when to use it" descriptions, `bin: "hiberus-eds-mcp"`, `status: "planned"`, `docs: "docs/eds-onboarding.md"`.
-- [ ] 10.2 RED: run `node scripts/gen-readme.mjs --check` (read-only script) before 10.3 and confirm it fails — proves staleness detection actually fires.
-- [ ] 10.3 GREEN: run `node scripts/gen-readme.mjs` to regenerate `README.md` from the updated manifest; never hand-edit the generated section.
-- [ ] 10.4 Add `- eds` under `testing.projects` in `openspec/config.yaml`.
-- [ ] 10.5 Create `docs/eds-onboarding.md` documenting the day-one bootstrap sequence (Adobe admin/Sidekick UI → `auth token set` → `auth status` → `auth mint`), using only `packages/mcp-testing/src/fixtures/synthetic-identifiers.ts` (read-only) values in every example.
+- [x] 10.1 Edited the `eds` entry in `servers.json` to list the real nine tools with `readOnly` flags and "when to use it" descriptions, `bin: "hiberus-eds-mcp"`, `status: "planned"`, `docs: "docs/eds-onboarding.md"`, plus `requires: { binaries: ["hiberus-eds"], env: ["EDS_ORG", "EDS_TOKEN"] }` (schema-supported field, makes the generated README's consumer config snippet accurate).
+- [x] 10.2 RED: ran `node scripts/gen-readme.mjs --check` before regenerating — genuinely failed ("README.md is stale relative to servers.json"), proving staleness detection fires.
+- [x] 10.3 GREEN: ran `node scripts/gen-readme.mjs` to regenerate `README.md`; `--check` now passes ("up to date").
+- [x] 10.4 Added `- eds` under `testing.projects` in `openspec/config.yaml`.
+- [x] 10.5 Created `docs/eds-onboarding.md` documenting the day-one bootstrap sequence (Adobe admin/Sidekick UI → `auth token set` → `auth status` → `auth mint` → day-to-day `EDS_TOKEN`), the MCP server's `EDS_ORG` requirement, an example client config snippet, and the CLI-only exclusion list — using only `acme-demo-org`/`acme-demo-site-eu` (`synthetic-identifiers.ts`) in every example.
 
 ## Phase 11: Closing Gates
 

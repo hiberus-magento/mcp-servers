@@ -6,18 +6,58 @@
       "bin": "hiberus-eds-mcp",
       "version": "0.0.0",
       "domain": "eds",
-      "status": "internal",
+      "status": "planned",
       "description": "Edge Delivery Services (EDS) Admin API client — CLI and MCP server.",
+      "docs": "docs/eds-onboarding.md",
+      "requires": {
+        "binaries": ["hiberus-eds"],
+        "env": ["EDS_ORG", "EDS_TOKEN"]
+      },
       "tools": [
         {
-          "name": "noop",
+          "name": "eds_get_status",
           "readOnly": true,
-          "description": "A no-op tool used only to exercise the packaging gate."
+          "description": "Use this when you need one path's current status across edit/preview/live/code/index on a single site — the smallest, cheapest status call."
         },
         {
-          "name": "read-echo",
+          "name": "eds_get_status_bulk",
           "readOnly": true,
-          "description": "Echoes a message back through an allowlisted read-only subprocess call, proving stdout stays pure JSON-RPC even though a child process is spawned."
+          "description": "Use this when you need status for several paths on a site at once instead of calling eds_get_status in a loop."
+        },
+        {
+          "name": "eds_set_live_state",
+          "readOnly": false,
+          "description": "Use this to publish or unpublish one or more paths on a site. Destructive: it changes what is publicly live."
+        },
+        {
+          "name": "eds_get_site_config",
+          "readOnly": true,
+          "description": "Use this when you need a site's full effective configuration — the site document alone does not resolve inheritance."
+        },
+        {
+          "name": "eds_reindex",
+          "readOnly": false,
+          "description": "Use this to re-run indexing for specific paths, or — only with explicit double confirmation — the entire site."
+        },
+        {
+          "name": "eds_get_audit_log",
+          "readOnly": true,
+          "description": "Use this to review recent changes to a site. Returns one page of entries plus a nextToken cursor."
+        },
+        {
+          "name": "eds_get_snapshots",
+          "readOnly": true,
+          "description": "Use this to list a site's snapshots, or to inspect one by id."
+        },
+        {
+          "name": "eds_manage_snapshot",
+          "readOnly": false,
+          "description": "Use this to add paths to a snapshot, remove them, publish it, submit a review decision, or delete it."
+        },
+        {
+          "name": "eds_get_job_status",
+          "readOnly": true,
+          "description": "Use this to check on a specific job by its site/ref/topic/name address, e.g. one returned earlier by eds_set_live_state or eds_reindex."
         }
       ]
     }
