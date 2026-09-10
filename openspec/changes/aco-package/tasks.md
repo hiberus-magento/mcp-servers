@@ -45,26 +45,26 @@ Chain strategy: size-exception
 
 ## Phase 1: Transport & Error Model (deepest departure from `eds`; precedes everything using it)
 
-- [ ] 1.1 RED `packages/aco/src/client/graphql.test.ts`: `classify()` has exactly 2 params `(envelope, op)`, no `status`; 200-with-`errors[]` throws before `data` is read; precedence order exact-value > throttle > scope > fallthrough; partial (`data`+`errors`) rejects with `hadPartialData:true`, payload not attached.
-- [ ] 1.2 GREEN `packages/aco/src/client/graphql.ts`: unexported `Classified` brand, `ClassifiedData<T>`, sole `classify()` construction site.
-- [ ] 1.3 RED `packages/aco/src/client/errors.test.ts`: each `AcoError` subclass declares `kind`/`remedy`/`signalledBy`/`confidence`; `AdminScopeError` remedy names both exits; `confidence:"heuristic"` is a readable runtime field, not a comment.
-- [ ] 1.4 GREEN `packages/aco/src/client/errors.ts`: `AcoErrorKind`, `CatalogViewAccessError`, `AdminScopeError`, `AcoThrottledError`, `AcoOperationError`, `AcoTransportError`, `AcoSchemaMismatchError`.
-- [ ] 1.5 RED (typecheck) `packages/aco/src/client/errors.test-d.ts`: `RetryableAcoError` excludes `AdminScopeError|CatalogViewAccessError|AcoOperationError|AcoSchemaMismatchError` (`@ts-expect-error`).
-- [ ] 1.6 GREEN: export `RetryableAcoError` from `errors.ts`.
-- [ ] 1.7 RED `packages/aco/src/client/http.test.ts`: fetch-reject/unparseable-body/no-envelope all map to `AcoTransportError`; a raw 429 with NO `errors[]` is `AcoTransportError` never a throttle, asserted in the same test as a 200-with-throttle-shaped-extension case.
-- [ ] 1.8 GREEN `packages/aco/src/client/http.ts`: `readEnvelope()` as the ONLY reader of `status`; `AdminTransport`/`MerchandisingTransport`.
-- [ ] 1.9 RED (typecheck) `packages/aco/src/client/http.test-d.ts`: `MerchandisingTransportDeps` has no `tokenProvider` field (`@ts-expect-error` on access); an admin `GraphQlOperation<"admin",T>` is not assignable to `MerchandisingTransport.execute`.
-- [ ] 1.10 GREEN: confirm 1.8's `AdminTransportDeps`/`MerchandisingTransportDeps` satisfy 1.9.
-- [ ] 1.11 RED `packages/aco/src/client/headers.test.ts`: admin request carries `Authorization`+`x-api-key`, no access-token header; unprotected Merchandising request carries only `AC-View-ID`/`AC-Scope-Locale`; stub access-token supplier's header attached exactly once.
-- [ ] 1.12 GREEN `packages/aco/src/client/headers.ts`: `AcoHeaderName` union, excludes `X-Auth-Token` structurally.
-- [ ] 1.13 RED/GREEN: source-scan test (alongside `client/purity.test.ts`) asserting `/X-Auth-Token/i` appears nowhere under `packages/aco/src/**`.
-- [ ] 1.14 RED `packages/aco/src/client/rate-limiter.test.ts`: N requests never exceed `ADMIN_PACE`/`MERCH_PACE` window under `vi.useFakeTimers()` — mirrors `packages/eds/src/client/rate-limiter.test.ts` (read-only) pattern.
-- [ ] 1.15 GREEN: copy `packages/eds/src/client/rate-limiter.ts` (read-only) into `packages/aco/src/client/rate-limiter.ts`; own `ADMIN_PACE`/`MERCH_PACE` constants, chosen-not-documented note.
-- [ ] 1.16 RED/GREEN `packages/aco/src/client/retry.ts` + `.test.ts` + `.test-d.ts`: `RetryableAcoError = AcoThrottledError|AcoTransportError` only; required `idempotent`; six mutations declare `idempotent:false`.
-- [ ] 1.17 RED/GREEN `packages/aco/src/client/cursor.ts` + `.test.ts`: only `ListPriceBooksResult` is assignable to `ScrollPage`.
-- [ ] 1.18 RED `packages/aco/src/testing/fetch-double.test.ts`: route key `"<METHOD> <pathname> <operationName>"`; `graphQlOk`/`graphQlErrors`/`graphQlPartial`/`transportFailure` helpers; 200-with-errors test asserts BOTH `status===200`/`ok===true` AND a rejected typed `AcoError` in one test.
-- [ ] 1.19 GREEN `packages/aco/src/testing/fetch-double.ts`.
-- [ ] 1.20 RED source-scan: every document under `client/operations/` is a NAMED operation, never anonymous (test lands here, passes once Phase 2 operations exist).
+- [x] 1.1 RED `packages/aco/src/client/graphql.test.ts`: `classify()` has exactly 2 params `(envelope, op)`, no `status`; 200-with-`errors[]` throws before `data` is read; precedence order exact-value > throttle > scope > fallthrough; partial (`data`+`errors`) rejects with `hadPartialData:true`, payload not attached.
+- [x] 1.2 GREEN `packages/aco/src/client/graphql.ts`: unexported `Classified` brand, `ClassifiedData<T>`, sole `classify()` construction site.
+- [x] 1.3 RED `packages/aco/src/client/errors.test.ts`: each `AcoError` subclass declares `kind`/`remedy`/`signalledBy`/`confidence`; `AdminScopeError` remedy names both exits; `confidence:"heuristic"` is a readable runtime field, not a comment.
+- [x] 1.4 GREEN `packages/aco/src/client/errors.ts`: `AcoErrorKind`, `CatalogViewAccessError`, `AdminScopeError`, `AcoThrottledError`, `AcoOperationError`, `AcoTransportError`, `AcoSchemaMismatchError`.
+- [x] 1.5 RED (typecheck) `packages/aco/src/client/errors.test-d.ts`: `RetryableAcoError` excludes `AdminScopeError|CatalogViewAccessError|AcoOperationError|AcoSchemaMismatchError` (`@ts-expect-error`).
+- [x] 1.6 GREEN: export `RetryableAcoError` from `errors.ts`.
+- [x] 1.7 RED `packages/aco/src/client/http.test.ts`: fetch-reject/unparseable-body/no-envelope all map to `AcoTransportError`; a raw 429 with NO `errors[]` is `AcoTransportError` never a throttle, asserted in the same test as a 200-with-throttle-shaped-extension case.
+- [x] 1.8 GREEN `packages/aco/src/client/http.ts`: `readEnvelope()` as the ONLY reader of `status`; `AdminTransport`/`MerchandisingTransport`.
+- [x] 1.9 RED (typecheck) `packages/aco/src/client/http.test-d.ts`: `MerchandisingTransportDeps` has no `tokenProvider` field (`@ts-expect-error` on access); an admin `GraphQlOperation<"admin",T>` is not assignable to `MerchandisingTransport.execute`.
+- [x] 1.10 GREEN: confirm 1.8's `AdminTransportDeps`/`MerchandisingTransportDeps` satisfy 1.9.
+- [x] 1.11 RED `packages/aco/src/client/headers.test.ts`: admin request carries `Authorization`+`x-api-key`, no access-token header; unprotected Merchandising request carries only `AC-View-ID`/`AC-Scope-Locale`; stub access-token supplier's header attached exactly once.
+- [x] 1.12 GREEN `packages/aco/src/client/headers.ts`: `AcoHeaderName` union, excludes `X-Auth-Token` structurally.
+- [x] 1.13 RED/GREEN: source-scan test (alongside `client/purity.test.ts`) asserting `/X-Auth-Token/i` appears nowhere under `packages/aco/src/**`.
+- [x] 1.14 RED `packages/aco/src/client/rate-limiter.test.ts`: N requests never exceed `ADMIN_PACE`/`MERCH_PACE` window under `vi.useFakeTimers()` — mirrors `packages/eds/src/client/rate-limiter.test.ts` (read-only) pattern.
+- [x] 1.15 GREEN: copy `packages/eds/src/client/rate-limiter.ts` (read-only) into `packages/aco/src/client/rate-limiter.ts`; own `ADMIN_PACE`/`MERCH_PACE` constants, chosen-not-documented note.
+- [x] 1.16 RED/GREEN `packages/aco/src/client/retry.ts` + `.test.ts` + `.test-d.ts`: `RetryableAcoError = AcoThrottledError|AcoTransportError` only; required `idempotent`; six mutations declare `idempotent:false`.
+- [x] 1.17 RED/GREEN `packages/aco/src/client/cursor.ts` + `.test.ts`: only `ListPriceBooksResult` is assignable to `ScrollPage`.
+- [x] 1.18 RED `packages/aco/src/testing/fetch-double.test.ts`: route key `"<METHOD> <pathname> <operationName>"`; `graphQlOk`/`graphQlErrors`/`graphQlPartial`/`transportFailure` helpers; 200-with-errors test asserts BOTH `status===200`/`ok===true` AND a rejected typed `AcoError` in one test.
+- [x] 1.19 GREEN `packages/aco/src/testing/fetch-double.ts`.
+- [x] 1.20 RED source-scan: every document under `client/operations/` is a NAMED operation, never anonymous (test lands here, passes once Phase 2 operations exist).
 
 ## Phase 2: Client Domain Layer (depends on Phase 1)
 
