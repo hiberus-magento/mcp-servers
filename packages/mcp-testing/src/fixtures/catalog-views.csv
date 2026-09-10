@@ -1,8 +1,8 @@
-vertical,site,locale,view_code
-outdoor-gear,acme-demo-site-eu,en_US,outdoor_gear_eu_en
-outdoor-gear,acme-demo-site-eu,es_ES,outdoor_gear_eu_es
-outdoor-gear,acme-demo-site-us,en_US,outdoor_gear_us_en
-home-decor,acme-demo-site-eu,fr_FR,home_decor_eu_fr
-home-decor,acme-demo-site-us,en_US,home_decor_us_en
-office-supplies,acme-demo-site-eu,en_US,office_supplies_eu_en
-office-supplies,acme-demo-site-us,es_ES,office_supplies_us_es
+vertical,site,locale,view_code,ac_view_id,ac_price_book_id,currency
+outdoor-gear,acme-demo-site-eu,en_US,outdoor_gear_eu_en,acv-demo-outdoor-gear-eu,acpb-demo-eur,EUR
+outdoor-gear,acme-demo-site-eu,es_ES,outdoor_gear_eu_es,acv-demo-outdoor-gear-eu,acpb-demo-eur,EUR
+outdoor-gear,acme-demo-site-us,en_US,outdoor_gear_us_en,acv-demo-outdoor-gear-us,acpb-demo-usd,USD
+home-decor,acme-demo-site-eu,fr_FR,home_decor_eu_fr,acv-demo-home-decor-eu,acpb-demo-eur,EUR
+home-decor,acme-demo-site-us,en_US,home_decor_us_en,acv-demo-home-decor-us,acpb-demo-usd,USD
+office-supplies,acme-demo-site-eu,en_US,office_supplies_eu_en,acv-demo-office-supplies-eu,acpb-demo-eur,EUR
+office-supplies,acme-demo-site-us,es_ES,office_supplies_us_es,acv-demo-office-supplies-us,acpb-demo-usd,USD

@@ -39,6 +39,7 @@ testing:
     - mcp-testing
     - fixture-server
     - eds
+    - aco
 
 rules:
   proposal:

@@ -65,6 +65,19 @@ Configure in an MCP client. Pin the exact version; pass secrets as environment v
 
 Docs: docs/eds-onboarding.md
 
+### @hiberus-magento/aco
+
+Adobe Commerce Optimizer (ACO) admin and Merchandising API client — CLI and MCP server.
+
+- Domain: aco
+- Status: internal
+- Binary: `aco`
+
+Tools:
+
+- `noop` (read-only) — A no-op tool used only to exercise the packaging gate.
+- `read-echo` (read-only) — Echoes a message back through an allowlisted read-only subprocess call, proving stdout stays pure JSON-RPC even though a child process is spawned.
+
 <!-- servers:end -->
 
 ## Adding a New Server

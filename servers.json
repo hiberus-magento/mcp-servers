@@ -10,8 +10,13 @@
       "description": "Edge Delivery Services (EDS) Admin API client — CLI and MCP server.",
       "docs": "docs/eds-onboarding.md",
       "requires": {
-        "binaries": ["hiberus-eds"],
-        "env": ["EDS_ORG", "EDS_TOKEN"]
+        "binaries": [
+          "hiberus-eds"
+        ],
+        "env": [
+          "EDS_ORG",
+          "EDS_TOKEN"
+        ]
       },
       "tools": [
         {
@@ -58,6 +63,27 @@
           "name": "eds_get_job_status",
           "readOnly": true,
           "description": "Use this to check on a specific job by its site/ref/topic/name address, e.g. one returned earlier by eds_set_live_state or eds_reindex."
+        }
+      ]
+    },
+    {
+      "id": "aco",
+      "package": "@hiberus-magento/aco",
+      "bin": "aco",
+      "version": "0.0.0",
+      "domain": "aco",
+      "status": "internal",
+      "description": "Adobe Commerce Optimizer (ACO) admin and Merchandising API client — CLI and MCP server.",
+      "tools": [
+        {
+          "name": "noop",
+          "readOnly": true,
+          "description": "A no-op tool used only to exercise the packaging gate."
+        },
+        {
+          "name": "read-echo",
+          "readOnly": true,
+          "description": "Echoes a message back through an allowlisted read-only subprocess call, proving stdout stays pure JSON-RPC even though a child process is spawned."
         }
       ]
     }

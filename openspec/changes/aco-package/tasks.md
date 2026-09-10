@@ -35,13 +35,13 @@ Chain strategy: size-exception
 
 ## Phase 0: Scaffold & Shared Fixture Migration (blocks everything)
 
-- [ ] 0.1 Run `pnpm new-server aco` to scaffold `packages/aco/` from `templates/server/`; verify `package.json`, `tsconfig.json`, `tsup.config.ts`, `src/server.ts`.
-- [ ] 0.2 Remove template placeholder `packages/aco/src/tools/read-echo.ts` + test; drop `private` in `packages/aco/package.json`.
-- [ ] 0.3 Add `aco` to `testing.projects` in `openspec/config.yaml`.
-- [ ] 0.4 RED: extend `packages/mcp-testing/src/fixtures/catalog-views.test.ts` — exact header order incl. new columns; prefix/currency membership; `columns.slice(0,4)` additive guard; both existing `it()` blocks stay byte-identical.
-- [ ] 0.5 GREEN: migrate `packages/mcp-testing/src/fixtures/catalog-views.csv` header to `vertical,site,locale,view_code,ac_view_id,ac_price_book_id,currency`, synthetic values only.
-- [ ] 0.6 Add `SYNTHETIC_CURRENCIES`, `SYNTHETIC_AC_VIEW_ID_PREFIX`, `SYNTHETIC_AC_PRICE_BOOK_ID_PREFIX` to `packages/mcp-testing/src/fixtures/synthetic-identifiers.ts`.
-- [ ] 0.7 Run `pnpm --filter @hiberus-magento/eds test` to prove `eds`'s suite stays green against the migrated fixture.
+- [x] 0.1 Run `pnpm new-server aco` to scaffold `packages/aco/` from `templates/server/`; verify `package.json`, `tsconfig.json`, `tsup.config.ts`, `src/server.ts`.
+- [x] 0.2 Remove template placeholder `packages/aco/src/tools/read-echo.ts` + test; drop `private` in `packages/aco/package.json`.
+- [x] 0.3 Add `aco` to `testing.projects` in `openspec/config.yaml`.
+- [x] 0.4 RED: extend `packages/mcp-testing/src/fixtures/catalog-views.test.ts` — exact header order incl. new columns; prefix/currency membership; `columns.slice(0,4)` additive guard; both existing `it()` blocks stay byte-identical.
+- [x] 0.5 GREEN: migrate `packages/mcp-testing/src/fixtures/catalog-views.csv` header to `vertical,site,locale,view_code,ac_view_id,ac_price_book_id,currency`, synthetic values only.
+- [x] 0.6 Add `SYNTHETIC_CURRENCIES`, `SYNTHETIC_AC_VIEW_ID_PREFIX`, `SYNTHETIC_AC_PRICE_BOOK_ID_PREFIX` to `packages/mcp-testing/src/fixtures/synthetic-identifiers.ts`.
+- [x] 0.7 Run `pnpm --filter @hiberus-magento/eds test` to prove `eds`'s suite stays green against the migrated fixture.
 
 ## Phase 1: Transport & Error Model (deepest departure from `eds`; precedes everything using it)
 

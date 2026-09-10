@@ -39,6 +39,21 @@ importers:
         specifier: ^5.0.0
         version: 5.0.0(@types/node@26.5.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.27.7))
 
+  packages/aco:
+    devDependencies:
+      '@hiberus-magento/mcp-core':
+        specifier: workspace:*
+        version: link:../mcp-core
+      '@modelcontextprotocol/sdk':
+        specifier: 1.30.0
+        version: 1.30.0(zod@4.5.4)
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
+
   packages/eds:
     devDependencies:
       '@eslint/js':
