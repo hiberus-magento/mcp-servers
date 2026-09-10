@@ -74,6 +74,7 @@ const SAFE_DOMAINS = new Set([
   "ims-na1.adobelogin.com",
   "api.commerce.adobe.com",
   "developer.adobe.com",
+  "experienceleague.adobe.com",
   "aem.live",
   "admin.hlx.page",
   "hlx.page",
