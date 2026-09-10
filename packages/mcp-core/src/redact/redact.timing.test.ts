@@ -20,10 +20,23 @@ function adversarialInput(byteLength: number): string {
   return chunk.repeat(repeats).slice(0, byteLength);
 }
 
+// The FASTEST of several runs, not a single sample. Every source of noise
+// here — the scheduler preempting the run, another vitest worker taking the
+// core, a GC pause — can only make a measurement slower, never faster, so
+// the minimum is the sample least contaminated by interference. A single
+// sample of the small input landing badly inflates the ratio on its own and
+// fails a test whose subject did nothing wrong; this suite blocks CI, so a
+// flaky assertion in it turns a green build into a coin toss.
+const SAMPLES = 5;
+
 function timeRedact(input: string): number {
-  const start = performance.now();
-  redact(input);
-  return performance.now() - start;
+  let fastest = Number.POSITIVE_INFINITY;
+  for (let run = 0; run < SAMPLES; run += 1) {
+    const start = performance.now();
+    redact(input);
+    fastest = Math.min(fastest, performance.now() - start);
+  }
+  return fastest;
 }
 
 describe("redact (timing safety)", () => {
