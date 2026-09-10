@@ -114,14 +114,14 @@ describe("AdminTransport wiring", () => {
       now: FIXED_NOW,
       sleep: NOOP_SLEEP,
       baseUrl: "https://admin.aco.example/graphql",
-      tokenProvider: stubTokenProvider("test-only-admin-bearer"),
-      apiKey: "test-only-api-key",
+      tokenProvider: stubTokenProvider("tok-a"),
+      apiKey: "key-b",
     });
 
     const result = await transport.execute(namedOperation("ListPolicies", (data) => ({ parsed: true, data })));
 
-    expect(calls[0]?.headers.get("Authorization")).toBe("Bearer test-only-admin-bearer");
-    expect(calls[0]?.headers.get("x-api-key")).toBe("test-only-api-key");
+    expect(calls[0]?.headers.get("Authorization")).toBe("Bearer tok-a");
+    expect(calls[0]?.headers.get("x-api-key")).toBe("key-b");
     expect(result).toEqual({ parsed: true, data: { policies: [] } });
   });
 });

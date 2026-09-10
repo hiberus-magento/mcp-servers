@@ -38,13 +38,23 @@ export const SCAN_IGNORE_FILES = ["scripts/scan-secrets.test.mjs"];
  * @param {readonly string[]} [ignoreFiles]
  * @returns {Array<{file: string, line: number, rule: string, snippet: string}>}
  */
+// Strip ANSI escape sequences before parsing. `git` colorizes its output even
+// into a pipe when a developer has `color.ui = always`, and every line of a
+// colorized diff begins with an escape sequence rather than with `+`, `-` or
+// `@@`. The parser then matched nothing and the scanner reported PASS on a
+// diff that did contain a credential — a security gate silently disabled by
+// the reader's git config. `getDiffAgainst` also passes `--no-color`, which
+// fixes the cause; this strip defends the parser against any other caller.
+const ANSI_ESCAPE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+
 export function scanDiff(diffText, ignoreFiles = SCAN_IGNORE_FILES) {
   const ignored = new Set(ignoreFiles);
   const violations = [];
   let currentFile;
   let currentLine = 0;
 
-  for (const rawLine of diffText.split("\n")) {
+  for (const coloredLine of diffText.split("\n")) {
+    const rawLine = coloredLine.replace(ANSI_ESCAPE, "");
     if (rawLine.startsWith("+++ ")) {
       currentFile = rawLine.slice(4).replace(/^b\//, "").replace(/^a\//, "");
       continue;
@@ -72,7 +82,7 @@ export function scanDiff(diffText, ignoreFiles = SCAN_IGNORE_FILES) {
 }
 
 function getDiffAgainst(baseRef) {
-  return execFileSync("git", ["diff", "--unified=0", baseRef], { encoding: "utf8" });
+  return execFileSync("git", ["diff", "--no-color", "--unified=0", baseRef], { encoding: "utf8" });
 }
 
 async function main() {

@@ -10,15 +10,15 @@ import { buildAdminHeaders, buildMerchandisingHeaders } from "./headers.js";
 
 describe("buildAdminHeaders", () => {
   it("carries Authorization: Bearer <token> and x-api-key, and no access-token header", () => {
-    const headers = buildAdminHeaders({ token: "test-only-admin-bearer", apiKey: "test-only-api-key" });
+    const headers = buildAdminHeaders({ token: "tok-a", apiKey: "key-b" });
 
-    expect(headers["Authorization"]).toBe("Bearer test-only-admin-bearer");
-    expect(headers["x-api-key"]).toBe("test-only-api-key");
+    expect(headers["Authorization"]).toBe("Bearer tok-a");
+    expect(headers["x-api-key"]).toBe("key-b");
     expect(headers["AC-Catalog-View-Access-Token"]).toBeUndefined();
   });
 
   it("omits x-api-key and x-gw-ims-org-id when not configured", () => {
-    const headers = buildAdminHeaders({ token: "test-only-admin-bearer" });
+    const headers = buildAdminHeaders({ token: "tok-a" });
 
     expect(headers["x-api-key"]).toBeUndefined();
     expect(headers["x-gw-ims-org-id"]).toBeUndefined();
@@ -40,10 +40,10 @@ describe("buildMerchandisingHeaders", () => {
     const headers = buildMerchandisingHeaders({
       viewId: "acv-demo-outdoor-gear-eu",
       locale: "en_US",
-      catalogViewAccessToken: "test-only-access-token",
+      catalogViewAccessToken: "tok-c",
     });
 
-    expect(headers["AC-Catalog-View-Access-Token"]).toBe("test-only-access-token");
+    expect(headers["AC-Catalog-View-Access-Token"]).toBe("tok-c");
     // Exactly once: the header value is not duplicated or comma-joined.
     expect(headers["AC-Catalog-View-Access-Token"]?.split(",")).toHaveLength(1);
   });
