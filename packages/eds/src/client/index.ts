@@ -11,7 +11,7 @@
 import { authStatus, mintApiKey, type AuthStatusOptions, type MintApiKeyOptions } from "./auth.js";
 import { fetchPage, type FetchPageOptions } from "./cursor.js";
 import { createHttpClient, type EdsClientDeps, type HttpClient } from "./http.js";
-import { fetchJobEnvelope, waitForJob, type WaitForJobOptions } from "./jobs.js";
+import { fetchJobEnvelope, getJobStatus, waitForJob, type GetJobStatusOptions, type WaitForJobOptions } from "./jobs.js";
 import { getAuditLog, type GetAuditLogOptions } from "./operations/audit-log.js";
 import { reindex, type ReindexOptions } from "./operations/index-ops.js";
 import { setLiveState, type SetLiveStateOptions } from "./operations/live.js";
@@ -43,7 +43,7 @@ export {
   type EdsErrorKind,
 } from "./errors.js";
 export type { EdsClientDeps, HttpClient, HttpMethod, SendOptions } from "./http.js";
-export type { JobBody, JobDescriptor, JobEnvelopeResult, JobLinks, JobPollDeps, JobProgress, JobState, WaitForJobOptions } from "./jobs.js";
+export type { GetJobStatusOptions, JobBody, JobDescriptor, JobEnvelopeResult, JobLinks, JobPollDeps, JobProgress, JobState, WaitForJobOptions } from "./jobs.js";
 export type { FetchPageOptions, Page } from "./cursor.js";
 export { parseSiteList } from "./types.js";
 export type { SiteListResult, SiteListWire } from "./types.js";
@@ -60,6 +60,7 @@ export interface EdsClient {
   readonly jobs: {
     readonly waitForJob: (options: WaitForJobOptions) => ReturnType<typeof waitForJob>;
     readonly fetchJobEnvelope: (self: string) => ReturnType<typeof fetchJobEnvelope>;
+    readonly getJobStatus: (options: GetJobStatusOptions) => ReturnType<typeof getJobStatus>;
   };
   readonly cursor: {
     readonly fetchPage: <TEntry = unknown>(path: string, options?: FetchPageOptions) => ReturnType<typeof fetchPage<TEntry>>;
@@ -105,6 +106,7 @@ export function createEdsClient(deps: EdsClientDeps): EdsClient {
     jobs: {
       waitForJob: (options) => waitForJob({ http, now: deps.now, sleep: deps.sleep }, options),
       fetchJobEnvelope: (self) => fetchJobEnvelope(http, self),
+      getJobStatus: (options) => getJobStatus(http, options),
     },
     cursor: {
       fetchPage: (path, options) => fetchPage(http, path, options),

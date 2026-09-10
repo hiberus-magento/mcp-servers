@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createFetchDouble } from "./testing/fetch-double.js";
 import { createEdsClient } from "./client/index.js";
 import { EDS_ENV_VAR } from "./credential-provider.js";
-import { CLI_OPTIONS, runCli, setToken } from "./cli.js";
+import { CLI_OPTIONS, main, runCli, setToken } from "./cli.js";
 
 const SECRET_LOOKING_NAME = /token|key|secret|password/i;
 
@@ -215,5 +215,61 @@ describe("auth status", () => {
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toMatch(/permissions/i);
     expect(result.stderr).not.toMatch(/^Missing credential/);
+  });
+});
+
+describe("main — exit codes reflect outcome (tasks.md 8.1/8.2)", () => {
+  const originalExitCode = process.exitCode;
+
+  afterEach(() => {
+    process.exitCode = originalExitCode;
+  });
+
+  it("sets process.exitCode to 0 on auth status success", async () => {
+    const configDir = mkdtempSync(join(tmpdir(), "eds-cli-main-"));
+    try {
+      writeFileSync(join(configDir, "eds.json"), JSON.stringify({ token: "irrelevant-9f3a" }), { mode: 0o600 });
+      const { fetch } = createFetchDouble({
+        "GET /config/acme-demo-org.json": { status: 200, body: {} },
+        "GET /config/acme-demo-org/sites.json": { status: 200, body: [] },
+      });
+      const client = createEdsClient({
+        fetch,
+        now: () => Date.now(),
+        sleep: async () => undefined,
+        tokenProvider: { domain: "eds", getToken: async () => ({ kind: "static", value: "irrelevant-9f3a" }), invalidate: () => undefined, describeRemedy: () => ({ domain: "eds", cliCommand: "c", envVar: "e", configPath: "p", reason: "r" }) },
+        baseUrl: "https://admin.hlx.page",
+        org: "acme-demo-org",
+      });
+      process.exitCode = undefined;
+
+      await main(["auth", "status"], { readStdin: async () => "", persist: () => "/dev/null", configDir, client, org: "acme-demo-org" });
+
+      expect(process.exitCode).toBe(0);
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+    }
+  });
+
+  it("sets process.exitCode to non-zero on a missing credential", async () => {
+    const configDir = mkdtempSync(join(tmpdir(), "eds-cli-main-"));
+    try {
+      delete process.env[EDS_ENV_VAR];
+      const client = createEdsClient({
+        fetch: createFetchDouble({}).fetch,
+        now: () => Date.now(),
+        sleep: async () => undefined,
+        tokenProvider: { domain: "eds", getToken: async () => ({ kind: "static", value: "x" }), invalidate: () => undefined, describeRemedy: () => ({ domain: "eds", cliCommand: "c", envVar: "e", configPath: "p", reason: "r" }) },
+        baseUrl: "https://admin.hlx.page",
+        org: "acme-demo-org",
+      });
+      process.exitCode = 0;
+
+      await main(["auth", "status"], { readStdin: async () => "", persist: () => "/dev/null", configDir, client, org: "acme-demo-org" });
+
+      expect(process.exitCode).not.toBe(0);
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+    }
   });
 });

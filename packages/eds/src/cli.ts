@@ -211,3 +211,23 @@ export async function runCli(argv: readonly string[], deps: CliDeps): Promise<Cl
 
   return { exitCode: 1, stderr: `Unknown command: ${argv.join(" ")}` };
 }
+
+/**
+ * The process-facing entrypoint (eds-cli spec, "Exit Codes Reflect
+ * Outcome"): runs `runCli` (kept pure and side-effect-free for testability)
+ * and maps its `exitCode` onto `process.exitCode` — never `process.exit()`,
+ * which would truncate any still-in-flight stdout/stderr write. Also writes
+ * `result.stdout`/`result.stderr` to the real streams, since `runCli` itself
+ * never writes anywhere (it only returns what to write).
+ */
+export async function main(argv: readonly string[], deps: CliDeps): Promise<CliRunResult> {
+  const result = await runCli(argv, deps);
+  process.exitCode = result.exitCode;
+  if (result.stdout !== undefined) {
+    process.stdout.write(result.stdout);
+  }
+  if (result.stderr !== undefined) {
+    process.stderr.write(`${result.stderr}\n`);
+  }
+  return result;
+}

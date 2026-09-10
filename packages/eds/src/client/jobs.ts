@@ -8,6 +8,7 @@
 // operations, so reconstructing it is a known bug source.
 import type { HttpClient } from "./http.js";
 import { JobTimeoutError } from "./errors.js";
+import { sitePath } from "./paths.js";
 
 export type JobState = "created" | "running" | "stopped" | "completed";
 
@@ -50,6 +51,29 @@ export async function fetchJobEnvelope(http: HttpClient, self: string): Promise<
   const success = response.ok;
   const body = (await response.json()) as JobBody;
   return { success, body };
+}
+
+export interface GetJobStatusOptions {
+  readonly org: string;
+  readonly site: string;
+  readonly ref?: string;
+  readonly topic: string;
+  readonly name: string;
+}
+
+/**
+ * `eds_get_job_status` (design.md, Decision 7) addresses a job by
+ * site/ref/topic/name, not by a `self` link handed back from another
+ * operation — every other job-returning operation supplies its own `self`
+ * link, so this is the one caller that must build the path itself. The
+ * client owns that construction (not the MCP adapter) because
+ * `paths.ts`/`sitePath` is internal to `client/` and the boundary lint
+ * forbids an adapter reaching past `client/index.ts`.
+ */
+export async function getJobStatus(http: HttpClient, options: GetJobStatusOptions): Promise<JobEnvelopeResult> {
+  const ref = options.ref ?? "main";
+  const self = sitePath({ resource: "job", org: options.org, site: options.site, ref, suffix: `${options.topic}/${options.name}` });
+  return fetchJobEnvelope(http, self);
 }
 
 const TERMINAL_STATES: ReadonlySet<JobState> = new Set(["completed", "stopped"]);

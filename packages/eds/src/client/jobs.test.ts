@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createFetchDouble } from "../testing/fetch-double.js";
 import { createHttpClient } from "./http.js";
-import { fetchJobEnvelope, waitForJob } from "./jobs.js";
+import { fetchJobEnvelope, getJobStatus, waitForJob } from "./jobs.js";
 
 const RUNNING_FIXTURE = JSON.parse(
   readFileSync(fileURLToPath(new URL("../../fixtures/job.202.running.json", import.meta.url)), "utf8"),
@@ -101,6 +101,44 @@ describe("waitForJob", () => {
         { self: SELF_PATH, timeoutMs: 2000, pollIntervalMs: 1000 },
       ),
     ).rejects.toBeInstanceOf(JobTimeoutError);
+  });
+});
+
+describe("getJobStatus", () => {
+  // RED (Phase 7 addition, mcp.ts's eds_get_job_status needs this): the
+  // adapter cannot build the job path itself — client-boundary lint forbids
+  // importing paths.ts's sitePath outside client/ — so the client must own
+  // job-status address construction from site/ref/topic/name components.
+  it("builds the job path from site/ref/topic/name and fetches its envelope, success on any 2xx", async () => {
+    const { http } = makeHttp({
+      [`GET ${SELF_PATH}`]: { status: 202, body: RUNNING_FIXTURE },
+    });
+
+    const result = await getJobStatus(http, {
+      org: "acme-demo-org",
+      site: "acme-demo-site-eu",
+      ref: "main",
+      topic: "preview",
+      name: "job-1",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.body.job.state).toBe("running");
+  });
+
+  it("defaults ref to main when omitted", async () => {
+    const { http } = makeHttp({
+      [`GET ${SELF_PATH}`]: { status: 202, body: RUNNING_FIXTURE },
+    });
+
+    const result = await getJobStatus(http, {
+      org: "acme-demo-org",
+      site: "acme-demo-site-eu",
+      topic: "preview",
+      name: "job-1",
+    });
+
+    expect(result.success).toBe(true);
   });
 });
 

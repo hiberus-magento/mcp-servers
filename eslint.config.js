@@ -74,8 +74,18 @@ export default tseslint.config(
     // one place allowed to touch it: it IS the stdout-diversion mechanism
     // (design.md, Decision 2, M1). Every other package must go through the
     // exported logger instead.
-    files: ["packages/**/src/**/*.{ts,tsx}"],
-    ignores: ["packages/mcp-core/src/bootstrap/**"],
+    //
+    // `packages/*/src/cli.ts` is also exempted (eds-package design.md,
+    // Decision 6): a CLI binary is not an MCP server — it has no JSON-RPC
+    // stream on stdout to protect, and its stdout IS the legitimate output
+    // channel (e.g. `auth mint` prints the minted key value alone on stdout
+    // so `| pbcopy` works). Scoped to exactly the `cli.ts` entrypoint file,
+    // not the whole package, so `mcp.ts` and everything under `client/`
+    // remain covered — proven by `eslint-fixtures/stdout-write-violation.ts`
+    // (hence `eslint-fixtures/**` is matched here too, mirroring the
+    // client-boundary block below).
+    files: ["packages/**/src/**/*.{ts,tsx}", "packages/*/eslint-fixtures/**/*.{ts,tsx}"],
+    ignores: ["packages/mcp-core/src/bootstrap/**", "packages/*/src/cli.ts"],
     rules: {
       "no-restricted-properties": [
         "error",

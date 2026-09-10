@@ -43,3 +43,25 @@ describe("eds client-boundary eslint-fixtures", () => {
     expect(restrictedImportMessages.some((message) => message.message.includes("client/index"))).toBe(true);
   });
 });
+
+describe("eds cli.ts stdout exemption is scoped, not a repo-wide leak", () => {
+  it("flags a direct process.stdout write in an ordinary source file", async () => {
+    const result = await lintFixture("./eslint-fixtures/stdout-write-violation.ts");
+    const ruleIds = result.messages.map((message) => message.ruleId);
+    expect(ruleIds).toContain("no-restricted-properties");
+  });
+
+  it("does NOT flag cli.ts's own process.stdout.write — the one exempted entrypoint", async () => {
+    const eslint = new ESLint({
+      overrideConfigFile: ROOT_CONFIG_PATH,
+      cwd: fileURLToPath(new URL("../..", import.meta.url)),
+    });
+    const results = await eslint.lintFiles([fileURLToPath(new URL("./src/cli.ts", import.meta.url))]);
+    const result = results[0];
+    if (!result) {
+      throw new Error("eslint produced no result for src/cli.ts");
+    }
+    const ruleIds = result.messages.map((message) => message.ruleId);
+    expect(ruleIds).not.toContain("no-restricted-properties");
+  });
+});
