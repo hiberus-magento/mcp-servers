@@ -19,6 +19,7 @@ import {
   gateG2BundleSize,
   gateG3NoForbiddenModules,
   gateG4TarballDependencies,
+  gateG5AllTarballShebangs,
   gateG5BundleShebang,
   gateG5TarballShebang,
   gateG6LicenseInTarball,
@@ -40,38 +41,86 @@ function tempDistDir() {
   return distDir;
 }
 
-describe("gateG1SingleBundle", () => {
-  it("passes and returns the sole .js file when exactly one exists", () => {
+describe("gateG1SingleBundle — every declared bin maps to exactly one dist/ file, no strays", () => {
+  it("passes a single-binary package (existing packages must keep working unchanged)", () => {
     const distDir = tempDistDir();
     writeFileSync(join(distDir, "server.js"), "console.log('hi');", "utf8");
 
-    expect(gateG1SingleBundle(distDir)).toBe("server.js");
+    expect(gateG1SingleBundle(distDir, "dist/server.js")).toEqual(["server.js"]);
+  });
+
+  it("passes a single-binary package declared via the bin OBJECT form", () => {
+    const distDir = tempDistDir();
+    writeFileSync(join(distDir, "server.js"), "console.log('hi');", "utf8");
+
+    expect(gateG1SingleBundle(distDir, { "fixture-server": "dist/server.js" })).toEqual(["server.js"]);
+  });
+
+  it("passes a TWO-binary package (e.g. eds's cli.js + mcp.js) with no stray files — this is the G1 correction: 'one file per declared bin', not 'exactly one file total'", () => {
+    const distDir = tempDistDir();
+    writeFileSync(join(distDir, "cli.js"), "1", "utf8");
+    writeFileSync(join(distDir, "mcp.js"), "2", "utf8");
+
+    expect(gateG1SingleBundle(distDir, { "hiberus-eds": "dist/cli.js", "hiberus-eds-mcp": "dist/mcp.js" }).sort()).toEqual([
+      "cli.js",
+      "mcp.js",
+    ]);
   });
 
   it("fails when dist/ contains zero .js files", () => {
     const distDir = tempDistDir();
     writeFileSync(join(distDir, "server.txt"), "not js", "utf8");
 
-    expect(() => gateG1SingleBundle(distDir)).toThrow(PackagingGateError);
+    expect(() => gateG1SingleBundle(distDir, "dist/server.js")).toThrow(PackagingGateError);
     try {
-      gateG1SingleBundle(distDir);
+      gateG1SingleBundle(distDir, "dist/server.js");
     } catch (error) {
       expect(error.gate).toBe("G1");
-      expect(error.message).toMatch(/found 0/);
+      expect(error.message).toMatch(/no matching bundle/);
     }
   });
 
-  it("fails when dist/ contains more than one .js file", () => {
+  it("fails when dist/ contains a STRAY .js file beyond the declared bin entries (the code-splitting defense)", () => {
     const distDir = tempDistDir();
-    writeFileSync(join(distDir, "server.js"), "1", "utf8");
-    writeFileSync(join(distDir, "extra.js"), "2", "utf8");
+    writeFileSync(join(distDir, "mcp.js"), "1", "utf8");
+    writeFileSync(join(distDir, "chunk-abc123.js"), "2", "utf8");
 
-    expect(() => gateG1SingleBundle(distDir)).toThrow(PackagingGateError);
+    expect(() => gateG1SingleBundle(distDir, "dist/mcp.js")).toThrow(PackagingGateError);
     try {
-      gateG1SingleBundle(distDir);
+      gateG1SingleBundle(distDir, "dist/mcp.js");
     } catch (error) {
       expect(error.gate).toBe("G1");
-      expect(error.message).toMatch(/found 2/);
+      expect(error.message).toMatch(/beyond the declared bin entries/);
+      expect(error.message).toContain("chunk-abc123.js");
+    }
+  });
+
+  it("fails when a declared bin has no matching file in dist/ (missing bin bundle)", () => {
+    const distDir = tempDistDir();
+    writeFileSync(join(distDir, "cli.js"), "1", "utf8");
+
+    expect(() => gateG1SingleBundle(distDir, { "hiberus-eds": "dist/cli.js", "hiberus-eds-mcp": "dist/mcp.js" })).toThrow(
+      PackagingGateError,
+    );
+    try {
+      gateG1SingleBundle(distDir, { "hiberus-eds": "dist/cli.js", "hiberus-eds-mcp": "dist/mcp.js" });
+    } catch (error) {
+      expect(error.gate).toBe("G1");
+      expect(error.message).toMatch(/no matching bundle/);
+      expect(error.message).toContain("dist/mcp.js");
+    }
+  });
+
+  it("fails when package.json declares no bin entry at all", () => {
+    const distDir = tempDistDir();
+    writeFileSync(join(distDir, "server.js"), "1", "utf8");
+
+    expect(() => gateG1SingleBundle(distDir, undefined)).toThrow(PackagingGateError);
+    try {
+      gateG1SingleBundle(distDir, undefined);
+    } catch (error) {
+      expect(error.gate).toBe("G1");
+      expect(error.message).toMatch(/declares no bin entry/);
     }
   });
 });
@@ -143,6 +192,34 @@ describe("gateG3NoForbiddenModules", () => {
       expect(error.message).toMatch(/provenance comments/);
     }
   });
+
+  it("checks EVERY bundle's text when given an array of bundle paths (two-binary package)", () => {
+    const distDir = tempDistDir();
+    writeMetafile(distDir, { "src/index.ts": {} });
+    const cliPath = join(distDir, "cli.js");
+    const mcpPath = join(distDir, "mcp.js");
+    writeFileSync(cliPath, "// clean cli bundle", "utf8");
+    writeFileSync(mcpPath, `// node_modules/${FORBIDDEN_PACKAGES[0]}/index.js\nconsole.log(1);`, "utf8");
+
+    expect(() => gateG3NoForbiddenModules(distDir, [cliPath, mcpPath])).toThrow(PackagingGateError);
+    try {
+      gateG3NoForbiddenModules(distDir, [cliPath, mcpPath]);
+    } catch (error) {
+      expect(error.gate).toBe("G3");
+      expect(error.message).toContain(mcpPath);
+    }
+  });
+
+  it("passes a two-binary package when BOTH bundle texts are clean", () => {
+    const distDir = tempDistDir();
+    writeMetafile(distDir, { "src/index.ts": {} });
+    const cliPath = join(distDir, "cli.js");
+    const mcpPath = join(distDir, "mcp.js");
+    writeFileSync(cliPath, "// clean", "utf8");
+    writeFileSync(mcpPath, "// clean", "utf8");
+
+    expect(() => gateG3NoForbiddenModules(distDir, [cliPath, mcpPath])).not.toThrow();
+  });
 });
 
 describe("gateG4TarballDependencies", () => {
@@ -193,6 +270,50 @@ describe("gateG5BundleShebang / gateG5TarballShebang", () => {
     writeFileSync(bundlePath, "console.log('no shebang');", "utf8");
 
     await expect(gateG5BundleShebang(bundlePath)).rejects.toThrow(PackagingGateError);
+  });
+});
+
+describe("gateG5AllTarballShebangs — checks the shebang on EVERY declared bin, not just one", () => {
+  it("passes a single-binary package when its one bin file has the shebang", async () => {
+    workDir = mkdtempSync(join(tmpdir(), "verify-bundle-test-"));
+    mkdirSync(join(workDir, "dist"), { recursive: true });
+    writeFileSync(join(workDir, "dist/server.js"), "#!/usr/bin/env node\nconsole.log(1);", "utf8");
+
+    await expect(gateG5AllTarballShebangs(workDir, "dist/server.js")).resolves.toBeUndefined();
+  });
+
+  it("passes a two-binary package when BOTH bin files have the shebang", async () => {
+    workDir = mkdtempSync(join(tmpdir(), "verify-bundle-test-"));
+    mkdirSync(join(workDir, "dist"), { recursive: true });
+    writeFileSync(join(workDir, "dist/cli.js"), "#!/usr/bin/env node\nconsole.log(1);", "utf8");
+    writeFileSync(join(workDir, "dist/mcp.js"), "#!/usr/bin/env node\nconsole.log(2);", "utf8");
+
+    await expect(
+      gateG5AllTarballShebangs(workDir, { "hiberus-eds": "dist/cli.js", "hiberus-eds-mcp": "dist/mcp.js" }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("fails naming the SPECIFIC bin missing its shebang, even when the other bin is fine", async () => {
+    workDir = mkdtempSync(join(tmpdir(), "verify-bundle-test-"));
+    mkdirSync(join(workDir, "dist"), { recursive: true });
+    writeFileSync(join(workDir, "dist/cli.js"), "#!/usr/bin/env node\nconsole.log(1);", "utf8");
+    writeFileSync(join(workDir, "dist/mcp.js"), "console.log('missing shebang');", "utf8");
+
+    await expect(
+      gateG5AllTarballShebangs(workDir, { "hiberus-eds": "dist/cli.js", "hiberus-eds-mcp": "dist/mcp.js" }),
+    ).rejects.toThrow(PackagingGateError);
+    try {
+      await gateG5AllTarballShebangs(workDir, { "hiberus-eds": "dist/cli.js", "hiberus-eds-mcp": "dist/mcp.js" });
+    } catch (error) {
+      expect(error.gate).toBe("G5");
+      expect(error.message).toContain("dist/mcp.js");
+    }
+  });
+
+  it("fails when package.json declares no bin entry", async () => {
+    workDir = mkdtempSync(join(tmpdir(), "verify-bundle-test-"));
+
+    await expect(gateG5AllTarballShebangs(workDir, undefined)).rejects.toThrow(PackagingGateError);
   });
 });
 

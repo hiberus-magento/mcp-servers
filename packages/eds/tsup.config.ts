@@ -11,7 +11,12 @@ const ajvStub = fileURLToPath(new URL("../mcp-core/src/stubs/ajv.js", import.met
 const ajvFormatsStub = fileURLToPath(new URL("../mcp-core/src/stubs/ajv-formats.js", import.meta.url));
 
 export default defineConfig({
-  entry: ["src/mcp.ts"],
+  // Two binaries, one dist/ (G1 correction, tasks.md 9.3): the amended
+  // packaging gate asserts "one bundled file per declared bin", not
+  // "exactly one file total" — so `hiberus-eds` (cli.ts) and
+  // `hiberus-eds-mcp` (mcp.ts) build side by side into the same `dist/`,
+  // matching the founding brief's reference package shape.
+  entry: ["src/cli.ts", "src/mcp.ts"],
   format: ["esm"],
   target: "node22",
   platform: "node",

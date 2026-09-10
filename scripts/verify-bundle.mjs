@@ -7,11 +7,18 @@
 // was actually produced — not merely that the source graph looks tree-shaken.
 //
 // Gates (see design.md, Decision 1):
-//   G1  Exactly one .js file in dist/
-//   G2  Bundle size <= 2 MB
-//   G3  Zero forbidden dependencies survived bundling (metafile + text backstop)
+//   G1  Every `bin` entry the package declares maps to exactly one .js file
+//       in dist/, and dist/ contains no .js file beyond those (the defense
+//       against code-splitting — NOT "exactly one .js file in dist/ total").
+//       A package may legitimately declare more than one bin from one dist/
+//       (e.g. a CLI + an MCP server built from the same package); this gate
+//       still catches a stray chunk, and still catches a missing bundle.
+//   G2  Every declared bin's bundle size <= 2 MB
+//   G3  Zero forbidden dependencies survived bundling, across every declared
+//       bin's bundle (metafile + text backstop)
 //   G4  `npm pack` tarball declares dependencies: {} (or omits the field)
-//   G5  Shebang preserved on both the bundle and the tarball entry
+//   G5  Shebang preserved on every declared bin, in the built dist/ bundle
+//       AND in the packed tarball
 //   G6  LICENSE file present in the tarball
 import { execFileSync } from "node:child_process";
 import { createReadStream } from "node:fs";
@@ -55,15 +62,63 @@ function findDistJsFiles(distDir) {
   return readdirSync(distDir).filter((name) => name.endsWith(".js"));
 }
 
-export function gateG1SingleBundle(distDir) {
+/** Accepts `package.json`'s `bin` field in either shape (a bare string for a single binary, or a name-to-path object) and always returns a flat list of declared paths. */
+export function resolveBinPaths(bin) {
+  if (typeof bin === "string") {
+    return [bin];
+  }
+  if (bin !== null && bin !== undefined && typeof bin === "object") {
+    return Object.values(bin);
+  }
+  return [];
+}
+
+function distRelativeFileName(binPath) {
+  const prefix = "dist/";
+  if (!binPath.startsWith(prefix)) {
+    throw new PackagingGateError("G1", `bin entry "${binPath}" must point inside dist/`);
+  }
+  return binPath.slice(prefix.length);
+}
+
+/**
+ * G1's real intent (design.md, Decision 1): one bundled file per declared
+ * `bin` entry, with no stray chunk left behind by accidental code-splitting
+ * — NOT "exactly one .js file in dist/ total". A package that legitimately
+ * declares two binaries from one `dist/` (a CLI and an MCP server built from
+ * the same source tree) must still pass this gate; a single-binary package
+ * must still behave exactly as before. Returns the list of bundle file
+ * names, one per declared bin, for the caller to run G2/G3/G5 against.
+ */
+export function gateG1SingleBundle(distDir, bin) {
   const jsFiles = findDistJsFiles(distDir);
-  if (jsFiles.length !== 1) {
+  const binPaths = resolveBinPaths(bin);
+  if (binPaths.length === 0) {
+    throw new PackagingGateError("G1", "package.json declares no bin entry to verify dist/ against");
+  }
+
+  const expectedFileNames = [];
+  for (const binPath of binPaths) {
+    const fileName = distRelativeFileName(binPath);
+    if (!jsFiles.includes(fileName)) {
+      throw new PackagingGateError(
+        "G1",
+        `declared bin "${binPath}" has no matching bundle in dist/ (found: ${jsFiles.join(", ") || "(none)"})`,
+      );
+    }
+    expectedFileNames.push(fileName);
+  }
+
+  const expectedSet = new Set(expectedFileNames);
+  const strayFiles = jsFiles.filter((name) => !expectedSet.has(name));
+  if (strayFiles.length > 0) {
     throw new PackagingGateError(
       "G1",
-      `expected exactly one .js file in dist/, found ${jsFiles.length}: ${jsFiles.join(", ") || "(none)"}`,
+      `dist/ contains .js file(s) beyond the declared bin entries: ${strayFiles.join(", ")} (declared: ${expectedFileNames.join(", ")})`,
     );
   }
-  return jsFiles[0];
+
+  return expectedFileNames;
 }
 
 export function gateG2BundleSize(bundlePath) {
@@ -77,7 +132,7 @@ export function gateG2BundleSize(bundlePath) {
   return size;
 }
 
-function findMetafile(distDir) {
+function findMetafiles(distDir) {
   const candidates = readdirSync(distDir).filter((name) => name.startsWith("metafile") && name.endsWith(".json"));
   if (candidates.length === 0) {
     throw new PackagingGateError(
@@ -85,7 +140,7 @@ function findMetafile(distDir) {
       "no tsup metafile found in dist/ — was the package built with metafile: true?",
     );
   }
-  return join(distDir, candidates[0]);
+  return candidates.map((name) => join(distDir, name));
 }
 
 function forbiddenInputRegex() {
@@ -93,11 +148,27 @@ function forbiddenInputRegex() {
   return new RegExp(`node_modules/(${alternation})/`);
 }
 
-export function gateG3NoForbiddenModules(distDir, bundlePath) {
-  const metafilePath = findMetafile(distDir);
-  const metafile = JSON.parse(readFileSync(metafilePath, "utf8"));
+/**
+ * `bundlePathOrPaths` accepts either a single bundle path (unchanged
+ * behavior for a single-binary package) or an array of bundle paths (a
+ * multi-binary package, e.g. eds's `cli.js` + `mcp.js`) — every metafile in
+ * `dist/` is merged for the metafile check, and every bundle's text is
+ * scanned individually for the backstop check, so a stray forbidden
+ * dependency reachable from ANY declared entrypoint still fails the gate.
+ */
+export function gateG3NoForbiddenModules(distDir, bundlePathOrPaths) {
+  const bundlePaths = Array.isArray(bundlePathOrPaths) ? bundlePathOrPaths : [bundlePathOrPaths];
+  const metafilePaths = findMetafiles(distDir);
   const regex = forbiddenInputRegex();
-  const survivors = Object.keys(metafile.inputs ?? {}).filter((inputPath) => regex.test(inputPath));
+
+  const allInputs = new Set();
+  for (const metafilePath of metafilePaths) {
+    const metafile = JSON.parse(readFileSync(metafilePath, "utf8"));
+    for (const inputPath of Object.keys(metafile.inputs ?? {})) {
+      allInputs.add(inputPath);
+    }
+  }
+  const survivors = [...allInputs].filter((inputPath) => regex.test(inputPath));
   if (survivors.length > 0) {
     throw new PackagingGateError(
       "G3",
@@ -105,15 +176,17 @@ export function gateG3NoForbiddenModules(distDir, bundlePath) {
     );
   }
 
-  // Backstop: grep the bundle text for esbuild's provenance comments, in case
-  // the metafile ever stops reporting truthfully.
-  const bundleText = readFileSync(bundlePath, "utf8");
-  const textSurvivors = FORBIDDEN_PACKAGES.filter((pkg) => bundleText.includes(`node_modules/${pkg}/`));
-  if (textSurvivors.length > 0) {
-    throw new PackagingGateError(
-      "G3",
-      `bundle text contains provenance comments for forbidden packages: ${textSurvivors.join(", ")}`,
-    );
+  // Backstop: grep each bundle's text for esbuild's provenance comments, in
+  // case a metafile ever stops reporting truthfully.
+  for (const bundlePath of bundlePaths) {
+    const bundleText = readFileSync(bundlePath, "utf8");
+    const textSurvivors = FORBIDDEN_PACKAGES.filter((pkg) => bundleText.includes(`node_modules/${pkg}/`));
+    if (textSurvivors.length > 0) {
+      throw new PackagingGateError(
+        "G3",
+        `bundle text (${bundlePath}) contains provenance comments for forbidden packages: ${textSurvivors.join(", ")}`,
+      );
+    }
   }
 }
 
@@ -160,8 +233,23 @@ export async function gateG5TarballShebang(extractedBundlePath) {
   if (!head.startsWith(SHEBANG)) {
     throw new PackagingGateError(
       "G5",
-      `tarball bundle does not start with "${SHEBANG}", got: ${JSON.stringify(head)}`,
+      `"${extractedBundlePath}" does not start with "${SHEBANG}", got: ${JSON.stringify(head)}`,
     );
+  }
+}
+
+/**
+ * G5's tarball half checks the shebang on EVERY declared bin, not just one
+ * (the previous implementation only ever checked `Object.values(pkg.bin)[0]`
+ * — silently skipping every other declared binary in a multi-bin package).
+ */
+export async function gateG5AllTarballShebangs(extractedRoot, bin) {
+  const binPaths = resolveBinPaths(bin);
+  if (binPaths.length === 0) {
+    throw new PackagingGateError("G5", "package.json has no bin entry to verify the tarball shebang against");
+  }
+  for (const binPath of binPaths) {
+    await gateG5TarballShebang(join(extractedRoot, binPath));
   }
 }
 
@@ -177,11 +265,17 @@ async function main() {
   const distDir = join(packageDir, "dist");
   const pkg = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
 
-  const bundleName = gateG1SingleBundle(distDir);
-  const bundlePath = join(distDir, bundleName);
-  const bundleSize = gateG2BundleSize(bundlePath);
-  gateG3NoForbiddenModules(distDir, bundlePath);
-  await gateG5BundleShebang(bundlePath);
+  const bundleNames = gateG1SingleBundle(distDir, pkg.bin);
+  const bundlePaths = bundleNames.map((name) => join(distDir, name));
+
+  let totalBundleBytes = 0;
+  for (const bundlePath of bundlePaths) {
+    totalBundleBytes += gateG2BundleSize(bundlePath);
+  }
+  gateG3NoForbiddenModules(distDir, bundlePaths);
+  for (const bundlePath of bundlePaths) {
+    await gateG5BundleShebang(bundlePath);
+  }
 
   const workDir = mkdtempSync(join(tmpdir(), "verify-bundle-"));
   try {
@@ -192,18 +286,13 @@ async function main() {
     extractTarball(tarballPath, workDir);
     const extractedRoot = join(workDir, "package");
     gateG4TarballDependencies(join(extractedRoot, "package.json"));
-
-    const binEntry = typeof pkg.bin === "string" ? pkg.bin : Object.values(pkg.bin ?? {})[0];
-    if (!binEntry) {
-      throw new PackagingGateError("G5", "package.json has no bin entry to verify the tarball shebang against");
-    }
-    await gateG5TarballShebang(join(extractedRoot, binEntry));
+    await gateG5AllTarballShebangs(extractedRoot, pkg.bin);
   } finally {
     rmSync(workDir, { recursive: true, force: true });
   }
 
   console.error(
-    `verify-bundle: PASS — ${pkg.name}: ${bundleName} (${bundleSize} bytes), zero forbidden dependencies, tarball dependencies: {}, shebang + LICENSE present`,
+    `verify-bundle: PASS — ${pkg.name}: ${bundleNames.join(", ")} (${totalBundleBytes} bytes total), zero forbidden dependencies, tarball dependencies: {}, shebang + LICENSE present on every declared bin`,
   );
 }
 

@@ -9,7 +9,7 @@
 // Run under `vitest --typecheck` (never executed).
 import { test } from "vitest";
 import type { z } from "zod";
-import { edsReindexInput } from "./mcp.js";
+import { edsReindexInput } from "./tools/eds-tools.js";
 
 type ReindexRequestInput = z.infer<typeof edsReindexInput>["request"];
 

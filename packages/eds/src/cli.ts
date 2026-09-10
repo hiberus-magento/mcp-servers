@@ -1,11 +1,13 @@
+#!/usr/bin/env node
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
-// The `hiberus-eds` CLI adapter's auth surface (design.md, Decision 6;
-// eds-cli spec). This module is the entry POINT for auth wiring — it is
-// NOT yet the shebang executable; Phase 9 (out of scope for this batch)
-// finalizes the shebang + full dispatch table over the CLI-only operations
-// excluded from the MCP surface (Phase 8). `runCli` here handles exactly
-// the `auth token set` / `auth mint` / `auth status` subcommands.
+// The `hiberus-eds` CLI adapter (design.md, Decision 6; eds-cli spec).
+// `runCli` handles exactly the `auth token set` / `auth mint` / `auth
+// status` subcommands; every operation on the CLI-only exclusion list
+// (`site apply`, `key create`, `code show`, etc. — eds-cli spec, "CLI-Only
+// Operations Excluded from MCP") has NO implementation in this change and
+// falls through to `runCli`'s "Unknown command" response — implementing
+// them is out of scope (proposal.md, "Out of Scope").
 //
 // A token is NEVER accepted as a CLI argument. `parseCredentialCliArgs`
 // (mcp-core) runs before ANY dispatch, so `--token`/`--token=` is rejected
@@ -13,11 +15,12 @@
 // extra positional argument — its handler (`setToken`) has no parameter to
 // receive one at all, so a positional token would have nowhere to go even
 // if this check were removed (design.md, Decision 6, layers 1–2).
-import { parseCredentialCliArgs, redact } from "@hiberus-magento/mcp-core";
+import { parseCredentialCliArgs, persistCredential, readTokenFromStdin, redact } from "@hiberus-magento/mcp-core";
 import { createHash } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import type { EdsClient } from "./client/index.js";
-import { resolveEdsCredentialDirect } from "./credential-provider.js";
+import { createEdsClient, type EdsClient } from "./client/index.js";
+import { EDS_DOMAIN, createEdsTokenProvider, resolveEdsCredentialDirect } from "./credential-provider.js";
 
 export interface OptionSpec {
   readonly name: string;
@@ -230,4 +233,39 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<CliR
     process.stderr.write(`${result.stderr}\n`);
   }
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Real entrypoint wiring — only runs when this module is the process
+// entrypoint, so `cli.test.ts` can import `runCli`/`setToken`/`main` without
+// resolving a real credential or reading real stdin (mirrors `mcp.ts`'s
+// `isDirectRun` guard).
+// ---------------------------------------------------------------------------
+
+const BASE_URL = "https://admin.hlx.page";
+const isDirectRun = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isDirectRun) {
+  const org = process.env.EDS_ORG;
+  if (org === undefined || org.length === 0) {
+    process.stderr.write("hiberus-eds: the EDS_ORG environment variable is required.\n");
+    process.exitCode = 1;
+  } else {
+    const client = createEdsClient({
+      fetch: globalThis.fetch,
+      now: () => Date.now(),
+      sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
+      tokenProvider: createEdsTokenProvider(),
+      baseUrl: BASE_URL,
+      org,
+    });
+    const deps: CliDeps = {
+      readStdin: readTokenFromStdin,
+      persist: (token: string) => persistCredential(EDS_DOMAIN, token),
+      client,
+      org,
+      ...(process.env.EDS_SITE !== undefined ? { site: process.env.EDS_SITE } : {}),
+    };
+    await main(process.argv.slice(2), deps);
+  }
 }

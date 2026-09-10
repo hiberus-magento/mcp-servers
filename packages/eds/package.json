@@ -9,6 +9,7 @@
     "provenance": true
   },
   "bin": {
+    "hiberus-eds": "dist/cli.js",
     "hiberus-eds-mcp": "dist/mcp.js"
   },
   "files": [

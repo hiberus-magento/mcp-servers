@@ -1,16 +1,19 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
 // RED-first (tasks.md Phase 7): the nine-tool surface, its two hazard
-// gates, its annotations, the missing-credential failure path, and the
-// stdio-guard installation — all unit-testable without spawning a process,
-// since `createEdsTools` is a pure function of an already-constructed
-// `EdsClient` and `mcp.ts`'s side effects are guarded behind `isDirectRun`.
+// gates, its annotations, and the missing-credential failure path — all
+// unit-testable without spawning a process, since `createEdsTools` (in
+// `./tools/eds-tools.ts`, see that file's header for why it is separate
+// from `mcp.ts`) is a pure function of an already-constructed `EdsClient`.
+// The stdio-guard installation is checked by a source scan of `mcp.ts`
+// itself, which — unlike the tool factory — DOES connect unconditionally at
+// import time and is therefore never imported by this test file.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createFetchDouble } from "./testing/fetch-double.js";
 import { createEdsClient } from "./client/index.js";
-import { createEdsTools, edsReindexInput, nonEmptyPaths } from "./mcp.js";
+import { createEdsTools, edsReindexInput, nonEmptyPaths } from "./tools/eds-tools.js";
 import { createEdsTokenProvider } from "./credential-provider.js";
 
 function makeClient(routes: Record<string, unknown> = {}) {
