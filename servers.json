@@ -69,21 +69,51 @@
     {
       "id": "aco",
       "package": "@hiberus-magento/aco",
-      "bin": "aco",
+      "bin": "hiberus-aco-mcp",
       "version": "0.0.0",
       "domain": "aco",
-      "status": "internal",
+      "status": "planned",
       "description": "Adobe Commerce Optimizer (ACO) admin and Merchandising API client — CLI and MCP server.",
+      "docs": "docs/aco-onboarding.md",
+      "requires": {
+        "binaries": [
+          "hiberus-aco"
+        ],
+        "env": [
+          "ACO_CLIENT_ID",
+          "ACO_CLIENT_SECRET"
+        ]
+      },
       "tools": [
         {
-          "name": "noop",
+          "name": "aco_search_catalog",
           "readOnly": true,
-          "description": "A no-op tool used only to exercise the packaging gate."
+          "description": "Use this to search a catalog view's products by phrase and page through results, with facet buckets included. No credential is required for an unprotected view."
         },
         {
-          "name": "read-echo",
+          "name": "aco_get_facet_values",
           "readOnly": true,
-          "description": "Echoes a message back through an allowlisted read-only subprocess call, proving stdout stays pure JSON-RPC even though a child process is spawned."
+          "description": "Use this to check whether an attribute is facetable for a catalog view and list its available values with counts. No credential is required for an unprotected view."
+        },
+        {
+          "name": "aco_list_catalog_views",
+          "readOnly": true,
+          "description": "Use this to discover the catalog views (channelId, locales, default price book, policies) available in this tenant. Requires an ACO admin credential."
+        },
+        {
+          "name": "aco_list_price_books",
+          "readOnly": true,
+          "description": "Use this to list price books, optionally filtered by searchTerm, and to page through more with the returned scrollId. Requires an ACO admin credential."
+        },
+        {
+          "name": "aco_list_policies",
+          "readOnly": true,
+          "description": "Use this to list every policy configured in this tenant, before deciding which to enable or disable. Requires an ACO admin credential."
+        },
+        {
+          "name": "aco_toggle_policy",
+          "readOnly": false,
+          "description": "Use this to enable or disable one or more named policies. There is no \"apply to all\" mode. Requires an ACO admin credential."
         }
       ]
     }

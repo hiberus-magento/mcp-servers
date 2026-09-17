@@ -70,13 +70,39 @@ Docs: docs/eds-onboarding.md
 Adobe Commerce Optimizer (ACO) admin and Merchandising API client — CLI and MCP server.
 
 - Domain: aco
-- Status: internal
-- Binary: `aco`
+- Status: planned
+- Binary: `hiberus-aco-mcp`
 
 Tools:
 
-- `noop` (read-only) — A no-op tool used only to exercise the packaging gate.
-- `read-echo` (read-only) — Echoes a message back through an allowlisted read-only subprocess call, proving stdout stays pure JSON-RPC even though a child process is spawned.
+- `aco_search_catalog` (read-only) — Use this to search a catalog view's products by phrase and page through results, with facet buckets included. No credential is required for an unprotected view.
+- `aco_get_facet_values` (read-only) — Use this to check whether an attribute is facetable for a catalog view and list its available values with counts. No credential is required for an unprotected view.
+- `aco_list_catalog_views` (read-only) — Use this to discover the catalog views (channelId, locales, default price book, policies) available in this tenant. Requires an ACO admin credential.
+- `aco_list_price_books` (read-only) — Use this to list price books, optionally filtered by searchTerm, and to page through more with the returned scrollId. Requires an ACO admin credential.
+- `aco_list_policies` (read-only) — Use this to list every policy configured in this tenant, before deciding which to enable or disable. Requires an ACO admin credential.
+- `aco_toggle_policy` — Use this to enable or disable one or more named policies. There is no "apply to all" mode. Requires an ACO admin credential.
+
+Configure in an MCP client. Pin the exact version; pass secrets as environment variable references, never literal values:
+
+```json
+{
+  "mcpServers": {
+    "hiberus-aco-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@hiberus-magento/aco@0.0.0"
+      ],
+      "env": {
+        "ACO_CLIENT_ID": "${ACO_CLIENT_ID}",
+        "ACO_CLIENT_SECRET": "${ACO_CLIENT_SECRET}"
+      }
+    }
+  }
+}
+```
+
+Docs: docs/aco-onboarding.md
 
 <!-- servers:end -->
 
