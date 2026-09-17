@@ -40,7 +40,8 @@ The server bootstrap MUST make writing to stdout outside the JSON-RPC transport 
 
 ### Requirement: Allowlisted Command Executor
 
-The command executor MUST use `execFile` and MUST NOT use `exec` or any shell string interpolation. It MUST allowlist commands by full subcommand name only (never prefix or regex match), MUST validate every argument against a schema, MUST reject any `--` passthrough argument, and MUST reject the specific forbidden operations `ssh`, `tunnel`, and `db:dump` outright. It MUST enforce a required `timeoutMs` and `maxOutputBytes` for every invocation.
+The command executor MUST use `execFile` and MUST NOT use `exec` or any shell string interpolation. It MUST allowlist commands by full subcommand name only (never prefix or regex match), MUST validate every argument against a schema, MUST reject any `--` passthrough argument, and MUST reject the specific forbidden operations `ssh`, `tunnel`, and `db:dump` outright. It MUST enforce a required `timeoutMs` and `maxOutputBytes` for every invocation. It MUST accept an optional, explicit per-spec child environment (`CommandSpec.env`) and, when spawning the child, MUST pass exactly that map as the process environment — it MUST NEVER spread `process.env` into it, in whole or in part, as an assertable property, not an incidental consequence of a hardcoded value. A spec supplying no `env` MUST still spawn its child with exactly `{}`, preserving the executor's existing behavior for every caller that does not opt in.
+(Previously: `env` was hardcoded to `{}` unconditionally with no override point; `CommandSpec` had no `env` field at all, so no caller could ever supply one and no authenticated external CLI could function through the executor.)
 
 #### Scenario: Full-name allowlist match
 
@@ -83,6 +84,24 @@ The command executor MUST use `execFile` and MUST NOT use `exec` or any shell st
 - GIVEN a command configured with `timeoutMs: 100` and `maxOutputBytes: 1024`
 - WHEN the underlying process exceeds either the time or the output size
 - THEN the executor terminates it and returns a bounded, truncated result rather than hanging or returning unbounded output
+
+#### Scenario: An explicit env is passed to the child exactly
+
+- GIVEN a `CommandSpec` with `env: { EXAMPLE_VAR: "value" }`
+- WHEN the executor spawns the child
+- THEN the captured `execFile` options' `env` is exactly `{ EXAMPLE_VAR: "value" }`
+
+#### Scenario: process.env is never inherited, with or without an explicit env
+
+- GIVEN a sentinel variable set in the parent process, and separately a `CommandSpec` with an explicit `env` and one with no `env`
+- WHEN the executor spawns each child
+- THEN neither child's captured `env` contains the parent's sentinel variable
+
+#### Scenario: A spec with no env still spawns with exactly {}
+
+- GIVEN a `CommandSpec` with no `env` field supplied
+- WHEN the executor spawns the child
+- THEN the captured `execFile` options' `env` is exactly `{}`, identical to the executor's behavior before this change
 
 ### Requirement: Output Truncation and Pagination
 
