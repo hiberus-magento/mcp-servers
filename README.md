@@ -106,16 +106,43 @@ Docs: docs/aco-onboarding.md
 
 ### @hiberus-magento/magento-cloud
 
-The magento-cloud MCP server, wrapping the magento-cloud CLI for read-only Magento Cloud operations.
+Magento Cloud CLI wrapper — CLI and MCP server for read-only Magento Cloud project, environment, and database operations.
 
 - Domain: magento-cloud
-- Status: internal
-- Binary: `hiberus-magento-cloud`
+- Status: alpha
+- Binary: `hiberus-magento-cloud-mcp`
 
 Tools:
 
-- `noop` (read-only) — A no-op tool used only to exercise the packaging gate.
-- `read-echo` (read-only) — Echoes a message back through an allowlisted read-only subprocess call, proving stdout stays pure JSON-RPC even though a child process is spawned.
+- `magentocloud_auth_status` (read-only) — Use this to check whether the Magento Cloud CLI is authenticated before calling any other magentocloud_* tool. Never requires a credential itself.
+- `magentocloud_list_projects` (read-only) — Use this to list every project accessible to the authenticated account — the starting point for finding a projectId.
+- `magentocloud_describe_project` (read-only) — Use this to get one project's title and region by projectId, before listing its environments.
+- `magentocloud_list_environments` (read-only) — Use this to list a project's environments (id, status, type, title) — most other tools need an environmentId as input.
+- `magentocloud_describe_environment` (read-only) — Use this to get one environment's status and type by projectId/environmentId.
+- `magentocloud_get_environment_config` (read-only) — Use this to fetch environment configuration facets on demand: variables, routes, services, serviceEndpoints (credentials never returned), and appConfig.
+- `magentocloud_get_activities` (read-only) — Use this to list recent deployment/activity events for a project, or to fetch one activity by activityId.
+- `magentocloud_query_database` (read-only) — Use this for a bounded, read-only diagnostic query against an environment's database — a size check, or a single guarded SELECT/SHOW/DESCRIBE/EXPLAIN statement.
+
+Configure in an MCP client. Pin the exact version; pass secrets as environment variable references, never literal values:
+
+```json
+{
+  "mcpServers": {
+    "hiberus-magento-cloud-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@hiberus-magento/magento-cloud@0.0.0"
+      ],
+      "env": {
+        "MAGENTO_CLOUD_CLI_TOKEN": "${MAGENTO_CLOUD_CLI_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+Docs: docs/magento-cloud-onboarding.md
 
 <!-- servers:end -->
 

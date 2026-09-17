@@ -120,21 +120,61 @@
     {
       "id": "magento-cloud",
       "package": "@hiberus-magento/magento-cloud",
-      "bin": "hiberus-magento-cloud",
+      "bin": "hiberus-magento-cloud-mcp",
       "version": "0.0.0",
       "domain": "magento-cloud",
-      "status": "internal",
-      "description": "The magento-cloud MCP server, wrapping the magento-cloud CLI for read-only Magento Cloud operations.",
+      "status": "alpha",
+      "description": "Magento Cloud CLI wrapper — CLI and MCP server for read-only Magento Cloud project, environment, and database operations.",
+      "docs": "docs/magento-cloud-onboarding.md",
+      "requires": {
+        "binaries": [
+          "magento-cloud",
+          "hiberus-magento-cloud"
+        ],
+        "env": [
+          "MAGENTO_CLOUD_CLI_TOKEN"
+        ]
+      },
       "tools": [
         {
-          "name": "noop",
+          "name": "magentocloud_auth_status",
           "readOnly": true,
-          "description": "A no-op tool used only to exercise the packaging gate."
+          "description": "Use this to check whether the Magento Cloud CLI is authenticated before calling any other magentocloud_* tool. Never requires a credential itself."
         },
         {
-          "name": "read-echo",
+          "name": "magentocloud_list_projects",
           "readOnly": true,
-          "description": "Echoes a message back through an allowlisted read-only subprocess call, proving stdout stays pure JSON-RPC even though a child process is spawned."
+          "description": "Use this to list every project accessible to the authenticated account — the starting point for finding a projectId."
+        },
+        {
+          "name": "magentocloud_describe_project",
+          "readOnly": true,
+          "description": "Use this to get one project's title and region by projectId, before listing its environments."
+        },
+        {
+          "name": "magentocloud_list_environments",
+          "readOnly": true,
+          "description": "Use this to list a project's environments (id, status, type, title) — most other tools need an environmentId as input."
+        },
+        {
+          "name": "magentocloud_describe_environment",
+          "readOnly": true,
+          "description": "Use this to get one environment's status and type by projectId/environmentId."
+        },
+        {
+          "name": "magentocloud_get_environment_config",
+          "readOnly": true,
+          "description": "Use this to fetch environment configuration facets on demand: variables, routes, services, serviceEndpoints (credentials never returned), and appConfig."
+        },
+        {
+          "name": "magentocloud_get_activities",
+          "readOnly": true,
+          "description": "Use this to list recent deployment/activity events for a project, or to fetch one activity by activityId."
+        },
+        {
+          "name": "magentocloud_query_database",
+          "readOnly": true,
+          "description": "Use this for a bounded, read-only diagnostic query against an environment's database — a size check, or a single guarded SELECT/SHOW/DESCRIBE/EXPLAIN statement."
         }
       ]
     }
