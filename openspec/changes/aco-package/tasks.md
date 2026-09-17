@@ -95,26 +95,26 @@ Chain strategy: size-exception
 >
 > So `MintedTokenProvider` refreshes automatically and all six tools stay alive indefinitely. Build both paths as the tasks below already do, but the mint path is the one that must work on day one; the pasted Bearer remains as an explicit override for an operator without Developer Console access. Both were already specified — only which is primary changed.
 
-- [ ] 3.1 RED `packages/aco/src/credential-provider.test.ts`: `selectAdminProvider()` precedence, all 4 input combinations; stored/env Bearer wins unconditionally over client credentials.
-- [ ] 3.2 GREEN: implement `selectAdminProvider` as a pure function in `packages/aco/src/credential-provider.ts`.
-- [ ] 3.3 RED same file: `PastedBearerProvider.getToken()` decodes `created_at`/`expires_in` WITHOUT signature verification; elapsed decoded expiry throws `CredentialExpiredError` BEFORE any request (assert fetch double never called).
-- [ ] 3.4 GREEN: implement `PastedBearerProvider implements TokenProvider` — a domain class over `mcp-core`'s exported, unchanged `TokenProvider` interface.
-- [ ] 3.5 RED same file, minted path, using `vi.useFakeTimers()` (required: `MintedTokenProvider.getToken()` reads `Date.now()` directly, not an injected clock): two concurrent expired-token calls trigger exactly ONE IMS mint; a live `AdminScopeError` (200-with-errors on an admin route) becomes `CredentialExpiredError` naming both exits, Adobe's message appended, original preserved as `cause`.
-- [ ] 3.6 GREEN: wire `MintedTokenProvider` (POST `ims/token/v3`, `grant_type=client_credentials`) and `relayCredentialFailure()` — the ONLY place an `AcoError` becomes an mcp-core credential error.
-- [ ] 3.7 RED: self-heal proof — two calls either side of a config-file rewrite: expired stored Bearer fails call 1, replaced value succeeds on the immediate NEXT call, no restart.
-- [ ] 3.8 GREEN: confirm `PastedBearerProvider` re-reads `resolveCredentialValue` on every `getToken()` (never cached at startup).
-- [ ] 3.9 Run `git diff --quiet -- packages/mcp-core/` after this phase — must report zero changes; add as an explicit checked step, not an assumption.
+- [x] 3.1 RED `packages/aco/src/credential-provider.test.ts`: `selectAdminProvider()` precedence, all 4 input combinations; stored/env Bearer wins unconditionally over client credentials.
+- [x] 3.2 GREEN: implement `selectAdminProvider` as a pure function in `packages/aco/src/credential-provider.ts`.
+- [x] 3.3 RED same file: `PastedBearerProvider.getToken()` decodes `created_at`/`expires_in` WITHOUT signature verification; elapsed decoded expiry throws `CredentialExpiredError` BEFORE any request (assert fetch double never called).
+- [x] 3.4 GREEN: implement `PastedBearerProvider implements TokenProvider` — a domain class over `mcp-core`'s exported, unchanged `TokenProvider` interface.
+- [x] 3.5 RED same file, minted path, using `vi.useFakeTimers()` (required: `MintedTokenProvider.getToken()` reads `Date.now()` directly, not an injected clock): two concurrent expired-token calls trigger exactly ONE IMS mint; a live `AdminScopeError` (200-with-errors on an admin route) becomes `CredentialExpiredError` naming both exits, Adobe's message appended, original preserved as `cause`.
+- [x] 3.6 GREEN: wire `MintedTokenProvider` (POST `ims/token/v3`, `grant_type=client_credentials`) and `relayCredentialFailure()` — the ONLY place an `AcoError` becomes an mcp-core credential error.
+- [x] 3.7 RED: self-heal proof — two calls either side of a config-file rewrite: expired stored Bearer fails call 1, replaced value succeeds on the immediate NEXT call, no restart.
+- [x] 3.8 GREEN: confirm `PastedBearerProvider` re-reads `resolveCredentialValue` on every `getToken()` (never cached at startup).
+- [x] 3.9 Run `git diff --quiet -- packages/mcp-core/` after this phase — must report zero changes; add as an explicit checked step, not an assumption.
 
 ## Phase 4: CLI Adapter
 
-- [ ] 4.1 RED `packages/aco/src/cli.test.ts`: `--token`/`--token=` both exit non-zero before persisting; stdin intake persists at mode `0600`; `CLI_OPTIONS` table contains no name matching `/token|key|secret|password/i`.
-- [ ] 4.2 GREEN `packages/aco/src/cli.ts`: `CLI_OPTIONS`, stdin-only intake, `auth mint`/`auth status`.
-- [ ] 4.3 RED same file: `provision` with no `--yes` issues zero mutations, output states dry run; `--yes` twice vs. unchanged state issues mutations only on pass 1.
-- [ ] 4.4 GREEN: wire `provision` command to `client/provision.ts`.
-- [ ] 4.5 RED same file: every CLI-only op (`provision`, `policy disable --all`, `view prune`, `view delete`, `policy delete`, `auth`/`profile`, `api query`, `policy init`) exists ONLY here; a missing-credential command exits non-zero.
-- [ ] 4.6 GREEN: implement remaining CLI-only commands.
-- [ ] 4.7 RED (threat matrix — untrusted upstream text): an `errors[].message` containing `;`, backticks, an ANSI escape, and a token-shaped value is redacted via `redact()` before writing to stderr.
-- [ ] 4.8 GREEN: apply `redact()` on the CLI error-rendering path.
+- [x] 4.1 RED `packages/aco/src/cli.test.ts`: `--token`/`--token=` both exit non-zero before persisting; stdin intake persists at mode `0600`; `CLI_OPTIONS` table contains no name matching `/token|key|secret|password/i`.
+- [x] 4.2 GREEN `packages/aco/src/cli.ts`: `CLI_OPTIONS`, stdin-only intake, `auth mint`/`auth status`.
+- [x] 4.3 RED same file: `provision` with no `--yes` issues zero mutations, output states dry run; `--yes` twice vs. unchanged state issues mutations only on pass 1.
+- [x] 4.4 GREEN: wire `provision` command to `client/provision.ts` (via `AcoClient.provisioning.provision` — see Deviations: `cli.ts` cannot deep-import `client/provision.ts` directly under the boundary rule, so `client/index.ts` now wires `provision` onto the returned client instance instead of re-exporting the bare function).
+- [x] 4.5 RED same file: every CLI-only op (`provision`, `policy disable --all`, `view prune`, `view delete`, `policy delete`, `auth`/`profile`, `api query`, `policy init`) exists ONLY here; a missing-credential command exits non-zero.
+- [x] 4.6 GREEN: implement remaining CLI-only commands.
+- [x] 4.7 RED (threat matrix — untrusted upstream text): an `errors[].message` containing `;`, backticks, an ANSI escape, and a token-shaped value is redacted via `redact()` before writing to stderr.
+- [x] 4.8 GREEN: apply `redact()` on the CLI error-rendering path.
 
 ## Phase 5: MCP Tools & Server (depends on Phases 2, 3)
 

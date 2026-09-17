@@ -87,6 +87,28 @@ describe("createAcoClient — wiring", () => {
   });
 });
 
+describe("createAcoClient — raw escape hatch (backs the CLI's api query, Phase 4)", () => {
+  it("queryAdmin passes an arbitrary document/variables straight through the admin transport", async () => {
+    const { client } = makeClient({ "POST /admin/graphql RawProbe": graphQlOk({ scopes: [{ locale: "en_US" }] }) });
+
+    const result = await client.raw.queryAdmin("query RawProbe { scopes { locale } }");
+
+    expect(result).toEqual({ scopes: [{ locale: "en_US" }] });
+  });
+
+  it("queryMerchandising passes context through and needs no credential for an unprotected view", async () => {
+    const { client, calls } = makeClient({ "POST /graphql RawMerchProbe": graphQlOk({ productSearch: { total_count: 1 } }) });
+
+    const result = await client.raw.queryMerchandising("query RawMerchProbe { productSearch { total_count } }", undefined, {
+      viewId: "acv-demo-outdoor-gear-eu",
+      locale: "en_US",
+    });
+
+    expect(result).toEqual({ productSearch: { total_count: 1 } });
+    expect(calls[0]?.headers["authorization"]).toBeUndefined();
+  });
+});
+
 describe("client/index.ts — exported runtime surface", () => {
   it("exports exactly the error classes and the factory", () => {
     expect(Object.keys(clientModule).sort()).toEqual(
