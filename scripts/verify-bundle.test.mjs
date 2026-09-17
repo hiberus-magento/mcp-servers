@@ -23,6 +23,7 @@ import {
   gateG5BundleShebang,
   gateG5TarballShebang,
   gateG6LicenseInTarball,
+  gateG7Publishable,
 } from "./verify-bundle.mjs";
 
 let workDir;
@@ -332,5 +333,29 @@ describe("gateG6LicenseInTarball", () => {
       expect(error.gate).toBe("G6");
       expect(error.message).toMatch(/missing a LICENSE file/);
     }
+  });
+});
+
+describe("G7: a package the manifest publishes must not be private", () => {
+  // `eds` shipped for two changes carrying the template's `private: true`.
+  // Nothing caught it, because `npm pack` works fine on a private package —
+  // only `npm publish` refuses. The gate verified the tarball and never asked
+  // whether the tarball could ever be published. Internal libraries like
+  // mcp-core and mcp-testing SHOULD stay private; a package listed in
+  // servers.json must not be.
+  it("rejects a private package that servers.json declares", () => {
+    expect(() => gateG7Publishable({ name: "@scope/eds", private: true }, true)).toThrow(/G7/);
+  });
+
+  it("accepts a public package that servers.json declares", () => {
+    expect(() => gateG7Publishable({ name: "@scope/eds", private: false }, true)).not.toThrow();
+  });
+
+  it("accepts a package with no private field at all", () => {
+    expect(() => gateG7Publishable({ name: "@scope/eds" }, true)).not.toThrow();
+  });
+
+  it("leaves an internal library alone — private is correct there", () => {
+    expect(() => gateG7Publishable({ name: "@scope/mcp-core", private: true }, false)).not.toThrow();
   });
 });

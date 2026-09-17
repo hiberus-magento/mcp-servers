@@ -6,7 +6,7 @@
       "bin": "hiberus-eds-mcp",
       "version": "0.0.0",
       "domain": "eds",
-      "status": "planned",
+      "status": "alpha",
       "description": "Edge Delivery Services (EDS) Admin API client — CLI and MCP server.",
       "docs": "docs/eds-onboarding.md",
       "requires": {

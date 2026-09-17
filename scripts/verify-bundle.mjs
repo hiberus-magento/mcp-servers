@@ -253,6 +253,30 @@ export async function gateG5AllTarballShebangs(extractedRoot, bin) {
   }
 }
 
+/**
+ * A package the manifest publishes must not be marked private.
+ *
+ * `eds` carried the template's `private: true` for two whole changes and no
+ * gate noticed, because `npm pack` succeeds on a private package — only
+ * `npm publish` refuses. Every other gate here inspects the tarball, so they
+ * all passed while the package could never actually ship.
+ *
+ * Internal libraries are a different case: `mcp-core` and `mcp-testing` are
+ * SUPPOSED to be private, and are bundled into the servers rather than
+ * published. So the rule keys off `servers.json`, not off the package alone.
+ *
+ * @param {{ name?: string, private?: boolean }} pkg
+ * @param {boolean} declaredInManifest
+ */
+export function gateG7Publishable(pkg, declaredInManifest) {
+  if (declaredInManifest && pkg.private === true) {
+    throw new PackagingGateError(
+      "G7",
+      `"${pkg.name}" is declared in servers.json but marked "private": true — npm publish would refuse it. Remove the private flag, or remove the package from the manifest.`,
+    );
+  }
+}
+
 export function gateG6LicenseInTarball(entries) {
   const hasLicense = entries.some((entry) => /(^|\/)LICENSE$/.test(entry.replace(/^package\//, "")));
   if (!hasLicense) {
@@ -264,6 +288,11 @@ async function main() {
   const packageDir = process.cwd();
   const distDir = join(packageDir, "dist");
   const pkg = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
+
+  // Before inspecting the artifact at all, ask whether it could ever ship.
+  const manifest = JSON.parse(readFileSync(join(packageDir, "..", "..", "servers.json"), "utf8"));
+  const declaredInManifest = (manifest.servers ?? []).some((server) => server.package === pkg.name);
+  gateG7Publishable(pkg, declaredInManifest);
 
   const bundleNames = gateG1SingleBundle(distDir, pkg.bin);
   const bundlePaths = bundleNames.map((name) => join(distDir, name));

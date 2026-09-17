@@ -28,7 +28,7 @@ These three acronyms are adjacent, are **not** the same thing, and Adobe has ren
 Edge Delivery Services (EDS) Admin API client — CLI and MCP server.
 
 - Domain: eds
-- Status: planned
+- Status: alpha
 - Binary: `hiberus-eds-mcp`
 
 Tools:
