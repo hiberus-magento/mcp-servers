@@ -44,4 +44,24 @@ describe("listPolicies", () => {
     expect(result.policies).toEqual(POLICIES_FIXTURE.policies);
     expect(calls[0]?.operationName).toBe("ListPolicies");
   });
+
+  it("round-trips an `enabled` field when Adobe's schema returns it (tasks.md 5.7/5.8 — requested defensively, not in the canonical fixture)", async () => {
+    const { fetch } = createFetchDouble({
+      "POST /admin/graphql ListPolicies": graphQlOk({ policies: [{ policyId: "pol-demo-2", name: "home-decor-discount", mandatory: false, actions: [], enabled: true }] }),
+    });
+    const transport = createAdminTransport({ fetch, now: FIXED_NOW, sleep: NOOP_SLEEP, baseUrl: "https://admin.aco.example/admin/graphql", tokenProvider: stubTokenProvider() });
+
+    const result = await listPolicies(transport);
+
+    expect(result.policies[0]?.enabled).toBe(true);
+  });
+
+  it("resolves `enabled` to undefined when Adobe's schema does not return it (the canonical fixture's own shape)", async () => {
+    const { fetch } = createFetchDouble({ "POST /admin/graphql ListPolicies": graphQlOk(POLICIES_FIXTURE) });
+    const transport = createAdminTransport({ fetch, now: FIXED_NOW, sleep: NOOP_SLEEP, baseUrl: "https://admin.aco.example/admin/graphql", tokenProvider: stubTokenProvider() });
+
+    const result = await listPolicies(transport);
+
+    expect(result.policies[0]?.enabled).toBeUndefined();
+  });
 });

@@ -118,25 +118,25 @@ Chain strategy: size-exception
 
 ## Phase 5: MCP Tools & Server (depends on Phases 2, 3)
 
-- [ ] 5.1 RED `packages/aco/src/tools/aco-tools.test.ts`: `createAcoTools(...).map(t=>t.name).sort()` deep-equals the six names, `toHaveLength(6)`; negative — `CLI_ONLY_OPERATIONS` list has no corresponding tool name.
-- [ ] 5.2 GREEN `packages/aco/src/tools/aco-tools.ts`: six `defineTool()` registrations, `.strict()` zod inputs (STRICT — deliberate inverse of 2.2's TOLERANT client parsing).
-- [ ] 5.3 RED `packages/aco/src/mcp.test-d.ts`: `acoTogglePolicyInput["mode"]` is exactly `"named"`; `{mode:"all",...}` NOT assignable.
-- [ ] 5.4 GREEN: `nonEmptyPolicyNames` (`min(1).max(50)`), `acoTogglePolicyInput` with `mode: z.literal("named")` only — no `"all"` branch anywhere.
-- [ ] 5.5 RED runtime: `safeParse` rejects `mode:"all"`, `names:[]`, omitted `names`, unknown keys.
-- [ ] 5.6 GREEN: confirm 5.4's schema satisfies 5.5.
-- [ ] 5.7 RED: a policy already at the target `enabled` state issues NO `updatePolicy` for it; result reports `changed:false`.
-- [ ] 5.8 GREEN: implement the toggle handler's early-exit.
-- [ ] 5.9 RED (Tier boundary): with no admin credential resolvable, Tier-A tools succeed and all four Tier-B tools return `isError:true` naming `hiberus-aco auth token set`, no hang/throw (six `invoke()` calls, empty config dir).
-- [ ] 5.10 GREEN: wire `relayCredentialFailure` (3.6) into the four Tier-B handlers; confirm `defineTool.invoke`'s existing catch of `MissingCredentialError`/`CredentialExpiredError` (read-only, `packages/mcp-core/src/tools/define-tool.ts`) needs no change.
-- [ ] 5.11 RED: description scan — all four Tier-B descriptions contain `hiberus-aco auth token set`; neither Tier-A description does; every description states WHEN to use the tool.
-- [ ] 5.12 GREEN: write the six tool descriptions.
-- [ ] 5.13 RED: `aco_get_facet_values` tool-layer boundary #2 — non-facetable attribute returns `{facetable:false,reason}`, exactly ONE product-list request (mirrors 2.8 at the client layer).
-- [ ] 5.14 GREEN: confirm the tool handler passes the client's closed union through with no added sampling path.
-- [ ] 5.15 RED: Merchandising-track tools carry no `Authorization`/`x-api-key`/`X-Auth-Token` header for an unprotected view.
-- [ ] 5.16 GREEN: confirm adapter-level pass-through (satisfied by 1.12/2.7).
-- [ ] 5.17 RED: five tools annotated `true/false/true`; `aco_toggle_policy` annotated `false/true/true`.
-- [ ] 5.18 GREEN: set annotations on all six `defineTool()` calls.
-- [ ] 5.19 Implement `packages/aco/src/mcp.ts`: `hiberus-aco-mcp` entrypoint, `createStdioServer()`, unconditional `server.connect(transport)` at module top level (kept out of `aco-tools.ts` so unit tests import the factory without connecting).
+- [x] 5.1 RED `packages/aco/src/tools/aco-tools.test.ts`: `createAcoTools(...).map(t=>t.name).sort()` deep-equals the six names, `toHaveLength(6)`; negative — `CLI_ONLY_OPERATIONS` list has no corresponding tool name.
+- [x] 5.2 GREEN `packages/aco/src/tools/aco-tools.ts`: six `defineTool()` registrations, `.strict()` zod inputs (STRICT — deliberate inverse of 2.2's TOLERANT client parsing).
+- [x] 5.3 RED `packages/aco/src/mcp.test-d.ts`: `acoTogglePolicyInput["mode"]` is exactly `"named"`; `{mode:"all",...}` NOT assignable.
+- [x] 5.4 GREEN: `nonEmptyPolicyNames` (`min(1).max(50)`), `acoTogglePolicyInput` with `mode: z.literal("named")` only — no `"all"` branch anywhere.
+- [x] 5.5 RED runtime: `safeParse` rejects `mode:"all"`, `names:[]`, omitted `names`, unknown keys.
+- [x] 5.6 GREEN: confirm 5.4's schema satisfies 5.5.
+- [x] 5.7 RED: a policy already at the target `enabled` state issues NO `updatePolicy` for it; result reports `changed:false`. (Deviation, reported: `ListPolicies`'s Q_POLICIES wire shape has no top-level `enabled` field per exploration.md — added `enabled?: boolean` defensively to `PolicyResult`/`LIST_POLICIES_DOCUMENT`, tolerant per Decision 4; when absent, the toggle handler cannot prove a no-op and always writes.)
+- [x] 5.8 GREEN: implement the toggle handler's early-exit.
+- [x] 5.9 RED (Tier boundary): with no admin credential resolvable, Tier-A tools succeed and all four Tier-B tools return `isError:true` naming `hiberus-aco auth token set`, no hang/throw (six `invoke()` calls, empty config dir).
+- [x] 5.10 GREEN: wire `relayCredentialFailure` (3.6) into the four Tier-B handlers; confirm `defineTool.invoke`'s existing catch of `MissingCredentialError`/`CredentialExpiredError` (read-only, `packages/mcp-core/src/tools/define-tool.ts`) needs no change.
+- [x] 5.11 RED: description scan — all four Tier-B descriptions contain `hiberus-aco auth token set`; neither Tier-A description does; every description states WHEN to use the tool.
+- [x] 5.12 GREEN: write the six tool descriptions.
+- [x] 5.13 RED: `aco_get_facet_values` tool-layer boundary #2 — non-facetable attribute returns `{facetable:false,reason}`, exactly ONE product-list request (mirrors 2.8 at the client layer).
+- [x] 5.14 GREEN: confirm the tool handler passes the client's closed union through with no added sampling path.
+- [x] 5.15 RED: Merchandising-track tools carry no `Authorization`/`x-api-key`/`X-Auth-Token` header for an unprotected view.
+- [x] 5.16 GREEN: confirm adapter-level pass-through (satisfied by 1.12/2.7).
+- [x] 5.17 RED: five tools annotated `true/false/true`; `aco_toggle_policy` annotated `false/true/true`.
+- [x] 5.18 GREEN: set annotations on all six `defineTool()` calls.
+- [x] 5.19 Implement `packages/aco/src/mcp.ts`: `hiberus-aco-mcp` entrypoint, `createStdioServer()`, unconditional `server.connect(transport)` at module top level (kept out of `aco-tools.ts` so unit tests import the factory without connecting).
 
 ## Phase 6: Conformance & Packaging Gate
 

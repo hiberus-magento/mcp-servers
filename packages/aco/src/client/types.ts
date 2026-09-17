@@ -140,6 +140,17 @@ export interface PolicyResult {
   readonly name: string;
   readonly mandatory?: boolean;
   readonly actions?: readonly unknown[];
+  /**
+   * Added in Phase 5 (tasks.md 5.7/5.8): a genuine schema gap discovered
+   * during apply, not part of the Python CLI's own `Q_POLICIES` field list
+   * (exploration.md) — that CLI's own `policy enable`/`disable` never reads
+   * current state back either. Requested defensively so `aco_toggle_policy`
+   * can implement its no-op-at-already-held-state requirement WHEN Adobe's
+   * schema actually returns it; when absent (undefined), the toggle handler
+   * cannot prove a no-op and always writes the change instead of
+   * silently claiming `changed: false` on unknown state.
+   */
+  readonly enabled?: boolean;
 }
 
 export interface ListPoliciesResult {
@@ -159,6 +170,7 @@ export function parseListPoliciesResult(data: ClassifiedData<unknown>, operation
       name,
       ...withOptional("mandatory", optionalBoolean(policyRecord, "mandatory")),
       ...withOptional("actions", actions),
+      ...withOptional("enabled", optionalBoolean(policyRecord, "enabled")),
     };
   });
   return { policies };
