@@ -23,11 +23,15 @@ export {
 } from "./conformance/cold-start.js";
 export { JsonRpcClient, type JsonRpcClientOptions, type RawStdoutLine } from "./jsonrpc-client.js";
 export {
+  SYNTHETIC_AC_PRICE_BOOK_ID_PREFIX,
+  SYNTHETIC_AC_VIEW_ID_PREFIX,
+  SYNTHETIC_CURRENCIES,
   SYNTHETIC_DOMAIN,
   SYNTHETIC_LOCALES,
   SYNTHETIC_ORG,
   SYNTHETIC_SITES,
   SYNTHETIC_VERTICALS,
+  type SyntheticCurrency,
   type SyntheticLocale,
   type SyntheticSite,
   type SyntheticVertical,

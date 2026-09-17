@@ -1,0 +1,3 @@
+{
+  "policies": [{ "policyId": "pol-demo-1", "name": "outdoor-gear-discount", "mandatory": false, "actions": [] }]
+}

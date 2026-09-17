@@ -1,0 +1,50 @@
+// Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
+//
+// RED-first (tasks.md 2.16): mirrors `packages/eds/eslint-fixtures.test.ts`
+// (read-only) and `packages/mcp-core/eslint-fixtures.test.ts` — proves the
+// client-boundary `no-restricted-imports` rule fires against a REAL deep
+// import into `packages/aco/src/client/graphql.js`, naming `client/index` in
+// the violation message (aco-client spec, "Client Boundary Import"). Task
+// 2.17 is the GREEN half: this test passes with NO production change to
+// `eslint.config.js` — its `packages/**/src/**` / `packages/*/eslint-fixtures/**`
+// globs already cover this package, proving the boundary rule generalizes
+// rather than needing a per-package carve-out.
+import { fileURLToPath } from "node:url";
+import { ESLint } from "eslint";
+import { describe, expect, it } from "vitest";
+
+const ROOT_CONFIG_PATH = fileURLToPath(new URL("../../eslint.config.js", import.meta.url));
+
+async function lintFixture(relativeFixturePath: string) {
+  const eslint = new ESLint({
+    overrideConfigFile: ROOT_CONFIG_PATH,
+    cwd: fileURLToPath(new URL("../..", import.meta.url)),
+    // The root config globally ignores `eslint-fixtures/**` so the normal
+    // `eslint .` CI task never fails on these deliberately-violating files.
+    // Disable that ignore here, since proving the rule fires against them
+    // is the entire point of this test.
+    ignore: false,
+  });
+  const fixturePath = fileURLToPath(new URL(relativeFixturePath, import.meta.url));
+  const results = await eslint.lintFiles([fixturePath]);
+  const result = results[0];
+  if (!result) {
+    throw new Error(`eslint produced no result for fixture: ${fixturePath}`);
+  }
+  return result;
+}
+
+describe("aco client-boundary eslint-fixtures", () => {
+  it("flags a deep import into packages/aco/src/client/graphql.ts with no-restricted-imports", async () => {
+    const result = await lintFixture("./eslint-fixtures/deep-client-import.ts");
+    const ruleIds = result.messages.map((message) => message.ruleId);
+    expect(ruleIds).toContain("no-restricted-imports");
+  });
+
+  it("names the client boundary (client/index) in the violation message", async () => {
+    const result = await lintFixture("./eslint-fixtures/deep-client-import.ts");
+    const restrictedImportMessages = result.messages.filter((message) => message.ruleId === "no-restricted-imports");
+    expect(restrictedImportMessages.length).toBeGreaterThanOrEqual(1);
+    expect(restrictedImportMessages.some((message) => message.message.includes("client/index"))).toBe(true);
+  });
+});

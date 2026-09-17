@@ -68,26 +68,26 @@ Chain strategy: size-exception
 
 ## Phase 2: Client Domain Layer (depends on Phase 1)
 
-- [ ] 2.1 RED `packages/aco/src/client/types.test.ts`: unrecognized extra field passes through; missing OPTIONAL field → `undefined`; missing KEYED field (`channels[].channelId`, `priceBooks.items[].id`, `policies[].policyId`/`name`) → `AcoSchemaMismatchError` naming operation+field.
-- [ ] 2.2 GREEN `packages/aco/src/client/types.ts`: hand-written TOLERANT narrowing (no `.strict()` — deliberate inversion of the wire-gate rule; do not conflate with 5.2's tool-input `.strict()`).
-- [ ] 2.3 RED/GREEN `packages/aco/src/client/operations/scopes.ts` + test: named `ListScopes` query.
-- [ ] 2.4 RED/GREEN `packages/aco/src/client/operations/channels.ts` + test: named `ListChannels` query.
-- [ ] 2.5 RED/GREEN `packages/aco/src/client/operations/policies.ts` + test: named `ListPolicies` query.
-- [ ] 2.6 RED/GREEN `packages/aco/src/client/operations/price-books.ts` + test: named `ListPriceBooks` query, `ScrollPage<PriceBook>`.
-- [ ] 2.7 RED/GREEN `packages/aco/src/client/operations/search.ts` + test: named `SearchCatalog` (`productSearch`) query.
-- [ ] 2.8 RED `packages/aco/src/client/operations/facets.test.ts`: non-facetable attribute (fixture has no buckets for it) → `{facetable:false,reason}`; `fetchDouble.calls` length is exactly **1** — client-layer structural boundary #1 against the sampling fallback.
-- [ ] 2.9 GREEN `packages/aco/src/client/operations/facets.ts`: named `FacetValues` query, closed union return type.
-- [ ] 2.10 RED `packages/aco/src/client/operations/mutations.test.ts`: source-scan — token `mutation ` appears only in this file under `client/`; `AdminMutationName` is a closed 6-member union.
-- [ ] 2.11 GREEN `packages/aco/src/client/operations/mutations.ts`: `createChannel`/`updateChannel`/`deleteChannel`/`createPolicy`/`updatePolicy`/`deletePolicy`, all named, `idempotent:false`.
-- [ ] 2.12 RED `packages/aco/src/client/index.test.ts`: factory wires transports/rate-limiters/retry by track; exported surface is exactly the error classes + result types + factory.
-- [ ] 2.13 GREEN `packages/aco/src/client/index.ts`: the only public surface.
-- [ ] 2.14 RED `packages/aco/src/client/provision.test.ts`: default issues ZERO mutations; second run vs. unchanged fixture issues none; a zero-match vertical aborts the WHOLE run before any write; view-create is TWO calls (`createChannel` then `updateChannel` for `defaultPriceBookId`).
-- [ ] 2.15 GREEN `packages/aco/src/client/provision.ts`: four-step pure pipeline over injected values, dry-run default.
-- [ ] 2.16 RED `packages/aco/eslint-fixtures/deep-client-import.ts`: deliberately imports a deep `client/` path; extend the repo's `eslint-fixtures.test.ts` pattern to assert `no-restricted-imports` fires with the exact rule id for `aco` (boundary-rule FAILURE branch).
-- [ ] 2.17 GREEN: confirm no production change needed — `eslint.config.js`'s boundary rule already covers `packages/**/src/**`.
-- [ ] 2.18 RED `packages/aco/src/cross-domain.test.ts`: one row written ACO-side with an `ac_view_id`, read back via the EDS-side config path for the same `(vertical, site)`.
-- [ ] 2.19 GREEN: add `"@hiberus-magento/eds": "workspace:*"` as `devDependency` in `packages/aco/package.json`; make 2.18 pass proving shared state, not two parses.
-- [ ] 2.20 Create `packages/aco/fixtures/*.json` backing 2.3-2.15, every value from `synthetic-identifiers.ts`.
+- [x] 2.1 RED `packages/aco/src/client/types.test.ts`: unrecognized extra field passes through; missing OPTIONAL field → `undefined`; missing KEYED field (`channels[].channelId`, `priceBooks.items[].id`, `policies[].policyId`/`name`) → `AcoSchemaMismatchError` naming operation+field.
+- [x] 2.2 GREEN `packages/aco/src/client/types.ts`: hand-written TOLERANT narrowing (no `.strict()` — deliberate inversion of the wire-gate rule; do not conflate with 5.2's tool-input `.strict()`).
+- [x] 2.3 RED/GREEN `packages/aco/src/client/operations/scopes.ts` + test: named `ListScopes` query.
+- [x] 2.4 RED/GREEN `packages/aco/src/client/operations/channels.ts` + test: named `ListChannels` query.
+- [x] 2.5 RED/GREEN `packages/aco/src/client/operations/policies.ts` + test: named `ListPolicies` query.
+- [x] 2.6 RED/GREEN `packages/aco/src/client/operations/price-books.ts` + test: named `ListPriceBooks` query, `ScrollPage<PriceBook>`.
+- [x] 2.7 RED/GREEN `packages/aco/src/client/operations/search.ts` + test: named `SearchCatalog` (`productSearch`) query.
+- [x] 2.8 RED `packages/aco/src/client/operations/facets.test.ts`: non-facetable attribute (fixture has no buckets for it) → `{facetable:false,reason}`; `fetchDouble.calls` length is exactly **1** — client-layer structural boundary #1 against the sampling fallback.
+- [x] 2.9 GREEN `packages/aco/src/client/operations/facets.ts`: named `FacetValues` query, closed union return type.
+- [x] 2.10 RED `packages/aco/src/client/operations/mutations.test.ts`: source-scan — token `mutation ` appears only in this file under `client/`; `AdminMutationName` is a closed 6-member union.
+- [x] 2.11 GREEN `packages/aco/src/client/operations/mutations.ts`: `createChannel`/`updateChannel`/`deleteChannel`/`createPolicy`/`updatePolicy`/`deletePolicy`, all named, `idempotent:false`.
+- [x] 2.12 RED `packages/aco/src/client/index.test.ts`: factory wires transports/rate-limiters/retry by track; exported surface is exactly the error classes + result types + factory.
+- [x] 2.13 GREEN `packages/aco/src/client/index.ts`: the only public surface.
+- [x] 2.14 RED `packages/aco/src/client/provision.test.ts`: default issues ZERO mutations; second run vs. unchanged fixture issues none; a zero-match vertical aborts the WHOLE run before any write; view-create is TWO calls (`createChannel` then `updateChannel` for `defaultPriceBookId`).
+- [x] 2.15 GREEN `packages/aco/src/client/provision.ts`: four-step pure pipeline over injected values, dry-run default.
+- [x] 2.16 RED `packages/aco/eslint-fixtures/deep-client-import.ts`: deliberately imports a deep `client/` path; extend the repo's `eslint-fixtures.test.ts` pattern to assert `no-restricted-imports` fires with the exact rule id for `aco` (boundary-rule FAILURE branch).
+- [x] 2.17 GREEN: confirm no production change needed — `eslint.config.js`'s boundary rule already covers `packages/**/src/**`.
+- [x] 2.18 RED `packages/aco/src/cross-domain.test.ts`: one row written ACO-side with an `ac_view_id`, read back via the EDS-side config path for the same `(vertical, site)`.
+- [x] 2.19 GREEN: add `"@hiberus-magento/eds": "workspace:*"` as `devDependency` in `packages/aco/package.json`; make 2.18 pass proving shared state, not two parses.
+- [x] 2.20 Create `packages/aco/fixtures/*.json` backing 2.3-2.15, every value from `synthetic-identifiers.ts`.
 
 ## Phase 3: Credential Provider (adapter layer only, never inside `client/`) — the MINT path is primary
 

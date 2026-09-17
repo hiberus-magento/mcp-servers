@@ -41,9 +41,15 @@ importers:
 
   packages/aco:
     devDependencies:
+      '@hiberus-magento/eds':
+        specifier: workspace:*
+        version: link:../eds
       '@hiberus-magento/mcp-core':
         specifier: workspace:*
         version: link:../mcp-core
+      '@hiberus-magento/mcp-testing':
+        specifier: workspace:*
+        version: link:../mcp-testing
       '@modelcontextprotocol/sdk':
         specifier: 1.30.0
         version: 1.30.0(zod@4.5.4)

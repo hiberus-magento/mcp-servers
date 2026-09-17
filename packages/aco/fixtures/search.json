@@ -1,0 +1,7 @@
+{
+  "productSearch": {
+    "total_count": 1,
+    "items": [{ "productView": { "attributes": [{ "name": "sku", "value": "sku-demo-1" }] } }],
+    "facets": []
+  }
+}

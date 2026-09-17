@@ -1,0 +1,8 @@
+{
+  "createChannel": { "createChannel": { "channelId": "chn-demo-1" } },
+  "updateChannel": { "updateChannel": { "channelId": "chn-demo-1" } },
+  "deleteChannel": { "deleteChannel": { "channelId": "chn-demo-1" } },
+  "createPolicy": { "createPolicy": { "policyId": "pol-demo-1" } },
+  "updatePolicy": { "updatePolicy": { "policyId": "pol-demo-1" } },
+  "deletePolicy": { "deletePolicy": { "policyId": "pol-demo-1" } }
+}

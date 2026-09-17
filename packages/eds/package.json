@@ -12,6 +12,9 @@
     "hiberus-eds": "dist/cli.js",
     "hiberus-eds-mcp": "dist/mcp.js"
   },
+  "exports": {
+    "./config/catalog-views.js": "./src/config/catalog-views.ts"
+  },
   "files": [
     "dist",
     "LICENSE",

@@ -1,0 +1,8 @@
+{
+  "page1": {
+    "priceBooks": { "items": [{ "id": "acpb-demo-eur", "name": "Base EUR", "currency": "EUR", "level": "1", "parentIds": [] }], "scrollId": "scroll-page-1" }
+  },
+  "page2": {
+    "priceBooks": { "items": [{ "id": "acpb-demo-usd" }] }
+  }
+}

@@ -31,6 +31,15 @@ export interface GraphQlOperation<TTrack extends Track, TResult> {
   readonly document: string;
   readonly variables?: Readonly<Record<string, unknown>>;
   readonly parse: OperationParser<TResult>;
+  /**
+   * Whether replaying this operation on a retryable failure is safe. Absent
+   * means `true` (queries default to idempotent) — the six admin mutations
+   * (`operations/mutations.ts`) are the only operations that set this to
+   * `false` explicitly, so a misclassified throttle can never replay a
+   * write (design.md, Decision 4). `client/index.ts`'s factory reads this
+   * field to drive `retry.ts`'s `decideRetry`.
+   */
+  readonly idempotent?: boolean;
 }
 
 export interface AdminTransportDeps {
