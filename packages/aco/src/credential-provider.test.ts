@@ -271,3 +271,37 @@ describe("createAdminTokenProvider composition", () => {
     expect(mintCalls).toBe(0);
   });
 });
+
+describe("mint-failure remedies name both exits", () => {
+  // Two structurally similar branches diverged: the no-token branch named both
+  // recovery paths, its insufficient-scope sibling named only re-minting. An
+  // operator who cannot add the API to the Console is then told to retry the
+  // one thing that cannot work for them, with no mention of the paste exit
+  // that can. Neither branch had a test checking message content at all.
+  beforeEach(() => {
+    delete process.env[ACO_TOKEN_ENV_VAR];
+    process.env[ACO_CLIENT_ID_ENV_VAR] = "synthetic-client-id";
+    process.env[ACO_CLIENT_SECRET_ENV_VAR] = "synthetic-client-secret";
+  });
+
+  afterEach(() => {
+    delete process.env[ACO_CLIENT_ID_ENV_VAR];
+    delete process.env[ACO_CLIENT_SECRET_ENV_VAR];
+  });
+
+  const mintWith = (body: unknown) => {
+    const fetchDouble: typeof globalThis.fetch = async () => new Response(JSON.stringify(body), { status: 200 });
+    return createMintedAdminTokenProvider({ fetch: fetchDouble, now: () => Date.now() }).getToken();
+  };
+
+  it("names both exits when IMS returns no access_token", async () => {
+    await expect(mintWith({ error: "unauthorized_client" })).rejects.toThrow(/Adobe Commerce Optimizer Admin/);
+    await expect(mintWith({ error: "unauthorized_client" })).rejects.toThrow(/auth token set/);
+  });
+
+  it("names both exits when IMS grants a token without the required scope", async () => {
+    const insufficient = { access_token: fakeJwt({ scope: "openid,AdobeID" }), expires_in: 86399 };
+    await expect(mintWith(insufficient)).rejects.toThrow(/Adobe Commerce Optimizer Admin/);
+    await expect(mintWith(insufficient)).rejects.toThrow(/auth token set/);
+  });
+});

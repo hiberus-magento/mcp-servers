@@ -141,6 +141,31 @@ describe("aco_toggle_policy — no-op at the already-held state", () => {
     expect(text).toContain('"changed":false');
   });
 
+  it("mutates rather than claiming a no-op when Adobe omits `enabled` entirely", async () => {
+    // The reverse-engineered CLI's own ListPolicies query has no `enabled`
+    // field, so a real tenant may return policies without it. Claiming
+    // "changed: false" there would tell an agent the policy is already in the
+    // requested state when nothing is actually known — the one outcome worse
+    // than an extra write. This is the absent-field case; the tests around it
+    // all set `enabled` explicitly.
+    persistValidBearer(configDir);
+    const { client, calls } = buildClient(
+      {
+        "POST /admin/graphql ListPolicies": graphQlOk({ policies: [{ policyId: "pol-demo-1", name: "outdoor-gear-discount", mandatory: false, actions: [] }] }),
+        "POST /admin/graphql UpdatePolicy": graphQlOk({ updatePolicy: { policyId: "pol-demo-1" } }),
+      },
+      configDir,
+    );
+    const tools = createAcoTools({ getRuntime: () => ({ client }) });
+    const toggle = tools.find((t) => t.name === "aco_toggle_policy")!;
+
+    const result = await toggle.invoke({ mode: "named", names: ["outdoor-gear-discount"], enabled: true }, {});
+
+    expect(result.isError).toBeUndefined();
+    expect(calls.filter((c) => c.operationName === "UpdatePolicy")).toHaveLength(1);
+    expect(result.content[0]?.text ?? "").toContain('"changed":true');
+  });
+
   it("issues updatePolicy when the target state differs from the current one", async () => {
     persistValidBearer(configDir);
     const { client, calls } = buildClient(

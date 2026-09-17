@@ -330,10 +330,14 @@ export async function mintAdminToken(deps: MintAdminTokenDeps): Promise<{ readon
       cliCommand: "hiberus-aco auth mint",
       envVar: ACO_CLIENT_ID_ENV_VAR,
       configPath: credentialFilePath(ACO_DOMAIN, deps.configDir),
+      // Both exits, deliberately — an operator without Developer Console
+      // access cannot take the first one, and telling them only to retry the
+      // mint sends them in a circle.
       reason:
         `IMS granted a token but without the required scope "${REQUIRED_ADMIN_SCOPE}" ` +
         `(granted: ${grantedScopes.length > 0 ? grantedScopes.join(",") : "none"}). ` +
-        `Add the "Adobe Commerce Optimizer Admin" API to the Developer Console project for this credential, then re-attempt hiberus-aco auth mint.`,
+        `Add the "Adobe Commerce Optimizer Admin" API to the Developer Console project for this credential, then re-attempt hiberus-aco auth mint — ` +
+        `or, without console access, paste a Studio session Bearer with hiberus-aco auth token set instead.`,
     });
   }
 

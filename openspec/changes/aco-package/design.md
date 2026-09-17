@@ -411,18 +411,30 @@ export function selectAdminProvider(input: {
 }): { readonly selection: "pasted-bearer" | "minted" | "none"; readonly reason: string };
 ```
 
-Precedence: **a stored/env Bearer wins over client credentials.** An operator only
-pastes a Bearer deliberately — after discovering that `client_credentials` does not
-work for `commerce.aco.admin` in their tenant, which the Python CLI's own field
-notes record. Letting the mint attempt override it would re-break the working path
-on every call and spend a round-trip on a path already known to fail there.
-`hiberus-aco auth mint` stays an explicit command for operators whose org *can*
-grant the scope.
+> **Corrected 2026-09-17.** This section previously justified the precedence
+> below by asserting that `client_credentials` does not work for
+> `commerce.aco.admin`, citing the Python CLI's field notes and a direct test.
+> That premise is FALSE. The test was sound but ran against a credential from a
+> Developer Console project lacking the **Adobe Commerce Optimizer Admin** API,
+> and a credential can only request scopes for APIs its project actually has.
+> With that API added, the grant works: the minted token's decoded JWT carries
+> `scope: "commerce.aco.admin,openid,AdobeID"`. **Minting is the primary path.**
+>
+> The precedence below is unchanged, because it never depended on that premise —
+> only its stated rationale did. The real reason follows.
+
+Precedence: **a stored/env Bearer wins over client credentials.** Pasting a Bearer
+is a deliberate act: an operator does it to use that specific token, usually to
+reproduce something or to work without console access. Letting a mint attempt
+silently override it would send a different credential than the operator believes
+is in use — surprising in the moment, and unanswerable afterwards from the error
+alone. Presence is the signal; no extra configuration is needed to express it.
+`hiberus-aco auth mint` stays an explicit command.
 
 | Alternative | Why rejected |
 |---|---|
 | Try mint, fall back to paste on failure | Silently sends a different credential than the operator believes is in use, and makes "which one failed" unanswerable from the error |
-| Mint wins over a stored Bearer | Guarantees a wasted failing round-trip per call in exactly the tenant the field notes describe |
+| Mint wins over a stored Bearer | Discards an explicit operator choice in favour of an implicit one, which is the wrong default even now that minting works |
 | An `ACO_AUTH_MODE` env var | A third configuration knob to explain, to make explicit a precedence that presence already determines unambiguously |
 
 A scope failure at mint time surfaces as `MissingCredentialError` whose `Remedy.reason`
