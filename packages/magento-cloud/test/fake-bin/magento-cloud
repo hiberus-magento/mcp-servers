@@ -80,7 +80,14 @@ if (argv[0] === "__env-probe") {
 // later phases register more entries here as each command spec's exact
 // argv shape is decided (tasks.md, Phase 3 onward); this file's matching
 // mechanism itself does not change.
-const KNOWN_ARGV = new Map([["auth:info --no-auto-login", { fixture: "auth-info.txt", exitCode: 0 }]]);
+//
+// UPDATED at Phase 9 (tasks.md 9.1-9.2): Phase 3 decided `authInfoSpec`'s
+// real built argv includes a trailing `--format=tsv` (`commands.ts`'s
+// `withFormatTsv`, one of the 15 read-only specs that carry it) — this
+// entry was stale from Phase 1, before that decision existed, and every
+// caller before the conformance suite used a MOCKED `execFile` (never this
+// real fake), so the drift went unnoticed until the first real spawn.
+const KNOWN_ARGV = new Map([["auth:info --no-auto-login --format=tsv", { fixture: "auth-info.txt", exitCode: 0 }]]);
 
 const key = argv.join(" ");
 const entry = KNOWN_ARGV.get(key);

@@ -36,7 +36,12 @@ describe("fake-bin unknown-argv contract", () => {
   });
 
   it("resolves the KNOWN auth:info argv to the canned fixture, as the contrast case", async () => {
-    const { stdout } = await execFileAsync(FAKE_BIN, ["auth:info", "--no-auto-login"]);
+    // UPDATED at Phase 9 (tasks.md 9.1-9.2): the real `authInfoSpec` built
+    // by `commands.ts` always appends `--format=tsv` (`withFormatTsv`) —
+    // this test originally used the Phase 1 argv, written before that
+    // decision existed, and drifted from the corpus's own KNOWN_ARGV entry
+    // once it was corrected for the conformance suite's real spawn.
+    const { stdout } = await execFileAsync(FAKE_BIN, ["auth:info", "--no-auto-login", "--format=tsv"]);
 
     expect(stdout).toContain("acct-demo-0001");
   });
