@@ -89,7 +89,11 @@ Chain strategy: size-exception
 - [ ] 2.19 GREEN: add `"@hiberus-magento/eds": "workspace:*"` as `devDependency` in `packages/aco/package.json`; make 2.18 pass proving shared state, not two parses.
 - [ ] 2.20 Create `packages/aco/fixtures/*.json` backing 2.3-2.15, every value from `synthetic-identifiers.ts`.
 
-## Phase 3: Credential Provider (adapter layer only, never inside `client/`) — paste path first, it is primary on day one
+## Phase 3: Credential Provider (adapter layer only, never inside `client/`) — the MINT path is primary
+
+> Re-ordered 2026-09-17. An earlier run of this plan put the paste path first, on the evidence that `client_credentials` returned `unauthorized_client`. That test was sound but ran against a credential from a Developer Console project that did not have the **Adobe Commerce Optimizer Admin** API added — and a credential can only request scopes for APIs its project actually has. With that API added and a new OAuth Server-to-Server credential, the grant works: the minted token's decoded JWT payload carries `scope: "commerce.aco.admin,openid,AdobeID"`.
+>
+> So `MintedTokenProvider` refreshes automatically and all six tools stay alive indefinitely. Build both paths as the tasks below already do, but the mint path is the one that must work on day one; the pasted Bearer remains as an explicit override for an operator without Developer Console access. Both were already specified — only which is primary changed.
 
 - [ ] 3.1 RED `packages/aco/src/credential-provider.test.ts`: `selectAdminProvider()` precedence, all 4 input combinations; stored/env Bearer wins unconditionally over client credentials.
 - [ ] 3.2 GREEN: implement `selectAdminProvider` as a pure function in `packages/aco/src/credential-provider.ts`.
@@ -156,7 +160,7 @@ Chain strategy: size-exception
 
 - [ ] 8.1 Add the `aco` entry to `servers.json` — six real tools, `status:"planned"`, `docs:"docs/aco-onboarding.md"`.
 - [ ] 8.2 Run `scripts/gen-readme.mjs` (read-only); commit only its output — never hand-edit `README.md`.
-- [ ] 8.3 Create `docs/aco-onboarding.md` (follows `docs/eds-onboarding.md` (read-only) precedent): admin bootstrap steps, and state PLAINLY that `client_credentials` was tested directly against a real Developer Console credential this session and failed `unauthorized_client` even scoped to bare `openid,AdobeID` — confirmed not an empty-variable or wrong-credential-type artifact — so paste is the day-one primary path, not a fallback to re-litigate.
+- [ ] 8.3 Create `docs/aco-onboarding.md` (follows `docs/eds-onboarding.md` precedent). The admin bootstrap must lead with the requirement that trips everyone: **add the "Adobe Commerce Optimizer Admin" API to the Developer Console project and create an OAuth Server-to-Server credential there.** A credential from a project lacking that API fails `client_credentials` with `unauthorized_client` even for bare `openid,AdobeID`, which reads like a broken grant and is not one — this cost real time to diagnose and the doc exists so nobody repeats it. Also document the verification step, because the obvious check is insufficient: IMS can return a valid token carrying FEWER scopes than requested without erroring, so decode the JWT payload (`cut -d. -f2`, base64url) and confirm `commerce.aco.admin` is actually in the `scope` claim. Getting an `access_token` proves nothing on its own. Present minting as the normal path and the pasted Bearer as the override for an operator without console access.
 - [ ] 8.4 Flip `servers.json`'s `aco` entry `status` to `"alpha"` in the final commit, after every prior gate is green.
 
 ## Phase 9: Closing Audit Gates
