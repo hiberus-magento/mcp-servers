@@ -75,12 +75,20 @@ const SAFE_DOMAINS = new Set([
   "api.commerce.adobe.com",
   "developer.adobe.com",
   "experienceleague.adobe.com",
+  // Vendor domains, not customer identities. A PROJECT hostname is
+  // `<projectid>.magento.cloud`, so only the bare forms are safe here —
+  // anything with a subdomain in front is a project identifier.
+  "magento.cloud",
+  "api.magento.cloud",
+  "auth.magento.cloud",
+  "ssh.api.magento.cloud",
+  "platform.sh",
   "aem.live",
   "admin.hlx.page",
   "hlx.page",
 ]);
 
-const DOMAIN_PATTERN = /\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.(com|net|org|io|co|es|dev|app)\b/gi;
+const DOMAIN_PATTERN = /\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.(com|net|org|io|co|es|dev|app|cloud)\b/gi;
 const COMPANY_SUFFIX_PATTERN = /\b[A-Z][A-Za-z&' -]{1,40}(Inc|Corp|Corporation|LLC|L\.L\.C\.|S\.L\.|S\.A\.|GmbH|Ltd|PLC)\.?\b/g;
 
 /**

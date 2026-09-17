@@ -114,3 +114,24 @@ describe("code files: property access is not a domain", () => {
     expect(violations.some((v) => v.rule === "known-identifier")).toBe(true);
   });
 });
+
+describe(".cloud hostnames", () => {
+  // Magento Cloud project hostnames are `<projectid>.magento.cloud`, so the
+  // project identifier IS the subdomain. The domain rule's TLD list did not
+  // include `cloud`, which made the single most likely leak shape in the
+  // magento-cloud package invisible to this audit.
+  it("flags a project-shaped subdomain of the vendor domain", () => {
+    const violations = scanTextForBannedIdentifiers('const h = "abcd1234efgh.magento.cloud";\n', "probe.ts");
+    expect(violations.some((v) => v.rule === "unrecognized-domain")).toBe(true);
+  });
+
+  it("does not flag the bare vendor domain, which docs legitimately name", () => {
+    const violations = scanTextForBannedIdentifiers("See the Magento Cloud API at magento.cloud for details.\n", "docs/notes.md");
+    expect(violations.filter((v) => v.rule === "unrecognized-domain")).toEqual([]);
+  });
+
+  it("does not flag the documented API host", () => {
+    const violations = scanTextForBannedIdentifiers("Requests go to api.magento.cloud.\n", "docs/notes.md");
+    expect(violations.filter((v) => v.rule === "unrecognized-domain")).toEqual([]);
+  });
+});
