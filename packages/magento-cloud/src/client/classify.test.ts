@@ -9,7 +9,9 @@ import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MINIMUM_SUPPORTED_CLI_VERSION,
+  TIME_ATTRIBUTION_FACTOR,
   classifyCliFailure,
+  classifyKill,
   ensureBinaryResolved,
   parseCliVersion,
   resetCliVersionMemoForTests,
@@ -108,5 +110,81 @@ describe("CLI version parsing and memoization", () => {
     const info = resolveCliVersionInfo("Magento Cloud CLI 0.1.0");
 
     expect(info.supported).toBe(false);
+  });
+});
+
+// RED-first (tasks.md 6.8-6.10): a `maxBuffer` overflow and a real
+// `timeoutMs` kill both surface through the SAME `SIGKILL` signal
+// (design.md, Decision 6) — `classifyKill` disambiguates using an injected
+// clock and captured output length, never guessing when genuinely
+// ambiguous. Pure decision function: the REAL-PROCESS proof that a fake-bin
+// `__flood`/`__slow` invocation actually produces these two different
+// input shapes lives in `classify.timeout.test.ts`, which cannot mock
+// `node:child_process` the way this file does.
+describe("classifyKill — timeout vs output-cap disambiguation", () => {
+  const timeoutMs = 1000;
+  const maxOutputBytes = 1024;
+
+  it("classifies output-cap-exceeded when only the byte cap was reached", () => {
+    const result = classifyKill({
+      elapsedMs: 50,
+      stdout: "x".repeat(maxOutputBytes),
+      stderr: "",
+      timeoutMs,
+      maxOutputBytes,
+    });
+
+    expect(result.kind).toBe("output-cap-exceeded");
+  });
+
+  it("classifies timed-out when only the time budget was reached", () => {
+    const result = classifyKill({
+      elapsedMs: timeoutMs * TIME_ATTRIBUTION_FACTOR,
+      stdout: "tiny",
+      stderr: "",
+      timeoutMs,
+      maxOutputBytes,
+    });
+
+    expect(result.kind).toBe("timed-out");
+  });
+
+  it("classifies resource-limit-exceeded and names BOTH causes when both conditions hold", () => {
+    const result = classifyKill({
+      elapsedMs: timeoutMs * TIME_ATTRIBUTION_FACTOR,
+      stdout: "x".repeat(maxOutputBytes),
+      stderr: "",
+      timeoutMs,
+      maxOutputBytes,
+    });
+
+    expect(result.kind).toBe("resource-limit-exceeded");
+    expect(result.message).toMatch(/output/i);
+    expect(result.message).toMatch(/time|timeout/i);
+  });
+
+  it("classifies killed-unclassified and names both when NEITHER signal fired, stating the cause could not be attributed", () => {
+    const result = classifyKill({
+      elapsedMs: 10,
+      stdout: "tiny",
+      stderr: "",
+      timeoutMs,
+      maxOutputBytes,
+    });
+
+    expect(result.kind).toBe("killed-unclassified");
+    expect(result.message).toMatch(/could not/i);
+  });
+
+  it("measures stdout and stderr SEPARATELY, taking the max — a large stderr alone can trip the byte cap", () => {
+    const result = classifyKill({
+      elapsedMs: 50,
+      stdout: "tiny",
+      stderr: "x".repeat(maxOutputBytes),
+      timeoutMs,
+      maxOutputBytes,
+    });
+
+    expect(result.kind).toBe("output-cap-exceeded");
   });
 });

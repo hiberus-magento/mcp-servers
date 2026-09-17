@@ -74,60 +74,60 @@ Chain strategy: size-exception
 
 ## Phase 3: Allowlist + TSV parsing (Decision 3, 4 — before anything consumes them)
 
-- [ ] 3.1 RED `client/commands.test-d.ts` (create): `Extract<ReadOnlyKey, ForbiddenKey>` is `never` for the two `as const` literals.
-- [ ] 3.2 GREEN `client/commands.ts`: `READ_ONLY_SUBCOMMANDS` (the 17 entries) and `FORBIDDEN_SUBCOMMANDS` (`ssh`, `environment:ssh`, `environment:scp`, `environment:drush`, five `tunnel:*`, `db:dump`, `api:curl`/`project:curl`/`organization:curl`/`environment:curl`, plus other named mutating forms) as `as const` literals.
-- [ ] 3.3 RED `commands.test.ts`: `createMagentoCloudAllowlist(...).listCommandKeys()` deep-equals `READ_ONLY_SUBCOMMANDS` mapped to full keys, sorted.
-- [ ] 3.4 RED same file, one test per forbidden entry: `allowlist.resolve(bin, tokens)` is `undefined` for every forbidden entry, explicitly including `ssh`, every `tunnel:*` form, `db:dump`, and all four `*:curl` passthroughs.
-- [ ] 3.5 RED same file, POSITIVE CONTROL: `checkReadOnlyIsolation({ registeredCommandKeys: [...real, "<bin> db:dump"], expectedCommandKeys })` returns exactly one violation — proves the checker detects contamination, not a no-op.
-- [ ] 3.6 GREEN: implement `createMagentoCloudAllowlist()` and `checkReadOnlyIsolation()` in `commands.ts`.
-- [ ] 3.7 RED `tsv.test.ts`: a naive `split("\t")` control produces the WRONG row count against the embedded-tab fixture (1.7) — shown explicitly as the wrong approach.
-- [ ] 3.8 RED same file: the real parser round-trips the embedded-tab fixture (one field, correct column count) and the embedded-newline fixture (value spans the newline, no extra row); rows keyed by the header the CLI emits, never positional index; a missing `REQUIRED_HEADERS` entry throws `MagentoCloudOutputShapeError` naming the subcommand, missing header, and headers seen.
-- [ ] 3.9 GREEN `client/tsv.ts`: ~50-line quote-aware character state machine (RFC4180 semantics, `\t` delimiter); `MagentoCloudOutputShapeError` in `errors.ts`.
-- [ ] 3.10 RED per argv builder: every list-/table-shaped subcommand's built argv contains `--format=tsv`; none contains `--format=table`/`csv`/`plain` or no `--format`.
-- [ ] 3.11 GREEN: wire `--format=tsv` into every list-shaped `buildArgv`.
+- [x] 3.1 RED `client/commands.test-d.ts` (create): `Extract<ReadOnlyKey, ForbiddenKey>` is `never` for the two `as const` literals.
+- [x] 3.2 GREEN `client/commands.ts`: `READ_ONLY_SUBCOMMANDS` (**18 entries** — the client spec's own list has 18, not the 17 this task line says; stale off-by-one, non-blocking) and `FORBIDDEN_SUBCOMMANDS` (`ssh`, `environment:ssh`, `environment:scp`, `environment:drush`, five `tunnel:*`, `db:dump`, `api:curl`/`project:curl`/`organization:curl`/`environment:curl` — 14 named forms) as `as const` literals.
+- [x] 3.3 RED `commands.test.ts`: `createMagentoCloudAllowlist(...).listCommandKeys()` deep-equals `READ_ONLY_SUBCOMMANDS` mapped to full keys, sorted.
+- [x] 3.4 RED same file, one test per forbidden entry: `allowlist.resolve(bin, tokens)` is `undefined` for every forbidden entry, explicitly including `ssh`, every `tunnel:*` form, `db:dump`, and all four `*:curl` passthroughs.
+- [x] 3.5 RED same file, POSITIVE CONTROL: `checkReadOnlyIsolation({ registeredCommandKeys: [...real, "<bin> db:dump"], expectedCommandKeys })` returns exactly one violation — proves the checker detects contamination, not a no-op.
+- [x] 3.6 GREEN: implement `createMagentoCloudAllowlist()` and `checkReadOnlyIsolation()` in `commands.ts`.
+- [x] 3.7 RED `tsv.test.ts`: a naive `split("\t")` control produces the WRONG row count against the embedded-tab fixture (1.7) — shown explicitly as the wrong approach.
+- [x] 3.8 RED same file: the real parser round-trips the embedded-tab fixture (one field, correct column count) and the embedded-newline fixture (value spans the newline, no extra row); rows keyed by the header the CLI emits, never positional index; a missing `REQUIRED_HEADERS` entry throws `MagentoCloudOutputShapeError` naming the subcommand, missing header, and headers seen.
+- [x] 3.9 GREEN `client/tsv.ts`: ~50-line quote-aware character state machine (RFC4180 semantics, `\t` delimiter); `MagentoCloudOutputShapeError` in `errors.ts`.
+- [x] 3.10 RED per argv builder: every list-/table-shaped subcommand's built argv contains `--format=tsv`; none contains `--format=table`/`csv`/`plain` or no `--format`. (15 of 18 read-only specs carry it; `app:config-get` (YAML output), `activity:log` (plain log text), and `db:sql` (`--raw` instead) are deliberately excluded, documented in `commands.ts`.)
+- [x] 3.11 GREEN: wire `--format=tsv` into every list-shaped `buildArgv`.
 
 ## Phase 4: Child-environment assembly + credential provider (domain side of Decision 1; Decision 2's `stdio` guarantee)
 
-- [ ] 4.1 RED `client/child-env.test.ts`: `buildChildEnv({ token, home, path })`'s key set deep-equals exactly `["HOME","MAGENTO_CLOUD_CLI_TOKEN","PATH"]` — never a spread, never `process.env` read directly.
-- [ ] 4.2 GREEN `client/child-env.ts`: named-keys-only construction.
-- [ ] 4.3 RED `credential-provider.test.ts` (mirrors `packages/eds/src/credential-provider.ts`, read-only precedent): missing `MAGENTO_CLOUD_CLI_TOKEN` (env and file both absent) throws `MissingCredentialError` naming the variable, BEFORE `locateBinary`/`execFile` runs.
-- [ ] 4.4 GREEN: wire `resolveCredentialValue({ domain: "magento-cloud", envVar: "MAGENTO_CLOUD_CLI_TOKEN" })` from `mcp-core`.
-- [ ] 4.5 RED: every spawn's captured spawn options have `stdio: "pipe"`, never `"inherit"`.
-- [ ] 4.6 GREEN: confirm the domain always calls `mcp-core`'s unmodified `runAllowlisted` — no package-local spawn wrapper, per design's rejected alternative.
+- [x] 4.1 RED `client/child-env.test.ts`: `buildChildEnv({ token, home, path })`'s key set deep-equals exactly `["HOME","MAGENTO_CLOUD_CLI_TOKEN","PATH"]` — never a spread, never `process.env` read directly.
+- [x] 4.2 GREEN `client/child-env.ts`: named-keys-only construction.
+- [x] 4.3 RED `credential-provider.test.ts` (mirrors `packages/eds/src/credential-provider.ts`, read-only precedent): missing `MAGENTO_CLOUD_CLI_TOKEN` (env and file both absent) throws `MissingCredentialError` naming the variable, BEFORE `locateBinary`/`execFile` runs.
+- [x] 4.4 GREEN: wire `resolveCredentialValue({ domain: "magento-cloud", envVar: "MAGENTO_CLOUD_CLI_TOKEN" })` from `mcp-core`.
+- [x] 4.5 RED: every spawn's captured spawn options have `stdio: "pipe"`, never `"inherit"`.
+- [x] 4.6 GREEN: confirm the domain always calls `mcp-core`'s unmodified `runAllowlisted` — no package-local spawn wrapper, per design's rejected alternative.
 
 ## Phase 5: `db:sql` hardening — one lexer, four rules (Decision 5 — before the tool that exposes it)
 
-- [ ] 5.1 RED `client/sql/lex.test.ts`: strips `'…'`/`"…"`/`` `…` `` (with `\'`/`''`), `-- `/`#` line comments, `/*…*/` blocks; tracks paren depth; one fixture per case proving the stripped form.
-- [ ] 5.2 GREEN `client/sql/lex.ts`: the lexer producing the form every rule reads.
-- [ ] 5.3 RED `guard.test.ts` Rule 1 positive: single `SELECT ... LIMIT 10` accepted.
-- [ ] 5.4 RED Rule 1 negative: `UPDATE`/`DELETE`/`INSERT`/`DROP` each rejected by leading-verb, `execFile` never called.
-- [ ] 5.5 RED Rule 1 negative: two `;`-separated statements (first valid `SELECT`) rejected, `execFile` never called.
-- [ ] 5.6 RED Rule 2: `SELECT *` and `SELECT DISTINCT *` rejected before any spawn.
-- [ ] 5.7 RED Rule 2 evasions (proves the rule is not a projection regex): `t.*`, `SeLeCt *`, `/*c*/SELECT *`, and `SELECT id FROM (SELECT t.* FROM big t) x` each rejected.
-- [ ] 5.8 RED Rule 2 ACCEPTED COST, recorded as a decision: `SELECT a * b` is rejected too, message names both exits (name the columns, or use `COUNT(*)`); separate test proves `SELECT COUNT(*) FROM t` IS accepted.
-- [ ] 5.9 GREEN Rule 2: reject any `*` in the statement that is not the sole argument of `COUNT(`, over the lexed form.
-- [ ] 5.10 RED Rule 3, one test per form: `INTO OUTFILE`, `INTO DUMPFILE`, `LOAD_FILE(` each independently rejected.
-- [ ] 5.11 GREEN Rule 3.
-- [ ] 5.12 RED Rule 4: no-`LIMIT` `SELECT` reaches `execFile` with an injected `LIMIT <rowCap>` in the CAPTURED ARGV; explicit `LIMIT` above `rowCap` rejected (not clamped), cap named in message; a subquery's `LIMIT` is not mistaken for the statement's (depth-0 tracking); `SHOW`/`DESCRIBE`/`EXPLAIN` take no injected `LIMIT`.
-- [ ] 5.13 GREEN Rule 4 + `GuardedQuery` brand: `guardQuery()` wired as the `db:sql` spec's `argsSchema.strict().transform()`.
-- [ ] 5.14 RED: a `*` inside a string literal (`WHERE name = '*'`) is allowed — the residual, correctly not a projection.
-- [ ] 5.15 RED, the coupling test the design calls out explicitly: for the `db:sql` spec specifically, `buildArgv` is never called when `argsSchema.safeParse` fails — proving no unguarded query can reach `execFile` through this spec (reuses `exec.test.ts:137`'s guarantee, in-domain).
-- [ ] 5.16 RED `maxOutputBytes` independence: a query within `LIMIT` but exceeding `maxOutputBytes` classifies output-cap, not row-cap (fake-bin's `__flood`).
-- [ ] 5.17 GREEN: wire `maxOutputBytes` from `CommandSpec`, unchanged.
-- [ ] 5.18 Choose `ROW_CAP` and `maxOutputBytes` for the `db:sql` spec in `commands.ts`, each with a stated rationale (e.g. ROW_CAP against a diagnostic query's reviewable size, `maxOutputBytes` against MCP frame/memory bounds) — not a round number; document chosen-not-documented, mirroring `packages/aco/src/client/rate-limiter.ts`'s pace constants (read-only precedent).
+- [x] 5.1 RED `client/sql/lex.test.ts`: strips `'…'`/`"…"`/`` `…` `` (with `\'`/`''`), `-- `/`#` line comments, `/*…*/` blocks; tracks paren depth; one fixture per case proving the stripped form.
+- [x] 5.2 GREEN `client/sql/lex.ts`: the lexer producing the form every rule reads.
+- [x] 5.3 RED `guard.test.ts` Rule 1 positive: single `SELECT ... LIMIT 10` accepted.
+- [x] 5.4 RED Rule 1 negative: `UPDATE`/`DELETE`/`INSERT`/`DROP` each rejected by leading-verb, `execFile` never called.
+- [x] 5.5 RED Rule 1 negative: two `;`-separated statements (first valid `SELECT`) rejected, `execFile` never called.
+- [x] 5.6 RED Rule 2: `SELECT *` and `SELECT DISTINCT *` rejected before any spawn.
+- [x] 5.7 RED Rule 2 evasions (proves the rule is not a projection regex): `t.*`, `SeLeCt *`, `/*c*/SELECT *`, and `SELECT id FROM (SELECT t.* FROM big t) x` each rejected.
+- [x] 5.8 RED Rule 2 ACCEPTED COST, recorded as a decision: `SELECT a * b` is rejected too, message names both exits (name the columns, or use `COUNT(*)`); separate test proves `SELECT COUNT(*) FROM t` IS accepted.
+- [x] 5.9 GREEN Rule 2: reject any `*` in the statement that is not the sole argument of `COUNT(`, over the lexed form.
+- [x] 5.10 RED Rule 3, one test per form: `INTO OUTFILE`, `INTO DUMPFILE`, `LOAD_FILE(` each independently rejected.
+- [x] 5.11 GREEN Rule 3.
+- [x] 5.12 RED Rule 4: no-`LIMIT` `SELECT` reaches `execFile` with an injected `LIMIT <rowCap>` in the CAPTURED ARGV; explicit `LIMIT` above `rowCap` rejected (not clamped), cap named in message; a subquery's `LIMIT` is not mistaken for the statement's (depth-0 tracking); `SHOW`/`DESCRIBE`/`EXPLAIN` take no injected `LIMIT`.
+- [x] 5.13 GREEN Rule 4 + `GuardedQuery` brand: `guardQuery()` wired as the `db:sql` spec's `argsSchema.strict().transform()`.
+- [x] 5.14 RED: a `*` inside a string literal (`WHERE name = '*'`) is allowed — the residual, correctly not a projection.
+- [x] 5.15 RED, the coupling test the design calls out explicitly: for the `db:sql` spec specifically, `buildArgv` is never called when `argsSchema.safeParse` fails — proving no unguarded query can reach `execFile` through this spec (reuses `exec.test.ts:137`'s guarantee, in-domain).
+- [x] 5.16 RED `maxOutputBytes` independence: a query within `LIMIT` but exceeding `maxOutputBytes` classifies output-cap, not row-cap (fake-bin's `__flood`).
+- [x] 5.17 GREEN: wire `maxOutputBytes` from `CommandSpec`, unchanged.
+- [x] 5.18 Choose `ROW_CAP` (200) and `maxOutputBytes` (2 MiB) for the `db:sql` spec in `commands.ts`, each with a stated rationale — not a round number; documented chosen-not-derived, mirroring `packages/aco/src/client/rate-limiter.ts`'s pace constants (read-only precedent).
 
 ## Phase 6: Parsers, credential stripping, timeout/output-cap disambiguation (Decision 4, 6, 7)
 
-- [ ] 6.1 RED `client/parsers/*.test.ts` per subcommand: each declares its own `REQUIRED_HEADERS`; row mapper output keyed by header name.
-- [ ] 6.2 GREEN: implement each `client/parsers/*.ts` over `tsv.ts`.
-- [ ] 6.3 RED `client/relationships.test.ts`: fixture (1.7) carries `username`/`password`; the built `ServiceEndpoint` contains ONLY `host`/`port`/`scheme`/`service`.
-- [ ] 6.4 RED same file: `client/index.ts` exports no type carrying `username`/`password`; source-scan asserts no `{ ...raw }` in `relationships.ts`.
-- [ ] 6.5 RED same file, strongest proof (on SERIALIZED output, same fixture the fake binary emits): `JSON.stringify(serviceEndpointsResult)` contains neither the fixture's username nor password value, and no `/user|pass|secret|token/i`-matching key.
-- [ ] 6.6 GREEN `client/relationships.ts`: `ServiceEndpoint` (4 fields) built field-by-field from named keys; `getRawRelationshipsText(): CliOnlyText` opaque branded escape hatch.
-- [ ] 6.7 RED source-scan: no file under `src/tools/**` references `getRawRelationshipsText` (passes vacuously until Phase 8's `tools/` tree exists — re-run at 8.10).
-- [ ] 6.8 RED `classify.test.ts`, two tests differing ONLY in which limit the fake exceeds: `__flood` → `output-cap-exceeded`; `__slow` → `timed-out`.
-- [ ] 6.9 RED same file, ambiguous case: both conditions true → `resource-limit-exceeded` naming both causes/remedies; no signal → `killed-unclassified` naming both, stating the cause could not be attributed.
-- [ ] 6.10 GREEN `classify.ts`: `elapsedMs`/`atByteCap`/`atTimeBudget` per design's formulas; `TIME_ATTRIBUTION_FACTOR = 0.9` documented chosen, not derived.
+- [x] 6.1 RED `client/parsers/*.test.ts` per subcommand: each declares its own `REQUIRED_HEADERS`; row mapper output keyed by header name.
+- [x] 6.2 GREEN: implement each `client/parsers/*.ts` over `tsv.ts`.
+- [x] 6.3 RED `client/relationships.test.ts`: fixture (1.7) carries `username`/`password`; the built `ServiceEndpoint` contains ONLY `host`/`port`/`scheme`/`service`.
+- [x] 6.4 RED same file: `client/index.ts` exports no type carrying `username`/`password`; source-scan asserts no `{ ...raw }` in `relationships.ts`.
+- [x] 6.5 RED same file, strongest proof (on SERIALIZED output, same fixture the fake binary emits): `JSON.stringify(serviceEndpointsResult)` contains neither the fixture's username nor password value, and no `/user|pass|secret|token/i`-matching key.
+- [x] 6.6 GREEN `client/relationships.ts`: `ServiceEndpoint` (4 fields) built field-by-field from named keys; `getRawRelationshipsText(): CliOnlyText` opaque branded escape hatch.
+- [x] 6.7 RED source-scan: no file under `src/tools/**` references `getRawRelationshipsText` (passes vacuously until Phase 8's `tools/` tree exists — re-run at 8.10).
+- [x] 6.8 RED `classify.timeout.test.ts` (real-process — cannot share `classify.test.ts`'s mocked `node:child_process`), two tests differing ONLY in which limit the fake exceeds: `__flood` → `output-cap-exceeded`; `__slow` → `timed-out`. **Verified deviation from design.md found here**: on Node v22.14.0 a real `maxBuffer` overflow does NOT set `error.killed`/`error.signal` — `CommandResult.timedOut` stays `false` and `exitCode` collapses to `1`; documented in `classify.ts` and the test itself.
+- [x] 6.9 RED `classify.test.ts`, ambiguous case: both conditions true → `resource-limit-exceeded` naming both causes/remedies; no signal → `killed-unclassified` naming both, stating the cause could not be attributed.
+- [x] 6.10 GREEN `classify.ts`: `classifyKill()` with `elapsedMs`/`atByteCap`/`atTimeBudget` per design's formulas; `TIME_ATTRIBUTION_FACTOR = 0.9` documented chosen, not derived.
 
 ## Phase 7: CLI adapter (`hiberus-magento-cloud`)
 

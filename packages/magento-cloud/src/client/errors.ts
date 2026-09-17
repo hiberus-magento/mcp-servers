@@ -38,3 +38,32 @@ export class MagentoCloudUnsupportedVersionError extends Error {
     this.name = "MagentoCloudUnsupportedVersionError";
   }
 }
+
+// design.md, Decision 4: the CLI's TSV output contract can drift (a
+// reordered or renamed column) and CI has no real CLI to detect that drift
+// against. This error is the runtime half of the compensating control —
+// loud and named, pointing at the exact file a maintainer edits, rather
+// than a silent `undefined` reaching an agent.
+export class MagentoCloudOutputShapeError extends Error {
+  constructor(input: { readonly subcommand: string; readonly missingHeader: string; readonly headersSeen: readonly string[] }) {
+    super(
+      `"${input.subcommand}" output is missing the required header "${input.missingHeader}" ` +
+        `(headers seen: ${input.headersSeen.join(", ")}). The Magento Cloud CLI's output shape may have ` +
+        `changed — update client/parsers/*.ts's REQUIRED_HEADERS for "${input.subcommand}" ` +
+        `(see docs/magento-cloud-onboarding.md's fixture re-capture procedure).`,
+    );
+    this.name = "MagentoCloudOutputShapeError";
+  }
+}
+
+// design.md, Decision 5: a byte-cap hit on db:sql is a failed call, never a
+// silently short result set — `maxBuffer` overflow kills the child.
+export class MagentoCloudOutputCapError extends Error {
+  constructor(input: { readonly maxOutputBytes: number }) {
+    super(
+      `The query's output exceeded the ${input.maxOutputBytes}-byte cap and was terminated before it could ` +
+        `complete. Narrow the column list or lower maxRows and retry.`,
+    );
+    this.name = "MagentoCloudOutputCapError";
+  }
+}

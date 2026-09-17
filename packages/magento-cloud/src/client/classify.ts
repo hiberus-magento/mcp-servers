@@ -3,7 +3,7 @@
 // Pre-spawn and post-spawn CLI-failure classification (design.md, Decision
 // 2; magento-cloud-client spec, "CLI-Failure Classification Names an
 // Actionable Remedy"; tasks.md 2.4, 2.6-2.10).
-import { MagentoCloudNotAuthenticatedError, MagentoCloudNotInstalledError } from "./errors.js";
+import { MagentoCloudNotAuthenticatedError, MagentoCloudNotInstalledError, MagentoCloudOutputCapError } from "./errors.js";
 import { locateBinary } from "./locate-binary.js";
 
 // PROVISIONAL (design.md Open Questions; tasks.md 2.10): exploration found
@@ -110,4 +110,85 @@ export function resolveCliVersionInfo(rawVersionOutput: string): CliVersionInfo 
 /** Test-only: resets the per-process memo so each test case starts clean. */
 export function resetCliVersionMemoForTests(): void {
   cachedVersionInfo = undefined;
+}
+
+// design.md, Decision 6, as WRITTEN: `CommandResult.timedOut` is `killed
+// && signal === "SIGKILL"`, and Node was assumed to use that SAME
+// `killSignal` for a `maxBuffer` overflow, making the two causes
+// indistinguishable through `timedOut` alone.
+//
+// VERIFIED CORRECTION (real spawn against the checked-in fake binary, Node
+// v22.14.0 — see `classify.timeout.test.ts`): that assumption is FALSE.
+// `execFile`'s `maxBuffer` overflow does NOT set `error.killed`/
+// `error.signal` at all, so `run-allowlisted.ts`'s `timedOut` computation
+// stays `false` for a byte-cap kill, and `error.code` is the STRING
+// `"ERR_CHILD_PROCESS_STDIO_MAXBUFFER"` — `typeof error.code === "number"
+// ? error.code : 1` collapses it to a generic `exitCode: 1`. A caller MUST
+// therefore invoke `classifyKill` whenever `exitCode !== 0` (not only when
+// `timedOut === true`) to catch a byte-cap kill; `stdout`/`stderr` length
+// against `maxOutputBytes` is still what actually decides it, disambiguated
+// with an INJECTED clock (never `Date.now()` read directly), so ambiguity
+// is REPORTED, never guessed.
+export type KillClassification =
+  | { readonly kind: "output-cap-exceeded"; readonly message: string }
+  | { readonly kind: "timed-out"; readonly message: string }
+  | { readonly kind: "resource-limit-exceeded"; readonly message: string }
+  | { readonly kind: "killed-unclassified"; readonly message: string };
+
+export interface ClassifyKillInput {
+  /** Elapsed wall-clock time around the spawn, injected by the caller —
+   * never read from `Date.now()` inside this pure function. */
+  readonly elapsedMs: number;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly timeoutMs: number;
+  readonly maxOutputBytes: number;
+}
+
+// CHOSEN, not derived (design.md, Decision 6): elapsed time is measured
+// around the whole spawn promise and therefore includes process-startup
+// overhead, so a byte-cap kill arriving at, say, 0.95x the time budget
+// would otherwise be misattributed as a timeout too. 0.9 leaves headroom
+// for that overhead while still catching a genuine near-deadline kill.
+export const TIME_ATTRIBUTION_FACTOR = 0.9;
+
+// `maxBuffer` applies to stdout and stderr SEPARATELY (design.md, Decision
+// 6) — a large stderr alone can trip the cap even with tiny stdout, so the
+// two are measured independently and the larger one decides. Byte length,
+// not `.length`: a multi-byte UTF-8 character split across the buffer
+// boundary would otherwise under-count.
+function byteLength(text: string): number {
+  return Buffer.byteLength(text, "utf8");
+}
+
+// A 4-byte tolerance below the configured cap covers exactly one split
+// multi-byte UTF-8 sequence landing at the buffer boundary.
+const BYTE_CAP_TOLERANCE_BYTES = 4;
+
+export function classifyKill(input: ClassifyKillInput): KillClassification {
+  const atByteCap =
+    Math.max(byteLength(input.stdout), byteLength(input.stderr)) >= input.maxOutputBytes - BYTE_CAP_TOLERANCE_BYTES;
+  const atTimeBudget = input.elapsedMs >= input.timeoutMs * TIME_ATTRIBUTION_FACTOR;
+
+  const outputCapMessage = new MagentoCloudOutputCapError({ maxOutputBytes: input.maxOutputBytes }).message;
+  const timeBudgetMessage = `The call reached its ${input.timeoutMs}ms time budget and was terminated. Narrow the WHERE clause or split the query and retry.`;
+
+  if (atByteCap && atTimeBudget) {
+    // Asserting either cause alone would be asserting a WRONG cause half
+    // the time — name both, per design.md's explicit instruction.
+    return {
+      kind: "resource-limit-exceeded",
+      message: `The call was terminated and BOTH the output cap and the time budget were at their limit, so the exact cause cannot be attributed with confidence. ${outputCapMessage} ${timeBudgetMessage}`,
+    };
+  }
+  if (atByteCap) {
+    return { kind: "output-cap-exceeded", message: outputCapMessage };
+  }
+  if (atTimeBudget) {
+    return { kind: "timed-out", message: timeBudgetMessage };
+  }
+  return {
+    kind: "killed-unclassified",
+    message: `The call was terminated but neither the output cap nor the time budget appears to have been reached; the cause could not be attributed. ${outputCapMessage} ${timeBudgetMessage}`,
+  };
 }
