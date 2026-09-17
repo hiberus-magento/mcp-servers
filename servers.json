@@ -72,7 +72,7 @@
       "bin": "hiberus-aco-mcp",
       "version": "0.0.0",
       "domain": "aco",
-      "status": "planned",
+      "status": "alpha",
       "description": "Adobe Commerce Optimizer (ACO) admin and Merchandising API client — CLI and MCP server.",
       "docs": "docs/aco-onboarding.md",
       "requires": {

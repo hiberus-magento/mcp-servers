@@ -70,7 +70,7 @@ Docs: docs/eds-onboarding.md
 Adobe Commerce Optimizer (ACO) admin and Merchandising API client — CLI and MCP server.
 
 - Domain: aco
-- Status: planned
+- Status: alpha
 - Binary: `hiberus-aco-mcp`
 
 Tools:
