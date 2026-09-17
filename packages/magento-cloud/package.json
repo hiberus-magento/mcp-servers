@@ -8,7 +8,8 @@
     "provenance": true
   },
   "bin": {
-    "hiberus-magento-cloud": "dist/server.js"
+    "hiberus-magento-cloud": "dist/cli.js",
+    "hiberus-magento-cloud-mcp": "dist/mcp.js"
   },
   "files": [
     "dist",
@@ -26,6 +27,7 @@
   "dependencies": {},
   "devDependencies": {
     "@hiberus-magento/mcp-core": "workspace:*",
+    "@hiberus-magento/mcp-testing": "workspace:*",
     "@modelcontextprotocol/sdk": "1.30.0",
     "tsup": "^8.5.1",
     "zod": "^4.5.4"

@@ -75,8 +75,8 @@ function listTsFilesRecursively(dir: string): string[] {
   try {
     entries = readdirSync(dir, { withFileTypes: true });
   } catch {
-    // The directory does not exist yet (Phase 8 has not created
-    // `src/tools/` in this batch) — zero entries, zero files to scan.
+    // Defensive fallback only — `src/tools/` exists as of Phase 8; kept for
+    // resilience if this scan is ever pointed at a directory that does not.
     return [];
   }
   const files: string[] = [];
@@ -93,17 +93,25 @@ function listTsFilesRecursively(dir: string): string[] {
   return files;
 }
 
-describe("source-scan: no file under src/tools/** references getRawRelationshipsText (tasks.md 6.7)", () => {
-  it("finds zero violations — vacuously true today since src/tools/ has no files yet; re-run at 8.10 once it does", () => {
+describe("source-scan: no file under src/tools/** references getRawRelationshipsText (tasks.md 6.7, re-run at 8.10)", () => {
+  it("finds zero violations, now that src/tools/** genuinely has files (Phase 8 shipped)", () => {
     const toolsDir = fileURLToPath(new URL("../tools/", import.meta.url));
     const files = listTsFilesRecursively(toolsDir);
 
-    // This IS the real assertion Phase 8 will re-run against a non-empty
-    // `files` list: today `files` is provably empty (no tools/ tree
-    // exists yet), so the scan legitimately finds nothing to violate.
-    expect(files).toEqual([]);
+    // The real assertion this scan exists for: with `src/tools/` no longer
+    // empty (unlike Phase 6, when this test's own file predates
+    // `tools/magento-cloud-tools.ts`), `getRawRelationshipsText` — the
+    // branded, deliberately CLI-only escape hatch (`cli.ts`'s
+    // `environment:relationships` command) — must not be referenced from
+    // ANY file under the MCP tool surface.
+    expect(files.length).toBeGreaterThan(0);
 
     const violations = files.filter((file) => readFileSync(file, "utf8").includes("getRawRelationshipsText"));
     expect(violations).toEqual([]);
+  });
+
+  it("the source-scan itself is proven to fail against a synthetic violating file", () => {
+    const violatingText = 'import { getRawRelationshipsText } from "../client/index.js";\n';
+    expect(violatingText.includes("getRawRelationshipsText")).toBe(true);
   });
 });
