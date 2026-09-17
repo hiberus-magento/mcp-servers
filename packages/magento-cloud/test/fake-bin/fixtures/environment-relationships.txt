@@ -1,0 +1,2 @@
+service	scheme	host	port	username	password
+database	mysql	demo-db-host.internal	3306	demo-svc-user	demo-svc-password-not-real

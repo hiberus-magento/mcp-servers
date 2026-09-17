@@ -1,0 +1,3 @@
+id	acme-demo-project
+title	Demo Storefront
+region	demo-region.example-domain

@@ -1,0 +1,2 @@
+Not logged in.
+To authenticate non-interactively, configure an API token using the MAGENTO_CLOUD_CLI_TOKEN environment variable.

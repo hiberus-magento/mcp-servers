@@ -16,6 +16,16 @@ import type { Argv, CommandResult, CommandSpec } from "./command-spec.js";
 // test, so a future refactor to `spawn` cannot silently drop it.
 interface AllowlistedExecOptions extends ExecFileOptions {
   readonly stdio: "pipe";
+  // Narrower than `ExecFileOptions["env"]` (design.md, Decision 1): a
+  // required, non-optional `Readonly<Record<string, string>>` — never
+  // `NodeJS.ProcessEnv`, whose index signature (`string | undefined`) is
+  // exactly what would let `process.env` slip in here. Do NOT add an eslint
+  // `no-restricted-syntax` ban on `process.env` under this glob instead —
+  // `eslint.config.js`'s existing `src/exec/**` block already carries its
+  // own `no-restricted-syntax` array, and flat config merges same-named
+  // rules by last-match-wins, not by union, so a second block would
+  // silently delete the regex/prefix/substring bans (tasks.md 0.11).
+  readonly env: Readonly<Record<string, string>>;
 }
 
 type ExecFileError = ExecException & {
@@ -31,8 +41,12 @@ export function runAllowlisted(spec: CommandSpec<never>, argv: Argv): Promise<Co
       killSignal: "SIGKILL",
       maxBuffer: spec.maxOutputBytes,
       // Never `process.env` wholesale — an allowlisted command runs with an
-      // explicit, minimal environment.
-      env: {},
+      // explicit, minimal environment. Spreading into a fresh object literal
+      // means Node receives a COPY, never the caller's own (possibly frozen)
+      // record, and a spec supplying no `env` still spawns with exactly `{}`,
+      // byte-identical to this executor's behavior before `CommandSpec.env`
+      // existed.
+      env: { ...spec.env },
     };
 
     execFile(

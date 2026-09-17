@@ -1,0 +1,99 @@
+#!/usr/bin/env node
+// Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
+//
+// Checked-in fake `magento-cloud` binary (design.md, Decision 8; tasks.md
+// 1.4). Test-only: outside `package.json`'s `files` and outside the
+// published bundle (see the packaging-gate task in Phase 9). Never spawned
+// from a caller-supplied path — only via `locateBinary({ pathEntries })`
+// pointed explicitly at this directory.
+//
+// Matching rule: known argv (joined with a single space) resolves to a
+// canned fixture file under `fixtures/`, read verbatim as this process's
+// stdout (success) or stderr (failure). ANY argv not in `KNOWN_ARGV` exits
+// 2 with the argv echoed on stderr — a drifted argv builder therefore fails
+// LOUDLY instead of silently returning empty output (tasks.md 1.6).
+//
+// Three special first-argv tokens exist purely to exercise `mcp-core`'s
+// spawn boundary against a REAL child process, not a mocked one:
+//   `__env-probe` — prints this process's own visible env var NAMES
+//                   (design.md, Decision 1, Layer 2 — the env-inheritance
+//                   sentinel test).
+//   `__slow <ms>` — busy-waits past any short `timeoutMs`, so the parent's
+//                   SIGKILL is what actually ends it (design.md, Decision 6).
+//   `__flood <bytes>` — writes past `maxOutputBytes`, for the byte-cap kill.
+//
+// What this fake CAN prove (tasks.md 1.8, feeds `docs/magento-cloud-
+// onboarding.md`, Phase 10): argv building end to end, env assembly against
+// a REAL child (not a mock), real spawn/pipe/timeout/byte-cap kills, and
+// fd-1 isolation. What it CANNOT prove: that the real, installed
+// `magento-cloud` CLI accepts any given argv shape, or that its real output
+// still matches these canned fixtures — only a human, running the manual
+// acceptance checklist against the real CLI, can confirm that.
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
+
+const argv = process.argv.slice(2);
+
+function runEnvProbe() {
+  process.stdout.write(JSON.stringify(Object.keys(process.env).sort()));
+  process.exit(0);
+}
+
+function runSlow(msArg) {
+  const ms = Number(msArg ?? "5000");
+  const deadline = Date.now() + ms;
+  // A real `magento-cloud` call blocks on network I/O for the duration of
+  // the SSH/API round trip. A busy-wait is the closest a script can come to
+  // reproducing "still running, no output, no exit" without a real socket —
+  // and unlike a `setTimeout`-based sleep, it guarantees this process is
+  // genuinely alive (not just scheduled to exit later) when the parent's
+  // `timeoutMs` fires and sends `SIGKILL`, which this loop cannot block.
+  while (Date.now() < deadline) {
+    // intentionally empty
+  }
+  process.exit(0);
+}
+
+function runFlood(bytesArg) {
+  const totalBytes = Number(bytesArg ?? "10485760");
+  const chunk = "x".repeat(65536);
+  let written = 0;
+  while (written < totalBytes) {
+    process.stdout.write(chunk);
+    written += chunk.length;
+  }
+  process.exit(0);
+}
+
+if (argv[0] === "__env-probe") {
+  runEnvProbe();
+} else if (argv[0] === "__slow") {
+  runSlow(argv[1]);
+} else if (argv[0] === "__flood") {
+  runFlood(argv[1]);
+}
+
+// Known-command corpus: joined argv -> { fixture, exitCode }. Additive —
+// later phases register more entries here as each command spec's exact
+// argv shape is decided (tasks.md, Phase 3 onward); this file's matching
+// mechanism itself does not change.
+const KNOWN_ARGV = new Map([["auth:info --no-auto-login", { fixture: "auth-info.txt", exitCode: 0 }]]);
+
+const key = argv.join(" ");
+const entry = KNOWN_ARGV.get(key);
+
+if (!entry) {
+  process.stderr.write(`fake magento-cloud: unknown argv: ${JSON.stringify(argv)}`);
+  process.exit(2);
+}
+
+const text = readFileSync(join(FIXTURES_DIR, entry.fixture), "utf8");
+if (entry.exitCode === 0) {
+  process.stdout.write(text);
+} else {
+  process.stderr.write(text);
+}
+process.exit(entry.exitCode);

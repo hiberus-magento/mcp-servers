@@ -77,6 +77,38 @@ describe("runAllowlisted", () => {
     expect(options.maxBuffer).toBe(1024);
     expect(options.killSignal).toBe("SIGKILL");
   });
+
+  it("spawns a no-env spec with exactly {} — unchanged from before CommandSpec.env existed", async () => {
+    execFileMock.mockClear();
+    const spec = noopSpec();
+    const argv = unsafeArgv(spec.buildArgv(undefined as never));
+
+    await runAllowlisted(spec, argv);
+
+    const call = execFileMock.mock.calls[0];
+    if (!call) {
+      throw new Error("execFile was not called");
+    }
+    const options = call[2];
+    expect(options.env).toEqual({});
+    expect(Object.keys(options.env as Record<string, string>)).toHaveLength(0);
+  });
+
+  it("spawns an env-carrying spec with exactly that map, not a superset", async () => {
+    execFileMock.mockClear();
+    const spec: CommandSpec<never> = { ...noopSpec(), env: { EXAMPLE_VAR: "value" } };
+    const argv = unsafeArgv(spec.buildArgv(undefined as never));
+
+    await runAllowlisted(spec, argv);
+
+    const call = execFileMock.mock.calls[0];
+    if (!call) {
+      throw new Error("execFile was not called");
+    }
+    const options = call[2];
+    expect(options.env).toEqual({ EXAMPLE_VAR: "value" });
+    expect(Object.keys(options.env as Record<string, string>)).toEqual(["EXAMPLE_VAR"]);
+  });
 });
 
 function statusSpec(): CommandSpec<z.ZodObject<{ porcelain: z.ZodOptional<z.ZodBoolean> }>> {

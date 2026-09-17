@@ -104,6 +104,19 @@ Configure in an MCP client. Pin the exact version; pass secrets as environment v
 
 Docs: docs/aco-onboarding.md
 
+### @hiberus-magento/magento-cloud
+
+The magento-cloud MCP server, wrapping the magento-cloud CLI for read-only Magento Cloud operations.
+
+- Domain: magento-cloud
+- Status: internal
+- Binary: `hiberus-magento-cloud`
+
+Tools:
+
+- `noop` (read-only) — A no-op tool used only to exercise the packaging gate.
+- `read-echo` (read-only) — Echoes a message back through an allowlisted read-only subprocess call, proving stdout stays pure JSON-RPC even though a child process is spawned.
+
 <!-- servers:end -->
 
 ## Adding a New Server

@@ -40,6 +40,7 @@ testing:
     - fixture-server
     - eds
     - aco
+    - magento-cloud
 
 rules:
   proposal:

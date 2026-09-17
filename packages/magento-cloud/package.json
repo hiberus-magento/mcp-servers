@@ -1,0 +1,33 @@
+{
+  "name": "@hiberus-magento/magento-cloud",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "bin": {
+    "hiberus-magento-cloud": "dist/server.js"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.txt"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "verify:package": "node ../../scripts/verify-bundle.mjs",
+    "prepack": "node -e \"require('node:fs').copyFileSync('../../LICENSE','./LICENSE')\""
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@hiberus-magento/mcp-core": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "tsup": "^8.5.1",
+    "zod": "^4.5.4"
+  }
+}

@@ -116,6 +116,27 @@
           "description": "Use this to enable or disable one or more named policies. There is no \"apply to all\" mode. Requires an ACO admin credential."
         }
       ]
+    },
+    {
+      "id": "magento-cloud",
+      "package": "@hiberus-magento/magento-cloud",
+      "bin": "hiberus-magento-cloud",
+      "version": "0.0.0",
+      "domain": "magento-cloud",
+      "status": "internal",
+      "description": "The magento-cloud MCP server, wrapping the magento-cloud CLI for read-only Magento Cloud operations.",
+      "tools": [
+        {
+          "name": "noop",
+          "readOnly": true,
+          "description": "A no-op tool used only to exercise the packaging gate."
+        },
+        {
+          "name": "read-echo",
+          "readOnly": true,
+          "description": "Echoes a message back through an allowlisted read-only subprocess call, proving stdout stays pure JSON-RPC even though a child process is spawned."
+        }
+      ]
     }
   ]
 }

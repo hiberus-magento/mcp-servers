@@ -1,0 +1,2 @@
+entity_id	sku
+1	acme-demo-sku

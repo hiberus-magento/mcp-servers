@@ -1,0 +1,3 @@
+name	type
+database	mysql:10.6
+cache	redis:7.0

@@ -24,6 +24,13 @@ export interface CommandSpec<A extends z.ZodTypeAny> {
   readonly timeoutMs: number;
   /** Required — no default. */
   readonly maxOutputBytes: number;
+  /**
+   * Explicit, minimal child environment for this command. Absent means the
+   * child spawns with exactly `{}` — never `process.env`, in whole or in
+   * part (design.md, Decision 1). Named by the domain package registering
+   * this spec, never read from `process.env` here.
+   */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 export interface CommandResult {

@@ -1,0 +1,3 @@
+name	value	is_sensitive
+DEMO_FEATURE_FLAG	on	false
+DEMO_SECRET_VAR		true

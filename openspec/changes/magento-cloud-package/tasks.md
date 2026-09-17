@@ -36,41 +36,41 @@ Chain strategy: size-exception
 
 ## Phase 0: `mcp-core` — the `env` field (blocks everything; Decision 1)
 
-- [ ] 0.1 RED `packages/mcp-core/src/exec/exec.test-d.ts` (create): `@ts-expect-error` on `env: process.env` and on `env: { ...process.env }` assigned to `CommandSpec.env`; run under `vitest --typecheck`.
-- [ ] 0.2 GREEN `packages/mcp-core/src/exec/command-spec.ts`: add `readonly env?: Readonly<Record<string, string>>;` (+1 line), satisfying 0.1's compile-error assertions.
-- [ ] 0.3 RED `packages/mcp-core/src/exec/exec.test.ts`: no-`env` spec's captured `execFile` options `env` is exactly `{}`; an `env: { EXAMPLE_VAR: "value" }` spec's captured `env` is exactly that object, not a superset.
-- [ ] 0.4 GREEN `packages/mcp-core/src/exec/run-allowlisted.ts`: narrow `AllowlistedExecOptions.env` to required `Readonly<Record<string, string>>`; change `env: {}` to `env: { ...spec.env }`.
-- [ ] 0.5 Run `pnpm --filter @hiberus-magento/mcp-core test`; confirm every pre-existing `exec.test.ts`/`run-allowlisted.timeout.test.ts` case passes unchanged (Success Criteria: no existing caller changes behaviour).
-- [ ] 0.6 RED `packages/mcp-core/src/exec/run-allowlisted.env.test.ts` (create): parent sets `MC_SENTINEL_<rand>`; spawn a trivial sentinel-printing script via `runAllowlisted` for a spec with `env` and one with none; assert the sentinel is absent from captured stdout in BOTH.
-- [ ] 0.7 Positive control, same file: spawn the identical script via plain `execFile` with NO `env` option; assert the sentinel IS visible — proves 0.6 measures something, per the four-disconnected-mechanisms rule.
-- [ ] 0.8 RED, source scan (extend `purity.test.ts`'s helper — read-only precedent `packages/aco/src/client/purity.test.ts`): `run-allowlisted.ts`, comments stripped, contains no `process.env` token; prove the scanner's regex against a synthetic violating string FIRST.
-- [ ] 0.9 GREEN: confirm 0.4 leaves no `...process.env` in any form; 0.8 asserts it.
-- [ ] 0.10 Options-readback test in `exec.test.ts`: `Object.keys(options.env)` empty for no-`env`; exact key-set deep-equal for an `env`-carrying spec.
-- [ ] 0.11 Note (no code change): do NOT add a new eslint `no-restricted-syntax` block for `process.env` under `packages/mcp-core/src/exec/**` — that glob's existing array (`eslint.config.js:200-227`) would be silently overwritten by flat config's last-match-wins merge, deleting the regex/prefix/substring bans. 0.8's source-scan test is the enforcement mechanism, not eslint.
+- [x] 0.1 RED `packages/mcp-core/src/exec/exec.test-d.ts` (create): `@ts-expect-error` on `env: process.env` and on `env: { ...process.env }` assigned to `CommandSpec.env`; run under `vitest --typecheck`.
+- [x] 0.2 GREEN `packages/mcp-core/src/exec/command-spec.ts`: add `readonly env?: Readonly<Record<string, string>>;` (+1 line), satisfying 0.1's compile-error assertions.
+- [x] 0.3 RED `packages/mcp-core/src/exec/exec.test.ts`: no-`env` spec's captured `execFile` options `env` is exactly `{}`; an `env: { EXAMPLE_VAR: "value" }` spec's captured `env` is exactly that object, not a superset.
+- [x] 0.4 GREEN `packages/mcp-core/src/exec/run-allowlisted.ts`: narrow `AllowlistedExecOptions.env` to required `Readonly<Record<string, string>>`; change `env: {}` to `env: { ...spec.env }`.
+- [x] 0.5 Run `pnpm --filter @hiberus-magento/mcp-core test`; confirm every pre-existing `exec.test.ts`/`run-allowlisted.timeout.test.ts` case passes unchanged (Success Criteria: no existing caller changes behaviour).
+- [x] 0.6 RED `packages/mcp-core/src/exec/run-allowlisted.env.test.ts` (create): parent sets `MC_SENTINEL_<rand>`; spawn a trivial sentinel-printing script via `runAllowlisted` for a spec with `env` and one with none; assert the sentinel is absent from captured stdout in BOTH.
+- [x] 0.7 Positive control, same file: spawn the identical script via plain `execFile` with NO `env` option; assert the sentinel IS visible — proves 0.6 measures something, per the four-disconnected-mechanisms rule.
+- [x] 0.8 RED, source scan (extend `purity.test.ts`'s helper — read-only precedent `packages/aco/src/client/purity.test.ts`): `run-allowlisted.ts`, comments stripped, contains no `process.env` token; prove the scanner's regex against a synthetic violating string FIRST.
+- [x] 0.9 GREEN: confirm 0.4 leaves no `...process.env` in any form; 0.8 asserts it.
+- [x] 0.10 Options-readback test in `exec.test.ts`: `Object.keys(options.env)` empty for no-`env`; exact key-set deep-equal for an `env`-carrying spec.
+- [x] 0.11 Note (no code change): do NOT add a new eslint `no-restricted-syntax` block for `process.env` under `packages/mcp-core/src/exec/**` — that glob's existing array (`eslint.config.js:200-227`) would be silently overwritten by flat config's last-match-wins merge, deleting the regex/prefix/substring bans. 0.8's source-scan test is the enforcement mechanism, not eslint.
 
 ## Phase 1: Scaffold + fixture corpus + fake binary (Decision 8 — unblocks every real-process test below)
 
-- [ ] 1.1 Run `pnpm new-server magento-cloud` scaffolding `packages/magento-cloud/` from `templates/server/`; verify `package.json`, `tsconfig.json`, `tsup.config.ts`, `src/server.ts`.
-- [ ] 1.2 Remove the template placeholder tool + test; drop `private` in `packages/magento-cloud/package.json`.
-- [ ] 1.3 Add `magento-cloud` to `testing.projects` in `openspec/config.yaml`.
-- [ ] 1.4 Create `packages/magento-cloud/test/fake-bin/magento-cloud` (executable Node script, mode `100755`): matches joined argv → fixture file; unknown argv exits 2 with argv echoed on stderr; special argv `__env-probe`/`__slow`/`__flood`.
-- [ ] 1.5 RED test: `statSync(fakeBin).mode & 0o111` is non-zero — a mode-bit loss fails loudly rather than turning every real-process test into an unread `ENOENT`.
-- [ ] 1.6 RED test: unknown argv against the fake exits `2` with the argv echoed on stderr — proves the fake cannot silently return empty on drift.
-- [ ] 1.7 Create `packages/magento-cloud/test/fake-bin/fixtures/*.txt`: canned TSV per read-only subcommand and canned error text; one fixture with an embedded tab and one with an embedded newline in a quoted field; one `environment:relationships` fixture whose service entry carries a synthetic username and password. This is the single corpus both the fake binary and the mocked unit tests below import.
-- [ ] 1.8 Document, as a task not a comment: what the fake CAN prove (argv building, env assembly, real spawn/pipe/timeout/byte-cap kills, fd-1 isolation) and CANNOT prove (that the real CLI accepts this argv or still emits this shape) — feeds Phase 10's onboarding doc.
+- [x] 1.1 Run `pnpm new-server magento-cloud` scaffolding `packages/magento-cloud/` from `templates/server/`; verify `package.json`, `tsconfig.json`, `tsup.config.ts`, `src/server.ts`.
+- [x] 1.2 Remove the template placeholder tool + test; drop `private` in `packages/magento-cloud/package.json`.
+- [x] 1.3 Add `magento-cloud` to `testing.projects` in `openspec/config.yaml`.
+- [x] 1.4 Create `packages/magento-cloud/test/fake-bin/magento-cloud` (executable Node script, mode `100755`): matches joined argv → fixture file; unknown argv exits 2 with argv echoed on stderr; special argv `__env-probe`/`__slow`/`__flood`.
+- [x] 1.5 RED test: `statSync(fakeBin).mode & 0o111` is non-zero — a mode-bit loss fails loudly rather than turning every real-process test into an unread `ENOENT`.
+- [x] 1.6 RED test: unknown argv against the fake exits `2` with the argv echoed on stderr — proves the fake cannot silently return empty on drift.
+- [x] 1.7 Create `packages/magento-cloud/test/fake-bin/fixtures/*.txt`: canned TSV per read-only subcommand and canned error text; one fixture with an embedded tab and one with an embedded newline in a quoted field; one `environment:relationships` fixture whose service entry carries a synthetic username and password. This is the single corpus both the fake binary and the mocked unit tests below import.
+- [x] 1.8 Document, as a task not a comment: what the fake CAN prove (argv building, env assembly, real spawn/pipe/timeout/byte-cap kills, fd-1 isolation) and CANNOT prove (that the real CLI accepts this argv or still emits this shape) — feeds Phase 10's onboarding doc.
 
 ## Phase 2: Binary resolution & three-way failure classification (Decision 2 — ENOENT must be caught before spawning)
 
-- [ ] 2.1 RED `packages/magento-cloud/src/client/locate-binary.test.ts`: `locateBinary({ pathEntries })` returns none when no candidate passes `accessSync(p, X_OK)`.
-- [ ] 2.2 GREEN `client/locate-binary.ts`: walks an injected `pathEntries: readonly string[]` (never `process.env.PATH`); returns the absolute path or none.
-- [ ] 2.3 RED same file, real-process case: `pathEntries` pointed at Phase 1's fake-bin directory resolves the fake binary's absolute path.
-- [ ] 2.4 RED `client/errors.test.ts` + `classify.test.ts`: proves `run-allowlisted.ts:43`'s `typeof error.code === "number" ? error.code : 1` ENOENT trap is unreachable — with no binary resolved, `MagentoCloudNotInstalledError` is thrown and `execFile`/`runAllowlisted` is never called.
-- [ ] 2.5 GREEN `client/errors.ts`: `MagentoCloudNotInstalledError`, `MagentoCloudNotAuthenticatedError`, `MagentoCloudUnsupportedVersionError`, each naming the binary/env var/version.
-- [ ] 2.6 RED `classify.test.ts`: exit + the fixture's (1.7) non-interactive auth-help stderr text classifies `not-authenticated`, distinct from a generic failure.
-- [ ] 2.7 GREEN `client/classify.ts`: classification over exit code + stderr text for the three known shapes, default generic-but-named otherwise.
-- [ ] 2.8 RED: `--version` parsed once per process, memoized; an unparseable version does NOT fail — records `version: "unknown"`, proceeds.
-- [ ] 2.9 GREEN: version parsing + memoization in `classify.ts`; `MINIMUM_SUPPORTED_CLI_VERSION` marked PROVISIONAL, check warn-only (never blocking).
-- [ ] 2.10 Apply-time: run `magento-cloud --version` against the real installed CLI; record the actual value in `classify.ts`'s comment, confirming/correcting exploration's indicative `5.3.1`; never block apply on this.
+- [x] 2.1 RED `packages/magento-cloud/src/client/locate-binary.test.ts`: `locateBinary({ pathEntries })` returns none when no candidate passes `accessSync(p, X_OK)`.
+- [x] 2.2 GREEN `client/locate-binary.ts`: walks an injected `pathEntries: readonly string[]` (never `process.env.PATH`); returns the absolute path or none.
+- [x] 2.3 RED same file, real-process case: `pathEntries` pointed at Phase 1's fake-bin directory resolves the fake binary's absolute path.
+- [x] 2.4 RED `client/errors.test.ts` + `classify.test.ts`: proves `run-allowlisted.ts:43`'s `typeof error.code === "number" ? error.code : 1` ENOENT trap is unreachable — with no binary resolved, `MagentoCloudNotInstalledError` is thrown and `execFile`/`runAllowlisted` is never called.
+- [x] 2.5 GREEN `client/errors.ts`: `MagentoCloudNotInstalledError`, `MagentoCloudNotAuthenticatedError`, `MagentoCloudUnsupportedVersionError`, each naming the binary/env var/version.
+- [x] 2.6 RED `classify.test.ts`: exit + the fixture's (1.7) non-interactive auth-help stderr text classifies `not-authenticated`, distinct from a generic failure.
+- [x] 2.7 GREEN `client/classify.ts`: classification over exit code + stderr text for the three known shapes, default generic-but-named otherwise.
+- [x] 2.8 RED: `--version` parsed once per process, memoized; an unparseable version does NOT fail — records `version: "unknown"`, proceeds.
+- [x] 2.9 GREEN: version parsing + memoization in `classify.ts`; `MINIMUM_SUPPORTED_CLI_VERSION` marked PROVISIONAL, check warn-only (never blocking).
+- [x] 2.10 Apply-time: run `magento-cloud --version` against the real installed CLI; record the actual value in `classify.ts`'s comment, confirming/correcting exploration's indicative `5.3.1`; never block apply on this. **Real value: "Magento Cloud CLI 1.47.0"** (different format AND value than the 5.3.1 guess — confirmed that guess was not the CLI's own version).
 
 ## Phase 3: Allowlist + TSV parsing (Decision 3, 4 — before anything consumes them)
 
