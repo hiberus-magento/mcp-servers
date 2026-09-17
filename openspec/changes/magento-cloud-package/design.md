@@ -240,10 +240,23 @@ is the caller's signal that more rows exist.
 
 ## Decision 6: `timedOut` disambiguation
 
-`CommandResult.timedOut` is `killed && signal === "SIGKILL"`, and Node uses the
-same `killSignal` for a `maxBuffer` overflow. Disambiguated in-domain, with an
-injected clock, **no `mcp-core` change**, `timedOut`'s meaning unchanged for
-existing callers:
+> **Corrected during implementation.** This section originally stated as fact
+> that Node uses the same `killSignal` for a `maxBuffer` overflow as for a
+> wall-clock timeout, and built the disambiguation on that premise. A real
+> child-process test on Node v22.14.0 disproved it
+> (`packages/magento-cloud/src/client/classify.timeout.test.ts`): an overflow
+> sets NEITHER `timedOut` NOR `error.killed`/`error.signal`.
+>
+> So classification cannot key off `timedOut`, and does not: it runs whenever
+> `exitCode !== 0`, on the shared path all eight tools use. The conclusion
+> below — disambiguate in-domain with an injected clock, no `mcp-core` change —
+> stands; only its stated mechanism was wrong. Had the premise gone
+> uncorrected, hitting the output cap would have reported as a generic failure
+> instead of the explainable outcome it is.
+
+`CommandResult.timedOut` is `killed && signal === "SIGKILL"`. Disambiguated
+in-domain, with an injected clock, **no `mcp-core` change**, `timedOut`'s
+meaning unchanged for existing callers:
 
 ```ts
 const elapsedMs = now() - start;                       // injected clock, deterministic

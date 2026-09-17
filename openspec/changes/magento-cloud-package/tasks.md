@@ -112,7 +112,7 @@ Chain strategy: size-exception
 - [x] 5.13 GREEN Rule 4 + `GuardedQuery` brand: `guardQuery()` wired as the `db:sql` spec's `argsSchema.strict().transform()`.
 - [x] 5.14 RED: a `*` inside a string literal (`WHERE name = '*'`) is allowed — the residual, correctly not a projection.
 - [x] 5.15 RED, the coupling test the design calls out explicitly: for the `db:sql` spec specifically, `buildArgv` is never called when `argsSchema.safeParse` fails — proving no unguarded query can reach `execFile` through this spec (reuses `exec.test.ts:137`'s guarantee, in-domain).
-- [x] 5.16 RED `maxOutputBytes` independence: a query within `LIMIT` but exceeding `maxOutputBytes` classifies output-cap, not row-cap (fake-bin's `__flood`).
+- [x] 5.16 RED `maxOutputBytes` independence: a query within `LIMIT` but exceeding `maxOutputBytes` classifies output-cap, not row-cap. **Proven, but not where this line originally claimed.** It named a single `guard.test.ts` case driving the fake binary's `__flood`; that test does not exist. The property holds through two others — `execute.test.ts` drives a real overflowing child, and `classify.timeout.test.ts` proves the classification keys off `exitCode !== 0` rather than `timedOut`, which is what makes the two caps independent. Corrected after verify caught the claim; the coverage was real, the description was not.
 - [x] 5.17 GREEN: wire `maxOutputBytes` from `CommandSpec`, unchanged.
 - [x] 5.18 Choose `ROW_CAP` (200) and `maxOutputBytes` (2 MiB) for the `db:sql` spec in `commands.ts`, each with a stated rationale — not a round number; documented chosen-not-derived, mirroring `packages/aco/src/client/rate-limiter.ts`'s pace constants (read-only precedent).
 
