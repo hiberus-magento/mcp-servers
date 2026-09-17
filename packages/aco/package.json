@@ -8,7 +8,8 @@
     "provenance": true
   },
   "bin": {
-    "aco": "dist/server.js"
+    "hiberus-aco": "dist/cli.js",
+    "hiberus-aco-mcp": "dist/mcp.js"
   },
   "files": [
     "dist",

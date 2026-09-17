@@ -140,21 +140,21 @@ Chain strategy: size-exception
 
 ## Phase 6: Conformance & Packaging Gate
 
-- [ ] 6.1 RED `packages/aco/src/mcp.conformance.test.ts`: `tools/list` on the BUILT bundle returns exactly the six declared names (deep-equal, sorted) — the artifact-layer proof of 5.1/6.3.
-- [ ] 6.2 GREEN: `pnpm --filter @hiberus-magento/aco build`; wire `describeConformance` with NO `shellOutProbe`; confirm the domain-independent fd-1 divert probe finds zero stray stdout lines (threat-matrix: subprocess stdio inheritance).
-- [ ] 6.3 RED: `tools/list`'s `properties.mode.enum` deep-equals `["named"]` for `aco_toggle_policy` on the built bundle — third of the three independent no-`"all"`-branch proofs.
-- [ ] 6.4 GREEN: satisfied once 5.4 ships in the built bundle; test confirms.
-- [ ] 6.5 RED: `scripts/verify-bundle.mjs` (read-only) run against `packages/aco`'s dist — single file ≤2 MB, none of `express`/`hono`/`cors`/`jose`/`ajv`, tarball `dependencies:{}`, shebang, `LICENSE`.
-- [ ] 6.6 GREEN: fix `packages/aco/tsup.config.ts`/`package.json` until the gate passes.
-- [ ] 6.7 RED `packages/aco/src/client/purity.test.ts`: mirrors `packages/eds/src/client/purity.test.ts` (read-only) — no `console.`/`process.exit`/`process.env`/prompt/ANSI under `client/`.
-- [ ] 6.8 GREEN: satisfied if Phases 1-2 held the constraint; test proves it.
+- [x] 6.1 RED `packages/aco/src/mcp.conformance.test.ts`: `tools/list` on the BUILT bundle returns exactly the six declared names (deep-equal, sorted) — the artifact-layer proof of 5.1/6.3.
+- [x] 6.2 GREEN: `pnpm --filter @hiberus-magento/aco build`; wire `describeConformance` with NO `shellOutProbe`; confirm the domain-independent fd-1 divert probe finds zero stray stdout lines (threat-matrix: subprocess stdio inheritance).
+- [x] 6.3 RED: `tools/list`'s `properties.mode.enum` deep-equals `["named"]` for `aco_toggle_policy` on the built bundle — third of the three independent no-`"all"`-branch proofs. (Deviation, reported: the actual JSON Schema this SDK/zod version renders for a single `z.literal` is `{"type":"string","const":"named"}`, never `enum` — `enum` is zod v4's rendering for a union of literals, not a lone literal. The test asserts `properties.mode.const === "named"` and `properties.mode.enum === undefined`, the equivalent no-`"all"`-branch proof against what is actually on the wire; verified empirically against the installed `@modelcontextprotocol/sdk@1.30.0`/`zod@4.5.4` before writing the assertion.)
+- [x] 6.4 GREEN: satisfied once 5.4 ships in the built bundle; test confirms (see 6.3's deviation note for the exact field asserted).
+- [x] 6.5 RED: `scripts/verify-bundle.mjs` (read-only) run against `packages/aco`'s dist — single file ≤2 MB, none of `express`/`hono`/`cors`/`jose`/`ajv`, tarball `dependencies:{}`, shebang, `LICENSE`.
+- [x] 6.6 GREEN: fix `packages/aco/tsup.config.ts`/`package.json` until the gate passes. (Also removed the Phase-0 scaffold's `src/server.ts`/`dist/server.js` bin entry, replaced by the two real entrypoints `cli.ts`/`mcp.ts`, matching `eds`'s shape and design.md's File Changes table, which never lists `server.ts`. Proved G1 can actually fail: touched a stray `dist/stray-chunk.js` and confirmed `verify-bundle.mjs` reports `[G1] dist/ contains .js file(s) beyond the declared bin entries`, then removed it.)
+- [x] 6.7 RED `packages/aco/src/client/purity.test.ts`: mirrors `packages/eds/src/client/purity.test.ts` (read-only) — no `console.`/`process.exit`/`process.env`/prompt/ANSI under `client/`. (Already existed from an earlier phase; re-run and confirmed green as part of this phase's full suite run, not re-authored.)
+- [x] 6.8 GREEN: satisfied if Phases 1-2 held the constraint; test proves it.
 
 ## Phase 7: Cold-Start Trigger (last)
 
-- [ ] 7.1 Create `scripts/compare-bundle-size.mjs`: prints `packages/aco/dist/mcp.js` vs `packages/eds/dist/mcp.js` (read-only) byte sizes and the ratio.
-- [ ] 7.2 Run it. If `|Δ| ≤ 20%`: append a dated note to `packages/mcp-testing/src/conformance/cold-start.ts` recording the ratio, explicitly retaining 250 ms.
-- [ ] 7.3 If `|Δ| > 20%` instead: run `node scripts/measure-cold-start.mjs packages/aco dist/mcp.js` (read-only script); record a new local-provisional number (N=20, discard 3, p95, `ceil(p95×1.75)` rounded to next 250 ms) in `cold-start.ts`, marked PROVISIONAL; add optional `coldStartBudgetMs` to `ConformanceOptions` in `packages/mcp-testing/src/conformance/conformance.ts` (additive; `eds`'s own assertion passes no override, stays unchanged).
-- [ ] 7.4 Confirm `describeConformance`'s generic median-of-5 cold-start test (read-only, already generic) passes against `aco` using whichever constant 7.2/7.3 settled.
+- [x] 7.1 Create `scripts/compare-bundle-size.mjs`: prints `packages/aco/dist/mcp.js` vs `packages/eds/dist/mcp.js` (read-only) byte sizes and the ratio.
+- [x] 7.2 Run it. If `|Δ| ≤ 20%`: append a dated note to `packages/mcp-testing/src/conformance/cold-start.ts` recording the ratio, explicitly retaining 250 ms. (Measured: `aco/dist/mcp.js` 1,106,603 bytes vs `eds/dist/mcp.js` 1,085,024 bytes, ratio +2.0%. Trigger did NOT fire; dated note appended, `COLD_START_BUDGET_MS` retained unmodified.)
+- [ ] 7.3 If `|Δ| > 20%` instead: run `node scripts/measure-cold-start.mjs packages/aco dist/mcp.js` (read-only script); record a new local-provisional number (N=20, discard 3, p95, `ceil(p95×1.75)` rounded to next 250 ms) in `cold-start.ts`, marked PROVISIONAL; add optional `coldStartBudgetMs` to `ConformanceOptions` in `packages/mcp-testing/src/conformance/conformance.ts` (additive; `eds`'s own assertion passes no override, stays unchanged). — N/A, not applicable: 7.2's branch fired instead (ratio +2.0%, within the 20% band), so per design.md's own conditional ("only if the trigger fires") this branch, including the additive `coldStartBudgetMs` option, was correctly left untouched.
+- [x] 7.4 Confirm `describeConformance`'s generic median-of-5 cold-start test (read-only, already generic) passes against `aco` using whichever constant 7.2/7.3 settled. (Passed at the unmodified 250 ms constant, as part of the 8/8 green run of `packages/aco/src/mcp.conformance.test.ts`.)
 
 ## Phase 8: Registration & Documentation
 

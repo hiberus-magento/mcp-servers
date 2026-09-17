@@ -51,6 +51,32 @@ import { spawn } from "node:child_process";
 // available, OR the bundle's byte size moves more than 20%.
 export const COLD_START_BUDGET_MS = 250;
 
+// ---------------------------------------------------------------------
+// RE-MEASURE TRIGGER CHECK — aco-package (tasks.md, Phase 7)
+// ---------------------------------------------------------------------
+//   date:              2026-09-17
+//   command:           node scripts/compare-bundle-size.mjs
+//                        packages/aco/dist/mcp.js packages/eds/dist/mcp.js
+//   aco/dist/mcp.js:   1,106,603 bytes
+//   eds/dist/mcp.js:   1,085,024 bytes (the reference this constant was
+//                      derived against, see the measurement above)
+//   ratio:             +2.0%
+//
+// |ratio| <= 20%, so design.md's own re-measure trigger does NOT fire for
+// `aco`. `COLD_START_BUDGET_MS` above is EXPLICITLY RETAINED at 250 ms for
+// `aco` — not because 250 ms is redundantly re-derived from `aco`'s own
+// bundle, but because a package whose bundle size is this close to the one
+// the constant was measured against gives no evidence that the existing
+// figure is wrong. Raising or lowering it here with no supporting
+// measurement would be an invented number, and this constant is shared by
+// every package `describeConformance` covers (`eds` included) — moving it
+// for `aco` alone is not even representable without the additive
+// `coldStartBudgetMs` override (`ConformanceOptions`), which this batch
+// does NOT add, precisely because the trigger that would justify it did
+// not fire. `aco`'s own `describeConformance` cold-start assertion
+// therefore runs against this exact same constant, unmodified, and passed
+// (see `packages/aco/src/mcp.conformance.test.ts`).
+
 /** One cold spawn of `serverPath`, timed from `spawn()` to the `initialize` response. The child is killed immediately after. No warm pool. */
 export function measureOneColdStart(serverPath: string): Promise<number> {
   return new Promise((resolve, reject) => {
