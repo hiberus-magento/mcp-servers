@@ -1,2 +1,21 @@
-plan	status
-standard	active
+Property	Value
+id	sub-demo-0001
+status	active
+created_at	2026-01-01T00:00:00+00:00
+updated_at	2026-01-02T00:00:00+00:00
+owner	acct-demo-0001
+mageId	mage-demo-0001
+members	3
+project_id	acme-demo-project
+project_title	Demo Storefront
+default_branch	main
+project_region_label	Demo Region
+project_ui	https://console.demo-region.example-domain/acme/acme-demo-project
+plan	demo-plan
+environments	3
+storage	51200
+user_licenses	5
+project_region	demo-region.example-domain
+resources_limit	0
+owner_info
+    display_name: Demo User

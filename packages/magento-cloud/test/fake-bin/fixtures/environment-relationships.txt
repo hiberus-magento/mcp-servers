@@ -1,2 +1,46 @@
-service	scheme	host	port	username	password
-database	mysql	demo-db-host.internal	3306	demo-svc-user	demo-svc-password-not-real
+database:
+    -
+        host: demo-db-host.internal
+        hostname: demo-db-host.internal
+        cluster: acme-demo-cluster
+        service: mysql
+        rel: mysql
+        scheme: mysql
+        username: demo-svc-user
+        password: demo-svc-password-not-real
+        port: 3306
+        epoch: 0
+        path: main
+        query:
+            is_master: true
+        fragment: null
+        public: false
+        host_mapped: false
+        type: 'mysql:10.6'
+        instance_ips:
+            - 203.0.113.10
+        ip: 203.0.113.10
+        url: 'mysql://demo-svc-user:demo-svc-password-not-real@demo-db-host.internal:3306/main'
+redis:
+    -
+        host: demo-cache-host.internal
+        hostname: demo-cache-host.internal
+        cluster: acme-demo-cluster
+        service: redis
+        rel: redis
+        scheme: redis
+        username: null
+        password: null
+        port: 6379
+        epoch: 0
+        path: null
+        query:
+            is_master: true
+        fragment: null
+        public: false
+        host_mapped: false
+        type: 'redis:7.0'
+        instance_ips:
+            - 203.0.113.11
+        ip: 203.0.113.11
+        url: 'redis://demo-cache-host.internal:6379'

@@ -1,3 +1,29 @@
+Property	Value
 id	acme-demo-env-main
-status	active
+created_at	2026-01-01T00:00:00+00:00
+updated_at	2026-01-02T00:00:00+00:00
+name	main
+machine_name	main-7demo0
+title	Main
 type	production
+parent	
+default_domain	
+has_domains	true
+clone_parent_on_create	true
+deployment_target	local
+is_pr	false
+has_remote	true
+status	active
+http_access	
+enable_smtp	true
+restrict_robots	false
+edge_hostname	acme-demo-env-main-acme-demo-project.demo-region.example-domain
+max_instance_count	1
+sizing
+    resources:
+        profile_size: M
+crons
+    cronrun:
+        spec: '* * * * *'
+        commands:
+            start: 'php bin/magento cron:run'

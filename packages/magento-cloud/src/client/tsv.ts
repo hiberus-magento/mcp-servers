@@ -95,12 +95,37 @@ export interface RowsToRecordsOptions {
 }
 
 /**
- * Maps data rows to plain objects keyed by the HEADER the CLI actually
- * emitted (row 0) — never a positional index, so a column reordering or an
- * appended column is inert. Missing `requiredHeaders` throw
+ * The ONE place a header cell the CLI printed becomes a record key, so a
+ * parser's `REQUIRED_HEADERS` never has to spell a display label. The real
+ * CLI prints a header row for humans: Capitalised, spaced, and punctuated
+ * (`ID`, `Disk (MiB)`, `Allocated disk`, `% used`), so an exact
+ * case-sensitive match against it rejected genuine output.
+ *
+ * `%` becomes the WORD `percent` before anything else, because collapsing
+ * it as punctuation would silently turn `% used` into `used` — colliding
+ * with any real `Used` column instead of failing, which is the kind of
+ * quiet mis-key this whole module exists to prevent. Everything after that
+ * is mechanical: lowercase, every run of non-alphanumerics to a single
+ * `_`, and no leading or trailing `_`.
+ */
+export function normalizeHeaderName(header: string): string {
+  return header
+    .replace(/%/g, " percent ")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+/**
+ * Maps data rows to plain objects keyed by the NORMALIZED header the CLI
+ * actually emitted (row 0) — never a positional index, so a column
+ * reordering or an appended column is inert. Missing `requiredHeaders`
+ * (themselves already in normalized form) throw
  * `MagentoCloudOutputShapeError` naming the subcommand, the missing
- * header, and every header actually seen. An unrecognized EXTRA header
- * passes through untouched: strict on our contract, tolerant on theirs.
+ * header, and every header actually seen — reported VERBATIM, as the CLI
+ * printed it, since that is what a maintainer re-capturing the fixture
+ * will be looking at. An unrecognized EXTRA header passes through
+ * untouched: strict on our contract, tolerant on theirs.
  */
 export function rowsToRecords<T = Record<string, string>>(
   rows: readonly (readonly string[])[],
@@ -108,9 +133,10 @@ export function rowsToRecords<T = Record<string, string>>(
 ): readonly T[] {
   const [header, ...dataRows] = rows;
   const headersSeen = header ?? [];
+  const normalizedHeaders = headersSeen.map(normalizeHeaderName);
 
   for (const requiredHeader of options.requiredHeaders) {
-    if (!headersSeen.includes(requiredHeader)) {
+    if (!normalizedHeaders.includes(requiredHeader)) {
       throw new MagentoCloudOutputShapeError({
         subcommand: options.subcommand,
         missingHeader: requiredHeader,
@@ -121,7 +147,7 @@ export function rowsToRecords<T = Record<string, string>>(
 
   return dataRows.map((dataRow) => {
     const record: Record<string, string> = {};
-    headersSeen.forEach((columnName, columnIndex) => {
+    normalizedHeaders.forEach((columnName, columnIndex) => {
       record[columnName] = dataRow[columnIndex] ?? "";
     });
     // `T` is caller-declared (e.g. `ProjectListRow`) and can only ever
@@ -138,23 +164,41 @@ export interface RowsToKeyValueRecordOptions {
 }
 
 /**
- * The OTHER shape the CLI's `:info`/`:get` subcommands emit — no header
- * row at all; every row IS a `field\tvalue` pair (`auth-info.txt`,
- * `project-info.txt`, `environment-info.txt`, `activity-get.txt`,
- * `variable-get.txt`). Reuses the same missing-key error contract as
- * `rowsToRecords`, naming the subcommand, the missing key, and every key
- * actually seen.
+ * The OTHER shape the CLI's `:info`/`:get` subcommands emit
+ * (`auth-info.txt`, `project-info.txt`, `environment-info.txt`,
+ * `activity-get.txt`, `variable-get.txt`): a literal `Property\tValue`
+ * header row, then one `field\tvalue` pair per line. Reuses the same
+ * missing-key error contract as `rowsToRecords`, naming the subcommand,
+ * the missing key, and every key actually seen.
+ *
+ * Two kinds of line are deliberately NOT data:
+ *
+ * - the leading `Property\tValue` header. Ingesting it put a literal
+ *   `{ "Property": "Value" }` entry in every `:info` result an agent saw.
+ * - anything that is not a TOP-LEVEL pair. A nested value (`sizing`,
+ *   `attributes`, `crons`) renders as a bare key line followed by INDENTED
+ *   YAML continuation lines, and a continuation line's own `key: value`
+ *   colon syntax carries no tab at all. This function claims only the flat
+ *   scalars; reconstructing the nested blocks would mean a YAML parser,
+ *   and no caller here needs one. The rule is therefore structural rather
+ *   than a guess at key names: a row is data only when it has at least two
+ *   cells and its key cell starts with a non-space character.
  */
 export function rowsToKeyValueRecord<T = Record<string, string>>(
   rows: readonly (readonly string[])[],
   options: RowsToKeyValueRecordOptions,
 ): T {
   const record: Record<string, string> = {};
-  for (const row of rows) {
+  const [firstRow, ...restRows] = rows;
+  const isHeaderRow = firstRow !== undefined && firstRow[0] === "Property" && firstRow[1] === "Value";
+  const dataRows = isHeaderRow ? restRows : rows;
+
+  for (const row of dataRows) {
     const [key, value] = row;
-    if (key !== undefined) {
-      record[key] = value ?? "";
+    if (key === undefined || value === undefined || key.length === 0 || /^\s/.test(key)) {
+      continue;
     }
+    record[key] = value;
   }
 
   const keysSeen = Object.keys(record);

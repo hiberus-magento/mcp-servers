@@ -4,12 +4,15 @@
 // tasks.md 6.1-6.2).
 import { parseTsvRows, rowsToRecords } from "../tsv.js";
 
-export const ROUTE_LIST_REQUIRED_HEADERS = ["route", "type", "upstream"] as const;
+// The third column is `To`, not `upstream`: for a `Type: upstream` route it
+// names the app it reaches, and for a `Type: redirect` route it names the
+// URL it redirects to. Naming it `upstream` would be wrong for half the rows.
+export const ROUTE_LIST_REQUIRED_HEADERS = ["route", "type", "to"] as const;
 
 export interface RouteListRow {
   readonly route: string;
   readonly type: string;
-  readonly upstream: string;
+  readonly to: string;
 }
 
 export function parseRouteList(text: string): readonly RouteListRow[] {

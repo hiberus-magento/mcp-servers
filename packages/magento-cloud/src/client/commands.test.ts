@@ -108,8 +108,6 @@ const TSV_FORMATTED_SUBCOMMANDS: ReadonlyArray<{
   { key: ["project:info"], args: { projectId: "acme-demo-project" } },
   { key: ["environment:list"], args: { projectId: "acme-demo-project" } },
   { key: ["environment:info"], args: { projectId: "acme-demo-project", environmentId: "acme-demo-env-main" } },
-  { key: ["environment:url"], args: { projectId: "acme-demo-project", environmentId: "acme-demo-env-main" } },
-  { key: ["environment:relationships"], args: { projectId: "acme-demo-project", environmentId: "acme-demo-env-main" } },
   { key: ["activity:list"], args: { projectId: "acme-demo-project" } },
   { key: ["activity:get"], args: { projectId: "acme-demo-project", activityId: "act-demo-0001" } },
   { key: ["variable:list"], args: { projectId: "acme-demo-project", environmentId: "acme-demo-env-main" } },
@@ -139,6 +137,40 @@ describe("argv builders — every list-/table-shaped read carries --format=tsv",
       expect(result.value).not.toContain("--format=table");
       expect(result.value).not.toContain("--format=csv");
       expect(result.value).not.toContain("--format=plain");
+    }
+  });
+});
+
+// CHANGED DELIBERATELY: `environment:url` and `environment:relationships`
+// used to be in the list above. They do not merely ignore `--format` — they
+// REJECT it: `[RuntimeException] The "--format" option does not exist.` Every
+// call to either one failed outright, so asserting that they carried
+// `--format=tsv` was asserting the bug.
+describe("environment:url and environment:relationships REJECT --format entirely", () => {
+  it("environment:url asks for --pipe and carries no --format flag", () => {
+    const allowlist = createMagentoCloudAllowlist(BIN);
+    const spec = allowlist.resolve(BIN, ["environment:url"]);
+    if (!spec) throw new Error("expected environment:url to be registered");
+
+    const result = validateArgv(spec, { projectId: "acme-demo-project", environmentId: "acme-demo-env-main" });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toContain("--pipe");
+      expect(result.value.some((token) => token.startsWith("--format"))).toBe(false);
+    }
+  });
+
+  it("environment:relationships carries no --format flag (its default output is YAML)", () => {
+    const allowlist = createMagentoCloudAllowlist(BIN);
+    const spec = allowlist.resolve(BIN, ["environment:relationships"]);
+    if (!spec) throw new Error("expected environment:relationships to be registered");
+
+    const result = validateArgv(spec, { projectId: "acme-demo-project", environmentId: "acme-demo-env-main" });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.some((token) => token.startsWith("--format"))).toBe(false);
     }
   });
 });

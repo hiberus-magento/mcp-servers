@@ -1,3 +1,3 @@
-name	value	is_sensitive
-DEMO_FEATURE_FLAG	on	false
-DEMO_SECRET_VAR		true
+Name	Level	Value	Enabled
+DEMO_FEATURE_FLAG	environment	on	true
+DEMO_COMPOSER_AUTH	project	{"http-basic":{"repo.example-domain":{"username":"demo-user","password":"demo-pass"}}}	true

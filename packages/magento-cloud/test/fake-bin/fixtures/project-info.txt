@@ -1,3 +1,22 @@
+Property	Value
 id	acme-demo-project
+created_at	2026-01-01T00:00:00+00:00
+updated_at	2026-01-02T00:00:00+00:00
 title	Demo Storefront
+description	
+owner	acct-demo-0001
+namespace	acme
+organization	org-demo-0001
+default_branch	main
+status	active
+timezone	UTC
 region	demo-region.example-domain
+repository	demo-user@git.demo-region.example-domain:acme-demo-project.git
+default_domain	
+url	https://console.demo-region.example-domain/acme/acme-demo-project
+subscription
+    plan: demo-plan
+    environments: 3
+    storage: 51200
+git
+    ref: refs/heads/main

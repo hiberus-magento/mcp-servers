@@ -7,13 +7,18 @@
 // caller passes its raw stdout through unparsed.
 import { parseTsvRows, rowsToKeyValueRecord, rowsToRecords } from "../tsv.js";
 
-export const ACTIVITY_LIST_REQUIRED_HEADERS = ["id", "type", "state", "created"] as const;
+// `activity:list` has NO `Type` column. It reports what happened
+// (`Description`), how far it got (`Progress`), whether it finished
+// (`State`), and how it finished (`Result`).
+export const ACTIVITY_LIST_REQUIRED_HEADERS = ["id", "created", "description", "progress", "state", "result"] as const;
 
 export interface ActivityListRow {
   readonly id: string;
-  readonly type: string;
-  readonly state: string;
   readonly created: string;
+  readonly description: string;
+  readonly progress: string;
+  readonly state: string;
+  readonly result: string;
 }
 
 export function parseActivityList(text: string): readonly ActivityListRow[] {

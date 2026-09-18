@@ -183,14 +183,25 @@ function environmentInfoSpec(bin: string) {
   } satisfies CommandSpec<typeof argsSchema>;
 }
 
+// `environment:url` and `environment:relationships` REJECT `--format`: the
+// CLI answers `[RuntimeException] The "--format" option does not exist.` and
+// exits non-zero, so every call carrying it failed outright. `environment:url`
+// takes `--pipe` instead (one bare URL per line); `environment:relationships`
+// takes no format flag at all and prints YAML.
 function environmentUrlSpec(bin: string) {
   const argsSchema = environmentScoped({});
   return {
     bin,
     subcommand: ["environment:url"],
     argsSchema,
-    buildArgv: (args: z.infer<typeof argsSchema>) =>
-      withFormatTsv(["environment:url", "--project", args.projectId, "--environment", args.environmentId]),
+    buildArgv: (args: z.infer<typeof argsSchema>) => [
+      "environment:url",
+      "--project",
+      args.projectId,
+      "--environment",
+      args.environmentId,
+      "--pipe",
+    ],
     timeoutMs: DEFAULT_TIMEOUT_MS,
     maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
   } satisfies CommandSpec<typeof argsSchema>;
@@ -202,8 +213,13 @@ function environmentRelationshipsSpec(bin: string) {
     bin,
     subcommand: ["environment:relationships"],
     argsSchema,
-    buildArgv: (args: z.infer<typeof argsSchema>) =>
-      withFormatTsv(["environment:relationships", "--project", args.projectId, "--environment", args.environmentId]),
+    buildArgv: (args: z.infer<typeof argsSchema>) => [
+      "environment:relationships",
+      "--project",
+      args.projectId,
+      "--environment",
+      args.environmentId,
+    ],
     timeoutMs: DEFAULT_TIMEOUT_MS,
     maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
   } satisfies CommandSpec<typeof argsSchema>;

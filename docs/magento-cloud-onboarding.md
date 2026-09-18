@@ -205,7 +205,14 @@ hand, against a real Magento Cloud project before publishing:
 
 **Fixture re-capture procedure**, if the real CLI's output shape has
 drifted from `test/fake-bin/fixtures/*.txt`: re-run the corresponding
-`magento-cloud` subcommand with `--format=tsv` (or `--raw` for `db:sql`)
+`magento-cloud` subcommand with the SAME flags `src/client/commands.ts`
+builds for it — `--format=tsv` for the tabular and key/value reads, `--raw`
+for `db:sql`, `--pipe` for `environment:url`, and no format flag at all for
+`environment:relationships`, `app:config-get` and `activity:log`.
+`environment:url` and `environment:relationships` reject `--format`
+outright (`The "--format" option does not exist.`), so a fixture captured
+with it is not the output the client will ever see — which is how the
+original fixture corpus came to describe a CLI that does not exist. Run it
 against a real project, copy its real stdout into the matching fixture
 file under `test/fake-bin/fixtures/`, and record the CLI version and date
 below. Never copy a real project id, environment name, hostname, or token

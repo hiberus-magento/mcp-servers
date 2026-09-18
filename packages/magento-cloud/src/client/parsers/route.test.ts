@@ -11,12 +11,19 @@ const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../tes
 const readFixture = (name: string) => readFileSync(join(FIXTURES_DIR, name), "utf8");
 
 describe("parseRouteList", () => {
-  it("maps route:list rows keyed by header", () => {
+  // The real header row is `Route`, `Type`, `To` — there is no `upstream`
+  // column, which is what this expectation used to name.
+  it("maps route:list rows keyed by header, including the redirect row", () => {
     expect(parseRouteList(readFixture("route-list.txt"))).toEqual([
       {
         route: "https://acme-demo-env-main-acme-demo-project.demo-region.example-domain/",
         type: "upstream",
-        upstream: "demo-app",
+        to: "demo-app:http",
+      },
+      {
+        route: "http://acme-demo-env-main-acme-demo-project.demo-region.example-domain/",
+        type: "redirect",
+        to: "https://acme-demo-env-main-acme-demo-project.demo-region.example-domain/",
       },
     ]);
   });

@@ -24,8 +24,20 @@ describe("client/index.ts — the only public surface", () => {
     expect(typeof client.parseDbSqlRows).toBe("function");
   });
 
+  // CHANGED DELIBERATELY: this text used to be a TSV table. `environment:
+  // relationships` rejects `--format` and prints YAML, so the TSV form could
+  // only ever have come from an invented fixture.
   it("builds a ServiceEndpoint with exactly the four stripped fields through the barrel path", () => {
-    const fixtureText = ["service\tscheme\thost\tport\tusername\tpassword", "database\tmysql\tdb.internal\t3306\tsome-user\tsome-pass"].join("\n");
+    const fixtureText = [
+      "database:",
+      "    -",
+      "        username: some-user",
+      "        scheme: mysql",
+      "        service: mysql",
+      "        host: db.internal",
+      "        port: 3306",
+      "        password: some-pass",
+    ].join("\n");
 
     const [endpoint] = client.parseServiceEndpoints(fixtureText);
 

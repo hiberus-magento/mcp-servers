@@ -11,6 +11,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { MagentoCloudOutputShapeError } from "./errors.js";
 import { getRawRelationshipsText, parseServiceEndpoints } from "./relationships.js";
 
 const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../test/fake-bin/fixtures");
@@ -20,10 +21,17 @@ const FIXTURE_USERNAME = "demo-svc-user";
 const FIXTURE_PASSWORD_VALUE = "demo-svc-password-not-real";
 
 describe("parseServiceEndpoints", () => {
-  it("returns only host, port, scheme, and service — no username or password field", () => {
+  // CHANGED DELIBERATELY: this fixture used to be a TSV table with a
+  // `service/scheme/host/port/username/password` header row. The real
+  // `environment:relationships` REJECTS `--format` and prints YAML, so the
+  // TSV expectation could only ever have passed against invented input.
+  it("returns one endpoint per relationship entry, with only host, port, scheme, and service", () => {
     const endpoints = parseServiceEndpoints(FIXTURE_TEXT);
 
-    expect(endpoints).toEqual([{ service: "database", scheme: "mysql", host: "demo-db-host.internal", port: 3306 }]);
+    expect(endpoints).toEqual([
+      { service: "mysql", scheme: "mysql", host: "demo-db-host.internal", port: 3306 },
+      { service: "redis", scheme: "redis", host: "demo-cache-host.internal", port: 6379 },
+    ]);
     expect(Object.keys(endpoints[0]!).sort()).toEqual(["host", "port", "scheme", "service"]);
   });
 
@@ -34,6 +42,40 @@ describe("parseServiceEndpoints", () => {
     expect(serialized).not.toContain(FIXTURE_USERNAME);
     expect(serialized).not.toContain(FIXTURE_PASSWORD_VALUE);
     expect(serialized).not.toMatch(/user|pass|secret|token/i);
+  });
+
+  it("returns an empty list for empty output, rather than inventing an endpoint", () => {
+    expect(parseServiceEndpoints("")).toEqual([]);
+    expect(parseServiceEndpoints("{}\n")).toEqual([]);
+  });
+
+  it("POSITIVE CONTROL: output that carries keys but no host at all throws, instead of silently returning nothing", () => {
+    const text = ["database:", "    -", "        scheme: mysql", "        port: 3306"].join("\n");
+
+    expect(() => parseServiceEndpoints(text)).toThrow(MagentoCloudOutputShapeError);
+  });
+
+  it("POSITIVE CONTROL: output this scan does not understand at all throws, rather than reporting no endpoints", () => {
+    expect(() => parseServiceEndpoints("service\tscheme\thost\tport\ndatabase\tmysql\tdemo-db-host.internal\t3306\n")).toThrow(
+      MagentoCloudOutputShapeError,
+    );
+  });
+
+  it("POSITIVE CONTROL: a host nested DEEPER than the entry's own fields is not mistaken for the entry's host", () => {
+    const text = [
+      "database:",
+      "    -",
+      "        scheme: mysql",
+      "        service: mysql",
+      "        query:",
+      "            host: demo-inner-host.internal",
+      "        host: demo-db-host.internal",
+      "        port: 3306",
+    ].join("\n");
+
+    expect(parseServiceEndpoints(text)).toEqual([
+      { service: "mysql", scheme: "mysql", host: "demo-db-host.internal", port: 3306 },
+    ]);
   });
 });
 

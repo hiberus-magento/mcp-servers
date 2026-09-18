@@ -117,8 +117,12 @@ describe("auth status — never echoes the token", () => {
 });
 
 describe("environment:relationships — CLI-only, deliberately unstripped", () => {
-  it("may include the fixture's username and password fields, unlike the MCP surface", async () => {
-    mockExecFileOnce(0, "service\tscheme\thost\tport\tusername\tpassword\ndatabase\tmysql\tdb.internal\t3306\tsvc-user\tsvc-pass\n", "");
+  it("may include the CLI's own username and password lines, unlike the MCP surface", async () => {
+    mockExecFileOnce(
+      0,
+      ["database:", "    -", "        username: svc-user", "        host: db.internal", "        password: svc-pass", ""].join("\n"),
+      "",
+    );
     const deps = buildDeps();
 
     const result = await runCli(["environment:relationships", "--project", "acme-demo-project", "--environment", "acme-demo-env-main"], deps);
@@ -156,8 +160,22 @@ describe("db:sql — guard rejection exits non-zero, never spawns", () => {
   });
 });
 
-describe("exit codes and redaction on failure", () => {
-  it("exits non-zero and never hangs when no credential can be resolved for a required command", async () => {
+// CHANGED DELIBERATELY. This block previously asserted that a command other
+// than `auth status` exits non-zero when no credential can be resolved. That
+// test was not wrong; it encoded a decision reversed for the MCP surface in
+// e2efb89 and completed here. The child gets HOME, so the spawned CLI finds
+// the session `magento-cloud login` leaves in `~/.magento-cloud/` — refusing
+// to spawn told an already-logged-in operator to paste a token they did not
+// need. If the CLI has no session either, the CLI says so and the failure is
+// classified from its own words.
+describe("no configured credential — defer to the CLI's own session", () => {
+  function envOfLastCall(): Record<string, string> {
+    const [call] = execFileMock.mock.calls;
+    return (call?.[2] as { env: Record<string, string> }).env;
+  }
+
+  it("environment:relationships spawns anyway, omitting MAGENTO_CLOUD_CLI_TOKEN from the child env", async () => {
+    mockExecFileOnce(0, "database:\n    -\n        host: demo-db-host.internal\n", "");
     const deps = buildDeps({
       resolveToken: vi.fn(() => {
         throw new Error("no credential");
@@ -166,8 +184,40 @@ describe("exit codes and redaction on failure", () => {
 
     const result = await runCli(["environment:relationships", "--project", "p", "--environment", "e"], deps);
 
-    expect(result.exitCode).not.toBe(0);
+    expect(execFileMock).toHaveBeenCalledOnce();
+    expect(envOfLastCall()).not.toHaveProperty("MAGENTO_CLOUD_CLI_TOKEN");
+    expect(result.exitCode).toBe(0);
   });
+
+  it("db:sql spawns anyway, omitting MAGENTO_CLOUD_CLI_TOKEN from the child env", async () => {
+    mockExecFileOnce(0, "entity_id\tsku\n1\tacme-demo-sku\n", "");
+    const deps = buildDeps({
+      resolveToken: vi.fn(() => {
+        throw new Error("no credential");
+      }),
+    });
+
+    const result = await runCli(
+      ["db:sql", "--project", "p", "--environment", "e", "--query", "SELECT entity_id FROM catalog LIMIT 1"],
+      deps,
+    );
+
+    expect(execFileMock).toHaveBeenCalledOnce();
+    expect(envOfLastCall()).not.toHaveProperty("MAGENTO_CLOUD_CLI_TOKEN");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("POSITIVE CONTROL: a resolvable credential IS still passed to the child", async () => {
+    mockExecFileOnce(0, "database:\n    -\n        host: demo-db-host.internal\n", "");
+    const deps = buildDeps();
+
+    await runCli(["environment:relationships", "--project", "p", "--environment", "e"], deps);
+
+    expect(envOfLastCall()).toMatchObject({ MAGENTO_CLOUD_CLI_TOKEN: "a-token-value" });
+  });
+});
+
+describe("exit codes and redaction on failure", () => {
 
   it("exits non-zero when the binary cannot be located, naming the binary", async () => {
     const deps = buildDeps({

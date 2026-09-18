@@ -1,3 +1,7 @@
+Property	Value
 id	acct-demo-0001
-email	demo.user@example-domain
+first_name	Demo
+last_name	User
 username	demo-user
+email	demo.user@example-domain
+phone_number_verified	false

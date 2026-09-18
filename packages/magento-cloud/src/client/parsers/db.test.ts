@@ -15,7 +15,15 @@ const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../tes
 const readFixture = (name: string) => readFileSync(join(FIXTURES_DIR, name), "utf8");
 
 describe("parseDbSize", () => {
+  // The real columns are `Allocated disk`, `Estimated usage` and `% used` —
+  // two byte counts and an integer percentage, not the megabyte pair this
+  // expectation used to name. Only stdout is parsed: the CLI's progress text
+  // and its deprecation notice go to stderr.
   it("maps db:size's single-row table into one record", () => {
-    expect(parseDbSize(readFixture("db-size.txt"))).toEqual({ usedMb: "128", limitMb: "2048", percentUsed: "6.25" });
+    expect(parseDbSize(readFixture("db-size.txt"))).toEqual({
+      allocated_disk: "2147483648",
+      estimated_usage: "1073741824",
+      percent_used: "50",
+    });
   });
 });

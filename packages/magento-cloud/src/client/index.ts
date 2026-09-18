@@ -59,6 +59,7 @@ export {
   parseEnvironmentList,
   parseEnvironmentInfo,
   parseEnvironmentUrl,
+  parseEnvironmentUrls,
   type EnvironmentListRow,
   type EnvironmentInfoRecord,
 } from "./parsers/environment.js";

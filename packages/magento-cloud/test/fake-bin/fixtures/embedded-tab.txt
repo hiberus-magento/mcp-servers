@@ -1,2 +1,2 @@
-id	title	region
+ID	Title	Region
 acme-demo-project	"Demo	Title"	demo-region.example-domain

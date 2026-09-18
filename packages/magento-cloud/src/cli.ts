@@ -85,12 +85,33 @@ async function runAuthTokenSet(extra: readonly string[], deps: CliDeps): Promise
 }
 
 /**
- * `auth status` is the one command that TOLERATES an absent credential
- * (magento-cloud-mcp spec, Decision 9 — mirrored here for CLI/MCP parity):
- * it wraps `auth:info --no-auto-login` and its entire job is to report
- * whether authentication succeeded, so it needs no token to run. Never
- * echoes the resolved token under any outcome (magento-cloud-cli spec,
- * "Auth Status Never Echoes the Token").
+ * A configured token is an OPTION, not a precondition, for every command
+ * here. The child gets HOME, so the spawned CLI can find the session
+ * `magento-cloud login` leaves in `~/.magento-cloud/`; refusing to spawn
+ * without a token told an operator who had already logged in to paste a
+ * credential they did not need. When the CLI has no session either, it says
+ * so itself and `classify` turns that into `not-authenticated`, whose
+ * remedy names both exits — a better message than the one we declined to go
+ * and get. This mirrors the same reversal the MCP tool surface made.
+ */
+function childEnvWithOptionalToken(deps: CliDeps): Record<string, string> {
+  let token: string | undefined;
+  try {
+    token = deps.resolveToken();
+  } catch {
+    token = undefined;
+  }
+  return { HOME: deps.home, PATH: deps.path, ...(token !== undefined ? { MAGENTO_CLOUD_CLI_TOKEN: token } : {}) };
+}
+
+/**
+ * `auth status` wraps `auth:info --no-auto-login`: its entire job is to
+ * report whether authentication succeeded, so it needs no token to run
+ * (magento-cloud-mcp spec, Decision 9 — mirrored here for CLI/MCP parity).
+ * It was once the ONLY command here that tolerated an absent credential;
+ * now every command does, through `childEnvWithOptionalToken`. Never echoes
+ * the resolved token under any outcome (magento-cloud-cli spec, "Auth
+ * Status Never Echoes the Token").
  */
 async function runAuthStatus(deps: CliDeps): Promise<CliRunResult> {
   let bin: string;
@@ -100,19 +121,12 @@ async function runAuthStatus(deps: CliDeps): Promise<CliRunResult> {
     return { exitCode: 1, stderr: renderError(error) };
   }
 
-  let token: string | undefined;
-  try {
-    token = deps.resolveToken();
-  } catch {
-    token = undefined;
-  }
-
   const allowlist = createMagentoCloudAllowlist(bin);
   const spec = allowlist.resolve(bin, ["auth:info", "--no-auto-login"]);
   if (spec === undefined) {
     return { exitCode: 1, stderr: "internal error: auth:info is not registered on the allowlist." };
   }
-  const specWithEnv = { ...spec, env: { HOME: deps.home, PATH: deps.path, ...(token !== undefined ? { MAGENTO_CLOUD_CLI_TOKEN: token } : {}) } };
+  const specWithEnv = { ...spec, env: childEnvWithOptionalToken(deps) };
 
   try {
     const stdout = await executeReadOnlyCommand({ spec: specWithEnv, rawArgs: {}, now: deps.now });
@@ -148,19 +162,12 @@ async function runEnvironmentRelationships(flags: Record<string, string>, deps: 
     return { exitCode: 1, stderr: renderError(error) };
   }
 
-  let token: string;
-  try {
-    token = deps.resolveToken();
-  } catch (error) {
-    return { exitCode: 1, stderr: renderError(error) };
-  }
-
   const allowlist = createMagentoCloudAllowlist(bin);
   const spec = allowlist.resolve(bin, ["environment:relationships"]);
   if (spec === undefined) {
     return { exitCode: 1, stderr: "internal error: environment:relationships is not registered on the allowlist." };
   }
-  const specWithEnv = { ...spec, env: { HOME: deps.home, PATH: deps.path, MAGENTO_CLOUD_CLI_TOKEN: token } };
+  const specWithEnv = { ...spec, env: childEnvWithOptionalToken(deps) };
 
   try {
     const stdout = await executeReadOnlyCommand({ spec: specWithEnv, rawArgs: { projectId, environmentId }, now: deps.now });
@@ -192,19 +199,12 @@ async function runDbSql(flags: Record<string, string>, deps: CliDeps): Promise<C
     return { exitCode: 1, stderr: renderError(error) };
   }
 
-  let token: string;
-  try {
-    token = deps.resolveToken();
-  } catch (error) {
-    return { exitCode: 1, stderr: renderError(error) };
-  }
-
   const allowlist = createMagentoCloudAllowlist(bin);
   const spec = allowlist.resolve(bin, ["db:sql"]);
   if (spec === undefined) {
     return { exitCode: 1, stderr: "internal error: db:sql is not registered on the allowlist." };
   }
-  const specWithEnv = { ...spec, env: { HOME: deps.home, PATH: deps.path, MAGENTO_CLOUD_CLI_TOKEN: token } };
+  const specWithEnv = { ...spec, env: childEnvWithOptionalToken(deps) };
 
   const rawArgs: Record<string, unknown> = { projectId, environmentId, query };
   if (flags["maxRows"] !== undefined) {

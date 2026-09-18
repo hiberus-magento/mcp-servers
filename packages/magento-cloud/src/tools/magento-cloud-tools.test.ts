@@ -149,7 +149,9 @@ describe("magentocloud_query_database — discriminated request shape", () => {
   });
 
   it('{ kind: "size" } wraps db:size and issues no db:sql invocation', async () => {
-    mockExecFileOnce(0, "usedMb\tlimitMb\tpercentUsed\n128\t2048\t6.25\n", "");
+    // db:size writes only these three columns to stdout; its progress text
+    // and deprecation notice go to stderr.
+    mockExecFileOnce(0, "Allocated disk\tEstimated usage\t% used\n2147483648\t1073741824\t50\n", "");
     const [, , , , , , , queryDatabase] = buildTools();
 
     const result = await queryDatabase!.invoke({ projectId: "p", environmentId: "e", request: { kind: "size" } }, {});
@@ -158,6 +160,14 @@ describe("magentocloud_query_database — discriminated request shape", () => {
     const [call] = execFileMock.mock.calls;
     expect(call?.[1]).toContain("db:size");
     expect(call?.[1]).not.toContain("db:sql");
+    // The caller receives the CLI's own three figures, under names that say
+    // what they are: two byte counts and an integer percentage.
+    expect(JSON.parse(result.content[0]?.text ?? "{}")).toEqual({
+      kind: "size",
+      allocated_disk: "2147483648",
+      estimated_usage: "1073741824",
+      percent_used: "50",
+    });
   });
 
   it("rejects SELECT * before any process is spawned (the guard is reachable from the tool surface)", async () => {
@@ -196,9 +206,21 @@ describe("magentocloud_query_database — discriminated request shape", () => {
 
 describe("magentocloud_get_environment_config — credential stripping on SERIALIZED output", () => {
   it("strips username/password from a credential-carrying fixture, proven on the JSON a caller actually receives", async () => {
+    // CHANGED DELIBERATELY: a TSV table here was invented input.
+    // `environment:relationships` rejects `--format` and prints YAML.
     mockExecFileOnce(
       0,
-      "service\tscheme\thost\tport\tusername\tpassword\ndatabase\tmysql\tdemo-db-host.internal\t3306\tdemo-svc-user\tdemo-svc-password-not-real\n",
+      [
+        "database:",
+        "    -",
+        "        username: demo-svc-user",
+        "        scheme: mysql",
+        "        service: mysql",
+        "        host: demo-db-host.internal",
+        "        port: 3306",
+        "        password: demo-svc-password-not-real",
+        "",
+      ].join("\n"),
       "",
     );
     const [, , , , , getEnvironmentConfig] = buildTools();

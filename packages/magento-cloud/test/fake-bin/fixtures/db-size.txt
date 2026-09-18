@@ -1,2 +1,2 @@
-usedMb	limitMb	percentUsed
-128	2048	6.25
+Allocated disk	Estimated usage	% used
+2147483648	1073741824	50

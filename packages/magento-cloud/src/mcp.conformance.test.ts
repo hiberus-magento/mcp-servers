@@ -49,13 +49,23 @@ afterAll(() => {
 // captured (design.md, Decision 9).
 const AUTH_INFO_FIXTURE_TEXT = readFileSync(fileURLToPath(new URL("../test/fake-bin/fixtures/auth-info.txt", import.meta.url)), "utf8");
 
+// An INDEPENDENT reading of the fixture, deliberately not the client's own
+// parser: what this probe proves is that a real child ran and its stdout came
+// back, so the expectation must not be derived from the code under test. It
+// mirrors the two rules the real key/value shape imposes — the leading
+// `Property`/`Value` header row is not data, and neither is anything that is
+// not a top-level `key<TAB>value` pair.
 function parseKeyValueFixture(text: string): Record<string, string> {
   const record: Record<string, string> = {};
   for (const line of text.split("\n")) {
     const [key, value] = line.split("\t");
-    if (key !== undefined && value !== undefined) {
-      record[key] = value;
+    if (key === undefined || value === undefined || key.length === 0 || /^\s/.test(key)) {
+      continue;
     }
+    if (key === "Property" && value === "Value") {
+      continue;
+    }
+    record[key] = value;
   }
   return record;
 }

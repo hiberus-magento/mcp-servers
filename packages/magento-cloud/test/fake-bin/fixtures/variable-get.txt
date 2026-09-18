@@ -1,2 +1,3 @@
+Property	Value
 name	DEMO_FEATURE_FLAG
 value	on

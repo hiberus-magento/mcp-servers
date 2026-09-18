@@ -1,2 +1,2 @@
-url
 https://acme-demo-env-main-acme-demo-project.demo-region.example-domain/
+https://www.acme-demo-env-main-acme-demo-project.demo-region.example-domain/
