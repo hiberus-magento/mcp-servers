@@ -217,8 +217,20 @@ describe("magentocloud_get_environment_config — credential stripping on SERIAL
   });
 });
 
-describe("missing credential — immediate actionable isError, no hang", () => {
-  it("returns isError: true naming the remedy, without ever calling execFile", async () => {
+describe("no configured credential — defer to the CLI's own session", () => {
+  // CHANGED DELIBERATELY. This block previously asserted the opposite: that a
+  // missing credential produced an error "without ever calling execFile".
+  // That test was not wrong; it encoded a decision we are reversing.
+  //
+  // The spawned CLI receives HOME, so it can find the session `magento-cloud
+  // login` leaves in ~/.magento-cloud/. Refusing to spawn meant a user who had
+  // already logged in was told to paste a token they did not need. Only
+  // `magentocloud_auth_status` tolerated this; the other seven did not.
+  //
+  // So: always try. If the CLI has a session, it works. If it does not, the
+  // CLI says so and our classification turns that into a remedy naming BOTH
+  // exits — which is a better message than the one we refused to get.
+  it("spawns anyway when no credential is configured, so an existing CLI session is used", async () => {
     vi.mocked(resolveMagentoCloudCredentialDirect).mockImplementationOnce(() => {
       throw new MissingCredentialError({
         domain: "magento-cloud",
@@ -228,13 +240,39 @@ describe("missing credential — immediate actionable isError, no hang", () => {
         reason: "not found",
       });
     });
+    execFileMock.mockImplementationOnce((_bin, _argv, _opts, cb) => {
+      cb(null, "id\ttitle\tregion\nmcproj-demo-0001\tDemo Project\tdemo-region\n", "");
+      return new EventEmitter();
+    });
     const [, listProjects] = buildTools();
 
     const result = await listProjects!.invoke({}, {});
 
-    expect(result.isError).toBe(true);
-    expect(result.content[0]?.text).toContain("hiberus-magento-cloud auth token set");
-    expect(execFileMock).not.toHaveBeenCalled();
+    expect(result.isError).toBeUndefined();
+    expect(execFileMock).toHaveBeenCalled();
+  });
+
+  it("passes no token in the child env when none is configured", async () => {
+    vi.mocked(resolveMagentoCloudCredentialDirect).mockImplementationOnce(() => {
+      throw new MissingCredentialError({
+        domain: "magento-cloud",
+        cliCommand: "hiberus-magento-cloud auth token set",
+        envVar: "MAGENTO_CLOUD_CLI_TOKEN",
+        configPath: "/home/demo/.config/hiberus/magento-cloud.json",
+        reason: "not found",
+      });
+    });
+    execFileMock.mockImplementationOnce((_bin, _argv, opts, cb) => {
+      expect(opts.env).not.toHaveProperty("MAGENTO_CLOUD_CLI_TOKEN");
+      expect(opts.env).toHaveProperty("HOME");
+      cb(null, "id\ttitle\tregion\n", "");
+      return new EventEmitter();
+    });
+    const [, listProjects] = buildTools();
+
+    await listProjects!.invoke({}, {});
+
+    expect(execFileMock).toHaveBeenCalled();
   });
 });
 

@@ -160,6 +160,27 @@ export function createMagentoCloudTools(config: MagentoCloudToolsConfig): readon
     return spec;
   }
 
+/**
+ * The child gets HOME, so the spawned CLI can find the session that
+ * `magento-cloud login` leaves in `~/.magento-cloud/`. A configured token is
+ * therefore an OPTION, not a precondition: refusing to spawn without one told
+ * a user who had already logged in to paste a credential they did not need.
+ *
+ * When no token is configured we still run the command. If the CLI has a
+ * session it works; if it does not, the CLI reports that itself and
+ * `classify` turns it into `not-authenticated`, whose remedy names both
+ * exits — which is a better message than the one we declined to go and get.
+ */
+function childEnvWithOptionalToken(home: string, path: string): Readonly<Record<string, string>> {
+  let token: string | undefined;
+  try {
+    token = resolveMagentoCloudCredentialDirect();
+  } catch {
+    token = undefined;
+  }
+  return buildChildEnv({ ...(token !== undefined ? { token } : {}), home, path });
+}
+
   const authStatus = defineTool({
     name: "magentocloud_auth_status",
     description:
@@ -168,14 +189,8 @@ export function createMagentoCloudTools(config: MagentoCloudToolsConfig): readon
     annotations: READ_ONLY_ANNOTATIONS,
     handler: async () => {
       const { bin, home, path } = getRuntime();
-      let token: string | undefined;
-      try {
-        token = resolveMagentoCloudCredentialDirect();
-      } catch {
-        token = undefined;
-      }
       const spec = resolveSpec(bin, ["auth:info", "--no-auto-login"]);
-      const specWithEnv = { ...spec, env: buildChildEnv({ ...(token !== undefined ? { token } : {}), home, path }) };
+      const specWithEnv = { ...spec, env: childEnvWithOptionalToken(home, path) };
       try {
         const stdout = await executeReadOnlyCommand({ spec: specWithEnv, rawArgs: {}, now });
         return { authenticated: true, account: parseAuthInfo(stdout) };
@@ -195,9 +210,8 @@ export function createMagentoCloudTools(config: MagentoCloudToolsConfig): readon
     annotations: READ_ONLY_ANNOTATIONS,
     handler: async () => {
       const { bin, home, path } = getRuntime();
-      const token = resolveMagentoCloudCredentialDirect();
       const spec = resolveSpec(bin, ["project:list"]);
-      const specWithEnv = { ...spec, env: buildChildEnv({ token, home, path }) };
+      const specWithEnv = { ...spec, env: childEnvWithOptionalToken(home, path) };
       const stdout = await executeReadOnlyCommand({ spec: specWithEnv, rawArgs: {}, now });
       return { projects: parseProjectList(stdout) };
     },
@@ -210,9 +224,8 @@ export function createMagentoCloudTools(config: MagentoCloudToolsConfig): readon
     annotations: READ_ONLY_ANNOTATIONS,
     handler: async (args) => {
       const { bin, home, path } = getRuntime();
-      const token = resolveMagentoCloudCredentialDirect();
       const spec = resolveSpec(bin, ["project:info"]);
-      const specWithEnv = { ...spec, env: buildChildEnv({ token, home, path }) };
+      const specWithEnv = { ...spec, env: childEnvWithOptionalToken(home, path) };
       const stdout = await executeReadOnlyCommand({ spec: specWithEnv, rawArgs: { projectId: args.projectId }, now });
       return parseProjectInfo(stdout);
     },
@@ -225,9 +238,8 @@ export function createMagentoCloudTools(config: MagentoCloudToolsConfig): readon
     annotations: READ_ONLY_ANNOTATIONS,
     handler: async (args) => {
       const { bin, home, path } = getRuntime();
-      const token = resolveMagentoCloudCredentialDirect();
       const spec = resolveSpec(bin, ["environment:list"]);
-      const specWithEnv = { ...spec, env: buildChildEnv({ token, home, path }) };
+      const specWithEnv = { ...spec, env: childEnvWithOptionalToken(home, path) };
       const stdout = await executeReadOnlyCommand({ spec: specWithEnv, rawArgs: { projectId: args.projectId }, now });
       return { environments: parseEnvironmentList(stdout) };
     },
@@ -240,9 +252,8 @@ export function createMagentoCloudTools(config: MagentoCloudToolsConfig): readon
     annotations: READ_ONLY_ANNOTATIONS,
     handler: async (args) => {
       const { bin, home, path } = getRuntime();
-      const token = resolveMagentoCloudCredentialDirect();
       const spec = resolveSpec(bin, ["environment:info"]);
-      const specWithEnv = { ...spec, env: buildChildEnv({ token, home, path }) };
+      const specWithEnv = { ...spec, env: childEnvWithOptionalToken(home, path) };
       const stdout = await executeReadOnlyCommand({
         spec: specWithEnv,
         rawArgs: { projectId: args.projectId, environmentId: args.environmentId },
@@ -260,8 +271,7 @@ export function createMagentoCloudTools(config: MagentoCloudToolsConfig): readon
     annotations: READ_ONLY_ANNOTATIONS,
     handler: async (args) => {
       const { bin, home, path } = getRuntime();
-      const token = resolveMagentoCloudCredentialDirect();
-      const env = buildChildEnv({ token, home, path });
+      const env = childEnvWithOptionalToken(home, path);
       const rawArgs = { projectId: args.projectId, environmentId: args.environmentId };
       const include = new Set(args.include ?? []);
       const result: Record<string, unknown> = {};
@@ -301,8 +311,7 @@ export function createMagentoCloudTools(config: MagentoCloudToolsConfig): readon
     annotations: READ_ONLY_ANNOTATIONS,
     handler: async (args) => {
       const { bin, home, path } = getRuntime();
-      const token = resolveMagentoCloudCredentialDirect();
-      const env = buildChildEnv({ token, home, path });
+      const env = childEnvWithOptionalToken(home, path);
       if (args.activityId !== undefined) {
         const spec = { ...resolveSpec(bin, ["activity:get"]), env };
         const stdout = await executeReadOnlyCommand({
@@ -330,8 +339,7 @@ export function createMagentoCloudTools(config: MagentoCloudToolsConfig): readon
     annotations: READ_ONLY_ANNOTATIONS,
     handler: async (args) => {
       const { bin, home, path } = getRuntime();
-      const token = resolveMagentoCloudCredentialDirect();
-      const env = buildChildEnv({ token, home, path });
+      const env = childEnvWithOptionalToken(home, path);
       const rawArgs = { projectId: args.projectId, environmentId: args.environmentId };
 
       if (args.request.kind === "size") {

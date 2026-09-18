@@ -22,8 +22,14 @@ export class MagentoCloudNotInstalledError extends Error {
 export class MagentoCloudNotAuthenticatedError extends Error {
   constructor(envVar: string) {
     super(
-      `The Magento Cloud CLI is not authenticated. Set ${envVar} to a valid API token — run ` +
-        `"hiberus-magento-cloud auth token set" to configure it — and retry.`,
+      // Two exits, and the easier one first. This wrapper defers to the CLI's
+      // own session when no token is configured, so an operator at a terminal
+      // usually just needs to log in. Naming only the token path would send
+      // them off for a credential they never needed. The token path stays,
+      // because it is the one that works headless.
+      `The Magento Cloud CLI is not authenticated. Run "magento-cloud login" to ` +
+        `authenticate the CLI itself, or set ${envVar} to a valid API token — ` +
+        `"hiberus-magento-cloud auth token set" configures it — and retry.`,
     );
     this.name = "MagentoCloudNotAuthenticatedError";
   }

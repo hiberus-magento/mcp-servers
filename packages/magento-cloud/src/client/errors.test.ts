@@ -40,3 +40,20 @@ describe("MagentoCloudUnsupportedVersionError", () => {
     expect(error.name).not.toBe(new MagentoCloudNotAuthenticatedError("MAGENTO_CLOUD_CLI_TOKEN").name);
   });
 });
+
+describe("the not-authenticated remedy names BOTH exits", () => {
+  // The wrapper now defers to the CLI's own session when no token is
+  // configured, so `magento-cloud login` is a real and often easier fix.
+  // Naming only our own token command sends a user who could simply log in
+  // off to fetch a credential they never needed.
+  const message = new MagentoCloudNotAuthenticatedError("MAGENTO_CLOUD_CLI_TOKEN").message;
+
+  it("names the CLI's own login", () => {
+    expect(message).toMatch(/magento-cloud login/);
+  });
+
+  it("still names the token path, for headless use", () => {
+    expect(message).toMatch(/MAGENTO_CLOUD_CLI_TOKEN/);
+    expect(message).toMatch(/auth token set/);
+  });
+});
