@@ -34,10 +34,23 @@ function isLineCommentStart(raw: string, i: number): boolean {
  * Replaces every string/identifier literal's CONTENT with nothing (leaving
  * only the opening/closing quote characters) and removes every comment
  * entirely, so `;`, `*`, and every keyword this module's rules scan for can
- * never be smuggled in through a literal or a comment.
+ * never be smuggled in through a literal.
+ *
+ * Stripping is sufficient for a LITERAL, whose content is inert data on the
+ * wire. It is NOT sufficient for a COMMENT: `guard.ts` brands and sends the
+ * RAW query, and MySQL/MariaDB EXECUTE version comments (`/*!NNNNN … *' + '/`)
+ * as real SQL. Anything inside one would therefore be analysed as absent
+ * and run anyway — proven against a live database, where
+ * `SELECT 1 /*!50000 , 2 *' + '/` returned two columns.
+ *
+ * So a removed comment is REPORTED, not silently absorbed, and `guard.ts`
+ * turns that report into a rejection. Detection stays here, in the one
+ * place that decides what a comment is, so a literal containing `--` or
+ * `/*` is still data rather than a false positive.
  */
-function stripLiteralsAndComments(raw: string): string {
+function stripLiteralsAndComments(raw: string): { readonly stripped: string; readonly hasComment: boolean } {
   let out = "";
+  let hasComment = false;
   let i = 0;
   const n = raw.length;
   while (i < n) {
@@ -66,6 +79,7 @@ function stripLiteralsAndComments(raw: string): string {
     }
 
     if (isLineCommentStart(raw, i)) {
+      hasComment = true;
       while (i < n && raw[i] !== "\n") {
         i += 1;
       }
@@ -73,6 +87,7 @@ function stripLiteralsAndComments(raw: string): string {
     }
 
     if (ch === "/" && raw[i + 1] === "*") {
+      hasComment = true;
       i += 2;
       while (i < n && !(raw[i] === "*" && raw[i + 1] === "/")) {
         i += 1;
@@ -84,7 +99,7 @@ function stripLiteralsAndComments(raw: string): string {
     out += ch;
     i += 1;
   }
-  return out;
+  return { stripped: out, hasComment };
 }
 
 /** Depth AT each character index of `stripped` — 0 is top level. Depth
@@ -130,11 +145,19 @@ export interface LexedQuery {
   readonly depths: readonly number[];
   /** Depth-0 `;`-split, trimmed, non-empty statements. */
   readonly statements: readonly string[];
+  /**
+   * Whether a comment was removed. True for every comment form, including
+   * MySQL's executable `/*!NNNNN … *' + '/` version comments — the lexer does
+   * not distinguish them, because a caller has no legitimate reason to send
+   * any comment through a diagnostic tool and telling the two apart is a
+   * worse bet than refusing both.
+   */
+  readonly hasComment: boolean;
 }
 
 export function lex(rawQuery: string): LexedQuery {
-  const stripped = stripLiteralsAndComments(rawQuery);
+  const { stripped, hasComment } = stripLiteralsAndComments(rawQuery);
   const depths = computeDepths(stripped);
   const statements = splitTopLevelStatements(stripped, depths);
-  return { stripped, depths, statements };
+  return { stripped, depths, statements, hasComment };
 }

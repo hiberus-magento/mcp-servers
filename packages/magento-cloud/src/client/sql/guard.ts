@@ -152,6 +152,25 @@ function evaluateSelectLimit(statementText: string, depths: readonly number[], r
 export function guardQuery(rawQuery: string, options: { readonly rowCap: number }): GuardResult {
   const lexed = lex(rawQuery);
 
+  // Rule 0, and it has to come first. Every rule below reads
+  // `lexed.stripped`, but the value branded and handed to `execFile` is the
+  // RAW query — so any rule that relies on stripping is only as strong as
+  // the assumption that what was stripped is inert. For a comment that
+  // assumption is false: MySQL and MariaDB execute `/*!NNNNN … */` version
+  // comments as SQL. `SELECT 1 /*!50000 , 2 */` passed every rule below and
+  // returned two columns from a live database.
+  //
+  // Stripping cannot be made safe here; only refusing can. A comment has no
+  // legitimate purpose in a one-shot diagnostic query, so it costs a caller
+  // nothing.
+  if (lexed.hasComment) {
+    return reject(
+      "Query contains a comment, which is never allowed: MySQL executes " +
+        '"/*!…*/" version comments as SQL, so a comment cannot be safely ' +
+        "ignored. Remove it and retry.",
+    );
+  }
+
   if (lexed.statements.length === 0) {
     return reject("Query must contain exactly one statement; none was found.");
   }

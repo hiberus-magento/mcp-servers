@@ -149,3 +149,49 @@ describe("guardQuery — Rule 4: mandatory LIMIT + row-cap enforcement", () => {
     },
   );
 });
+
+describe("guardQuery — comments are rejected, never stripped", () => {
+  // Every rule in `guardQuery` reads `lexed.stripped`, but the value it
+  // brands and sends is the RAW query. MySQL and MariaDB EXECUTE version
+  // comments (`/*!NNNNN … */`) as real SQL, so anything placed inside one
+  // was analysed as if absent and executed anyway. Proven against a live
+  // production database: `SELECT 1 /*!50000 , 2 */` returned two columns.
+  //
+  // A comment therefore cannot be neutralised by stripping. It has to be a
+  // rejection.
+  it("rejects the version comment that bypassed every other rule", () => {
+    expect(guardQuery("SELECT 1 /*!50000 , 2 */", { rowCap: ROW_CAP }).ok).toBe(false);
+  });
+
+  it("rejects a version comment smuggling a write verb", () => {
+    expect(guardQuery("/*!50000 DROP TABLE t */ SELECT 1", { rowCap: ROW_CAP }).ok).toBe(false);
+  });
+
+  it.each([
+    ["plain block comment", "SELECT/*x*/1 FROM t"],
+    ["trailing -- comment", "SELECT 1 FROM t -- note"],
+    ["# comment", "SELECT 1 FROM t # note"],
+  ])("rejects a %s", (_label, query) => {
+    expect(guardQuery(query, { rowCap: ROW_CAP }).ok).toBe(false);
+  });
+
+  // POSITIVE CONTROL: the rejection must key off a real comment, not off
+  // the characters appearing anywhere. A comment introducer inside a string
+  // literal is data, and rejecting it would break legitimate queries — so
+  // this proves the rule reads the lexer rather than scanning raw text.
+  it("positive control: comment characters inside a string literal are data, not a comment", () => {
+    const result = guardQuery("SELECT id FROM t WHERE note = '-- not a comment' LIMIT 10", { rowCap: ROW_CAP });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("positive control: a block-comment opener inside a literal is still data", () => {
+    expect(guardQuery("SELECT id FROM t WHERE note = '/*' LIMIT 10", { rowCap: ROW_CAP }).ok).toBe(true);
+  });
+
+  // POSITIVE CONTROL: an ordinary query must still pass, or the rule has
+  // simply broken the tool rather than secured it.
+  it("positive control: a comment-free query is still accepted", () => {
+    expect(guardQuery("SELECT id FROM t LIMIT 10", { rowCap: ROW_CAP }).ok).toBe(true);
+  });
+});
