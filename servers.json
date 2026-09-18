@@ -169,7 +169,7 @@
         {
           "name": "magentocloud_get_activities",
           "readOnly": true,
-          "description": "Use this to list recent deployment/activity events for a project, narrowed by limit, type, state or result — or to fetch one activity by activityId."
+          "description": "Use this to list recent deployment/activity events for a project, narrowed by limit, type, state or result — or to fetch one activity by activityId. Each event carries its machine-readable type and timings, never the human-readable description."
         },
         {
           "name": "magentocloud_get_activity_log",

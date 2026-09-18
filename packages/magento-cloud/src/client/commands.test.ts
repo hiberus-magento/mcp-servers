@@ -217,6 +217,11 @@ describe("app:config-get and activity:log are deliberately excluded from --forma
 // `--state` is "in_progress, pending, complete, or cancelled", `--result` is
 // "success or failure", `--limit` is an integer (CLI default 10).
 describe("activity:list — optional filters", () => {
+  // Spelled out HERE rather than imported from `commands.ts`: a test that
+  // asserts a constant against itself pins nothing. These eleven names are the
+  // `-c|--columns` values the live CLI accepts.
+  const ACTIVITY_LIST_COLUMNS = "id,created,type,state,result,progress,completed,time_build,time_deploy,time_execute,time_wait";
+
   function activityListArgv(args: Record<string, unknown>) {
     const allowlist = createMagentoCloudAllowlist(BIN);
     const spec = allowlist.resolve(BIN, ["activity:list"]);
@@ -224,12 +229,40 @@ describe("activity:list — optional filters", () => {
     return validateArgv(spec, args);
   }
 
-  it("builds the pre-existing argv unchanged when no filter is given", () => {
+  // CHANGED DELIBERATELY: this argv gained `--columns <set>`. Left to its own
+  // defaults `activity:list` prints `Description`, whose CONTENT is personal
+  // data ("<person> removed user <person> from environment type production"),
+  // and prints no `Type` column at all.
+  it("builds the unfiltered argv with the explicit column set", () => {
     const result = activityListArgv({ projectId: "acme-demo-project" });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value).toEqual(["activity:list", "--project", "acme-demo-project", "--format=tsv"]);
+      expect(result.value).toEqual([
+        "activity:list",
+        "--project",
+        "acme-demo-project",
+        "--columns",
+        ACTIVITY_LIST_COLUMNS,
+        "--format=tsv",
+      ]);
+    }
+  });
+
+  // The pin. An edit that drops `--columns` must fail HERE rather than
+  // silently reverting to Adobe's defaults, which include `Description` and
+  // exclude `Type` — a privacy regression that would otherwise show up only
+  // as a parser shape error in production.
+  it("always requests an explicit column set that asks for type and never for description", () => {
+    const result = activityListArgv({ projectId: "acme-demo-project" });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const flagIndex = result.value.indexOf("--columns");
+      expect(flagIndex).toBeGreaterThanOrEqual(0);
+      expect(result.value[flagIndex + 1]).toBe(ACTIVITY_LIST_COLUMNS);
+      expect(ACTIVITY_LIST_COLUMNS.split(",")).toContain("type");
+      expect(result.value.join(" ")).not.toMatch(/description/i);
     }
   });
 
@@ -259,6 +292,8 @@ describe("activity:list — optional filters", () => {
         "complete",
         "--result",
         "failure",
+        "--columns",
+        ACTIVITY_LIST_COLUMNS,
         "--format=tsv",
       ]);
     }

@@ -1,3 +1,4 @@
-ID	Created	Description	Progress	State	Result
-act-demo-0001	2026-01-01T00:00:00+00:00	Demo User pushed to Main	100%	complete	success
-act-demo-0002	2026-01-02T00:00:00+00:00	Demo User redeployed Staging	100%	complete	failure
+ID	Created	Type	State	Result	Progress	Completed	Build time (s)	Deploy time (s)	Exec time (s)	Wait time (s)
+act-demo-0001	2026-01-01T00:00:00+00:00	environment.push	complete	success	100%	2026-01-01T00:05:00+00:00	42	18	3	1
+act-demo-0002	2026-01-02T00:00:00+00:00	environment.redeploy	complete	failure	100%	2026-01-02T00:04:00+00:00	0	25	2	0
+act-demo-0003	2026-01-03T00:00:00+00:00	environment_type.access.delete	complete	success	100%	2026-01-03T00:00:03+00:00	0	0	1	0

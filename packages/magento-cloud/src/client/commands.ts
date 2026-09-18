@@ -140,6 +140,27 @@ export const ACTIVITY_RESULTS = ["success", "failure"] as const;
 // schema does not model.
 const ACTIVITY_TYPE_PATTERN = /^[a-z][a-z0-9_]*(?:\.[a-z0-9_-]+)*$/;
 
+// The columns `activity:list` is asked for, EXPLICITLY — never the CLI's own
+// defaults (`id`, `created`, `description`, `progress`, `state`, `result`).
+//
+// Two reasons, in order of weight:
+//
+//  1. `description` is free text whose CONTENT is personal data — a
+//     user-management activity reads "<person> removed user <person> from
+//     environment type production". A field allowlist cannot filter content,
+//     so the only fix is not to fetch it. Requesting a column set is what
+//     makes that possible.
+//  2. the defaults carry no `type`, so an unfiltered list said only that
+//     something happened and how it went. `type` is a machine enum
+//     (`environment.push`, `environment_type.access.delete`) — the non-PII way
+//     to say WHAT an activity was — and the four `time_*` columns are real
+//     deployment timings.
+//
+// Pinning the set also pins our contract: whatever Adobe changes its defaults
+// to, this client asks for the same eleven columns. Every name here was
+// verified against the live CLI's own `-c|--columns` list.
+const ACTIVITY_LIST_COLUMNS = "id,created,type,state,result,progress,completed,time_build,time_deploy,time_execute,time_wait";
+
 const activityFilterShape = {
   limit: z.number().int().positive().max(ACTIVITY_LIMIT_MAX).optional(),
   type: z.string().regex(ACTIVITY_TYPE_PATTERN).optional(),
@@ -268,9 +289,10 @@ function activityListSpec(bin: string) {
     bin,
     subcommand: ["activity:list"],
     argsSchema,
-    // Every filter is optional and appended only when supplied, so the argv
-    // built for an unfiltered call is byte-for-byte what it was before the
-    // filters existed.
+    // Every filter is optional and appended only when supplied. `--columns` is
+    // not a filter and is NOT optional: it sits beside `--format=tsv` because
+    // the two together are this command's output contract (see
+    // `ACTIVITY_LIST_COLUMNS`).
     buildArgv: (args: z.infer<typeof argsSchema>) =>
       withFormatTsv([
         "activity:list",
@@ -281,6 +303,8 @@ function activityListSpec(bin: string) {
         ...(args.type !== undefined ? ["--type", args.type] : []),
         ...(args.state !== undefined ? ["--state", args.state] : []),
         ...(args.result !== undefined ? ["--result", args.result] : []),
+        "--columns",
+        ACTIVITY_LIST_COLUMNS,
       ]),
     timeoutMs: DEFAULT_TIMEOUT_MS,
     maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,

@@ -360,7 +360,7 @@ function childEnvWithOptionalToken(home: string, path: string): Readonly<Record<
   const getActivities = defineTool({
     name: "magentocloud_get_activities",
     description:
-      'Use this to list recent deployment/activity events for a project (optionally scoped to one environment), narrowed by any of limit, type (e.g. "environment.push"), state ("in_progress", "pending", "complete", "cancelled") and result ("success", "failure") — or to fetch one activity by activityId, which cannot be combined with those filters. Read-only.',
+      'Use this to list recent deployment/activity events for a project (optionally scoped to one environment), narrowed by any of limit, type (e.g. "environment.push"), state ("in_progress", "pending", "complete", "cancelled") and result ("success", "failure") — or to fetch one activity by activityId, which cannot be combined with those filters. Each activity says WHAT happened through its machine-readable type (e.g. "environment.push", "environment.redeploy", "environment_type.access.delete") together with state, result, progress, completion time and build/deploy/exec/wait timings in seconds. It never returns the CLI\'s human-readable activity description, which names the people involved. Read-only.',
     inputSchema: magentocloudGetActivitiesInput,
     annotations: READ_ONLY_ANNOTATIONS,
     handler: async (args) => {

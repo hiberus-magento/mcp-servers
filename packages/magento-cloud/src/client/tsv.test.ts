@@ -127,6 +127,14 @@ describe("normalizeHeaderName — the one place a CLI header becomes a record ke
     ["% used", "percent_used"],
     ["Allocated disk", "allocated_disk"],
     ["Estimated usage", "estimated_usage"],
+    // `activity:list`'s four timing columns: a trailing `(s)` collapses to a
+    // single `_s` suffix, and the trailing `_` left by the closing paren is
+    // trimmed. Pinned here because `activity.ts`'s required-header list has to
+    // spell these exactly, and they are the least guessable names in it.
+    ["Build time (s)", "build_time_s"],
+    ["Deploy time (s)", "deploy_time_s"],
+    ["Exec time (s)", "exec_time_s"],
+    ["Wait time (s)", "wait_time_s"],
   ])("normalizes %j to %j", (raw, expected) => {
     expect(normalizeHeaderName(raw)).toBe(expected);
   });

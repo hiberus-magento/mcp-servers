@@ -166,15 +166,40 @@ describe("createMagentoCloudTools — exactly nine tools", () => {
   });
 });
 
+// CHANGED DELIBERATELY: both argv expectations below gained `--columns <set>`.
+// `activity:list`'s DEFAULT columns include `Description`, whose content is
+// personal data, so the spec now names the columns it wants (`commands.ts`).
+const ACTIVITY_LIST_COLUMNS = "id,created,type,state,result,progress,completed,time_build,time_deploy,time_execute,time_wait";
+
 describe("magentocloud_get_activities — list filters", () => {
-  it("lists unfiltered exactly as before when no filter is given", async () => {
+  it("lists with no filter beyond the project and the explicit column set", async () => {
     mockExecFileOnce(0, readFixture("activity-list.txt"), "");
 
     const result = await toolNamed("magentocloud_get_activities").invoke({ projectId: "acme-demo-project" }, {});
 
     expect(result.isError).toBeUndefined();
     const argv = execFileMock.mock.calls.at(-1)?.[1] as readonly string[];
-    expect(argv).toEqual(["activity:list", "--project", "acme-demo-project", "--format=tsv"]);
+    expect(argv).toEqual(["activity:list", "--project", "acme-demo-project", "--columns", ACTIVITY_LIST_COLUMNS, "--format=tsv"]);
+  });
+
+  // The end-to-end half of the privacy guarantee: the serialized TOOL RESULT,
+  // which is what actually reaches a model's context.
+  it("never serializes a description, even when the CLI prints one anyway", async () => {
+    const marker = "DEMOACTIVITYDESCRIPTION";
+    const stdout =
+      "ID\tCreated\tType\tState\tResult\tProgress\tCompleted\tBuild time (s)\tDeploy time (s)\tExec time (s)\tWait time (s)\tDescription\n" +
+      `act-demo-0003\t2026-01-03T00:00:00+00:00\tenvironment_type.access.delete\tcomplete\tsuccess\t100%\t2026-01-03T00:00:03+00:00\t0\t0\t1\t0\t${marker}\n`;
+    // POSITIVE CONTROL: the two probes below DO fire on the CLI output being
+    // fed in, so a probe that simply cannot see the marker cannot "pass".
+    expect(stdout).toContain(marker);
+    expect(stdout).toMatch(/description/i);
+    mockExecFileOnce(0, stdout, "");
+
+    const result = await toolNamed("magentocloud_get_activities").invoke({ projectId: "acme-demo-project" }, {});
+
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain(marker);
+    expect(serialized).not.toMatch(/description/i);
   });
 
   it("passes every supplied filter down to the CLI", async () => {
@@ -207,6 +232,8 @@ describe("magentocloud_get_activities — list filters", () => {
       "complete",
       "--result",
       "failure",
+      "--columns",
+      ACTIVITY_LIST_COLUMNS,
       "--format=tsv",
     ]);
   });
