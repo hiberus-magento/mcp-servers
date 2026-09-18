@@ -1,3 +1,3 @@
-Route	Type	To
-https://acme-demo-env-main-acme-demo-project.demo-region.example-domain/	upstream	demo-app:http
-http://acme-demo-env-main-acme-demo-project.demo-region.example-domain/	redirect	https://acme-demo-env-main-acme-demo-project.demo-region.example-domain/
+Route	Type	To	URL
+https://acme-demo-env-main-acme-demo-project.demo-region.example-domain/	upstream	demo-app:http	https://acme-demo-env-main-acme-demo-project.demo-region.example-domain/
+http://acme-demo-env-main-acme-demo-project.demo-region.example-domain/	redirect	https://acme-demo-env-main-acme-demo-project.demo-region.example-domain/	http://acme-demo-env-main-acme-demo-project.demo-region.example-domain/

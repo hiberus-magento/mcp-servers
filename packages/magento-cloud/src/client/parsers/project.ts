@@ -6,20 +6,50 @@
 // drift in another's.
 import { parseTsvRows, rowsToKeyValueRecord, rowsToRecords } from "../tsv.js";
 
-export const PROJECT_LIST_REQUIRED_HEADERS = ["id", "title", "region"] as const;
+// The header row `project:list` prints for the EXPLICIT column set
+// `../commands.ts` asks for (`id,title,region,status,created_at`) — `ID Title
+// Region Status Created` — run through `normalizeHeaderName`. Note the last
+// one: asking for `created_at` yields a header cell reading `Created`, so the
+// record key is `created`, not `created_at` (pinned in `tsv.test.ts`).
+export const PROJECT_LIST_REQUIRED_HEADERS = ["id", "title", "region", "status", "created"] as const;
 
+/**
+ * The complete set of `project:list` fields a caller may ever receive — an
+ * ALLOWLIST, not a description.
+ *
+ * `organization_id`, `organization_label`, `organization_name` and
+ * `organization_type` are deliberately absent, and are NOT an oversight to be
+ * corrected: each names the customer's organization. They are not requested
+ * (`../commands.ts`), and the projection below drops them even if the CLI
+ * prints them anyway.
+ */
 export interface ProjectListRow {
   readonly id: string;
   readonly title: string;
   readonly region: string;
+  readonly status: string;
+  readonly created: string;
 }
 
 export function parseProjectList(text: string): readonly ProjectListRow[] {
   const rows = parseTsvRows(text);
-  return rowsToRecords<ProjectListRow>(rows, {
+  const rawRows = rowsToRecords<ProjectListRow>(rows, {
     subcommand: "project:list",
     requiredHeaders: PROJECT_LIST_REQUIRED_HEADERS,
   });
+
+  // Field by field, by name — never `{ ...raw }`. `rowsToRecords` keys a
+  // record by EVERY header the CLI printed and the narrow `ProjectListRow` is
+  // a compile-time claim only, so a spread would serialize whatever extra
+  // column came back. This check must not depend on the request being right:
+  // it holds even if `--columns` is ever dropped.
+  return rawRows.map((raw) => ({
+    id: raw.id,
+    title: raw.title,
+    region: raw.region,
+    status: raw.status,
+    created: raw.created,
+  }));
 }
 
 export const PROJECT_INFO_REQUIRED_KEYS = ["id", "title", "region"] as const;

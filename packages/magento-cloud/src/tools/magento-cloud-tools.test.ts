@@ -546,7 +546,11 @@ describe("no configured credential — defer to the CLI's own session", () => {
       });
     });
     execFileMock.mockImplementationOnce((_bin, _argv, _opts, cb) => {
-      cb(null, "id\ttitle\tregion\nmcproj-demo-0001\tDemo Project\tdemo-region\n", "");
+      // CHANGED DELIBERATELY: this stub's stdout gained `Status`/`Created`.
+      // `project:list` is now invoked with an explicit `--columns` set and its
+      // parser requires the header row that set produces, so the old
+      // three-column stub is output the real CLI would no longer print.
+      cb(null, "ID\tTitle\tRegion\tStatus\tCreated\nmcproj-demo-0001\tDemo Project\tdemo-region\tactive\t2026-01-01T00:00:00+00:00\n", "");
       return new EventEmitter();
     });
     const [, listProjects] = buildTools();
@@ -570,7 +574,9 @@ describe("no configured credential — defer to the CLI's own session", () => {
     execFileMock.mockImplementationOnce((_bin, _argv, opts, cb) => {
       expect(opts.env).not.toHaveProperty("MAGENTO_CLOUD_CLI_TOKEN");
       expect(opts.env).toHaveProperty("HOME");
-      cb(null, "id\ttitle\tregion\n", "");
+      // CHANGED DELIBERATELY: same reason as the stub above — the header row
+      // this parser requires is the one the pinned `--columns` set produces.
+      cb(null, "ID\tTitle\tRegion\tStatus\tCreated\n", "");
       return new EventEmitter();
     });
     const [, listProjects] = buildTools();

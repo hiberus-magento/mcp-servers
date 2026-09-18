@@ -161,6 +161,28 @@ const ACTIVITY_TYPE_PATTERN = /^[a-z][a-z0-9_]*(?:\.[a-z0-9_-]+)*$/;
 // verified against the live CLI's own `-c|--columns` list.
 const ACTIVITY_LIST_COLUMNS = "id,created,type,state,result,progress,completed,time_build,time_deploy,time_execute,time_wait";
 
+// The remaining four list-shaped reads pin their column sets for the same
+// reason `ACTIVITY_LIST_COLUMNS` does, minus the PII argument: left to Adobe's
+// defaults, a column added upstream is serialized straight into a model's
+// context with nothing in this package having decided it should be. Pinning
+// the set makes the contract ours — whatever Adobe changes its defaults to,
+// this client asks for the same columns, and the parsers' required-header
+// constants describe a header row we requested rather than one we inherited.
+//
+// Every name here was verified against the live CLI's own `-c|--columns` list,
+// and the header cell each one produces was captured from the real output —
+// which is not always the obvious spelling: `created_at` is headed `Created`
+// (not `Created at`) and `disk` is headed `Disk (MiB)`.
+//
+// `project:list` also offers `organization_id`, `organization_label`,
+// `organization_name` and `organization_type`. Those name the customer's
+// organization, so they are deliberately NOT requested — leaving them out is
+// the point of naming the set, not an omission to be corrected later.
+const PROJECT_LIST_COLUMNS = "id,title,region,status,created_at";
+const ENVIRONMENT_LIST_COLUMNS = "id,title,status,type,created,machine_name,updated";
+const ROUTE_LIST_COLUMNS = "route,type,to,url";
+const SERVICE_LIST_COLUMNS = "name,type,disk,size";
+
 const activityFilterShape = {
   limit: z.number().int().positive().max(ACTIVITY_LIMIT_MAX).optional(),
   type: z.string().regex(ACTIVITY_TYPE_PATTERN).optional(),
@@ -198,7 +220,9 @@ function projectListSpec(bin: string): CommandSpec<z.ZodObject<Record<string, ne
     bin,
     subcommand: ["project:list"],
     argsSchema,
-    buildArgv: () => withFormatTsv(["project:list"]),
+    // `--columns` sits beside `--format=tsv`: the two together are this
+    // command's output contract (see `PROJECT_LIST_COLUMNS`).
+    buildArgv: () => withFormatTsv(["project:list", "--columns", PROJECT_LIST_COLUMNS]),
     timeoutMs: DEFAULT_TIMEOUT_MS,
     maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
   };
@@ -222,7 +246,10 @@ function environmentListSpec(bin: string) {
     bin,
     subcommand: ["environment:list"],
     argsSchema,
-    buildArgv: (args: z.infer<typeof argsSchema>) => withFormatTsv(["environment:list", "--project", args.projectId]),
+    // `--columns` sits beside `--format=tsv`: the two together are this
+    // command's output contract (see `ENVIRONMENT_LIST_COLUMNS`).
+    buildArgv: (args: z.infer<typeof argsSchema>) =>
+      withFormatTsv(["environment:list", "--project", args.projectId, "--columns", ENVIRONMENT_LIST_COLUMNS]),
     timeoutMs: DEFAULT_TIMEOUT_MS,
     maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
   } satisfies CommandSpec<typeof argsSchema>;
@@ -354,6 +381,21 @@ function activityGetSpec(bin: string) {
   } satisfies CommandSpec<typeof argsSchema>;
 }
 
+// `variable:list`'s columns, pinned like every other list-shaped subcommand.
+// `parseVariableList` already drops the value by construction, so this is not
+// what makes the parser safe — but without it the REQUEST still inherited
+// Adobe's defaults, leaving our contract theirs to change.
+//
+// `value` is requested deliberately and then dropped in the projection:
+// `hasValue` cannot be derived without seeing whether the cell is empty. It is
+// the one place this client fetches something it will not return, and the
+// projection is what guarantees it goes no further.
+//
+// `is_enabled` is the CLI's own column name and yields the header `Enabled` —
+// verified against the live CLI, because the obvious guess (`enabled`) is not
+// a column and would have failed at request time.
+const VARIABLE_LIST_COLUMNS = "name,level,value,is_enabled";
+
 function variableListSpec(bin: string) {
   const argsSchema = environmentScoped({});
   return {
@@ -361,7 +403,15 @@ function variableListSpec(bin: string) {
     subcommand: ["variable:list"],
     argsSchema,
     buildArgv: (args: z.infer<typeof argsSchema>) =>
-      withFormatTsv(["variable:list", "--project", args.projectId, "--environment", args.environmentId]),
+      withFormatTsv([
+        "variable:list",
+        "--project",
+        args.projectId,
+        "--environment",
+        args.environmentId,
+        "--columns",
+        VARIABLE_LIST_COLUMNS,
+      ]),
     timeoutMs: DEFAULT_TIMEOUT_MS,
     maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
   } satisfies CommandSpec<typeof argsSchema>;
@@ -387,7 +437,15 @@ function routeListSpec(bin: string) {
     subcommand: ["route:list"],
     argsSchema,
     buildArgv: (args: z.infer<typeof argsSchema>) =>
-      withFormatTsv(["route:list", "--project", args.projectId, "--environment", args.environmentId]),
+      withFormatTsv([
+        "route:list",
+        "--project",
+        args.projectId,
+        "--environment",
+        args.environmentId,
+        "--columns",
+        ROUTE_LIST_COLUMNS,
+      ]),
     timeoutMs: DEFAULT_TIMEOUT_MS,
     maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
   } satisfies CommandSpec<typeof argsSchema>;
@@ -400,7 +458,15 @@ function serviceListSpec(bin: string) {
     subcommand: ["service:list"],
     argsSchema,
     buildArgv: (args: z.infer<typeof argsSchema>) =>
-      withFormatTsv(["service:list", "--project", args.projectId, "--environment", args.environmentId]),
+      withFormatTsv([
+        "service:list",
+        "--project",
+        args.projectId,
+        "--environment",
+        args.environmentId,
+        "--columns",
+        SERVICE_LIST_COLUMNS,
+      ]),
     timeoutMs: DEFAULT_TIMEOUT_MS,
     maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
   } satisfies CommandSpec<typeof argsSchema>;

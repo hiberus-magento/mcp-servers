@@ -13,14 +13,65 @@ const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../tes
 const readFixture = (name: string) => readFileSync(join(FIXTURES_DIR, name), "utf8");
 
 describe("parseProjectList", () => {
+  // CHANGED DELIBERATELY: `project:list` is now invoked with an explicit
+  // `--columns id,title,region,status,created_at` set (`../commands.ts`), so
+  // the real header row gained `Status` and `Created` — the cell `created_at`
+  // produces is headed `Created`, not `Created at`.
   it("maps project:list rows keyed by the CLI's own header names", () => {
     const projects = parseProjectList(readFixture("project-list.txt"));
 
-    expect(projects).toEqual([{ id: "acme-demo-project", title: "Demo Storefront", region: "demo-region.example-domain" }]);
+    expect(projects).toEqual([
+      {
+        id: "acme-demo-project",
+        title: "Demo Storefront",
+        region: "demo-region.example-domain",
+        status: "active",
+        created: "2026-01-01T00:00:00+00:00",
+      },
+    ]);
   });
 
   it("declares its own REQUIRED_HEADERS", () => {
-    expect(PROJECT_LIST_REQUIRED_HEADERS).toEqual(["id", "title", "region"]);
+    expect(PROJECT_LIST_REQUIRED_HEADERS).toEqual(["id", "title", "region", "status", "created"]);
+  });
+
+  it("POSITIVE CONTROL: output missing a required header still throws", () => {
+    expect(() => parseProjectList("ID\tTitle\tRegion\nacme-demo-project\tDemo Storefront\tdemo-region.example-domain\n")).toThrow(
+      MagentoCloudOutputShapeError,
+    );
+  });
+});
+
+// `project:list` also offers `organization_id`, `organization_label`,
+// `organization_name` and `organization_type` — every one of them naming the
+// customer's organization. `--columns` means they are not requested; this
+// suite proves the parser would not hand one on even if it arrived anyway (a
+// CLI default change, a dropped flag, an operator running it by hand). The
+// extra column is appended HERE rather than written into the fixture, so the
+// fixture keeps matching the header row the CLI really prints.
+const PROJECT_LIST_ORGANIZATION_MARKER = "DEMOORGANIZATIONLABEL";
+const projectListWithOrganizationColumn = () =>
+  "ID\tTitle\tRegion\tStatus\tCreated\tOrganization label\n" +
+  `acme-demo-project\tDemo Storefront\tdemo-region.example-domain\tactive\t2026-01-01T00:00:00+00:00\t${PROJECT_LIST_ORGANIZATION_MARKER}\n`;
+
+describe("parseProjectList — undeclared columns", () => {
+  // The strongest proof here runs on the SERIALIZED result, not the in-memory
+  // object: a narrow return type is a compile-time claim only, and
+  // `rowsToRecords` keys a record by EVERY header the CLI printed.
+  it("cannot leak an undeclared column even through JSON.stringify", () => {
+    const serialized = JSON.stringify(parseProjectList(projectListWithOrganizationColumn()));
+
+    expect(serialized).not.toMatch(/organization/i);
+    expect(serialized).not.toContain(PROJECT_LIST_ORGANIZATION_MARKER);
+  });
+
+  // POSITIVE CONTROL: the same probe must find the marker in the raw text.
+  // Without this, a probe that simply cannot see the column would "pass".
+  it("positive control: the same probe finds the undeclared column in the raw CLI output", () => {
+    const raw = projectListWithOrganizationColumn();
+
+    expect(raw).toMatch(/organization/i);
+    expect(raw).toContain(PROJECT_LIST_ORGANIZATION_MARKER);
   });
 });
 

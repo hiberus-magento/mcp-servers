@@ -6,19 +6,83 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { MagentoCloudOutputShapeError } from "../errors.js";
-import { parseEnvironmentInfo, parseEnvironmentList, parseEnvironmentUrl, parseEnvironmentUrls } from "./environment.js";
+import {
+  ENVIRONMENT_LIST_REQUIRED_HEADERS,
+  parseEnvironmentInfo,
+  parseEnvironmentList,
+  parseEnvironmentUrl,
+  parseEnvironmentUrls,
+} from "./environment.js";
 
 const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../test/fake-bin/fixtures");
 const readFixture = (name: string) => readFileSync(join(FIXTURES_DIR, name), "utf8");
 
 describe("parseEnvironmentList", () => {
+  // CHANGED DELIBERATELY: `environment:list` is now invoked with an explicit
+  // `--columns id,title,status,type,created,machine_name,updated` set
+  // (`../commands.ts`), so the real header row gained `Created`,
+  // `Machine name` and `Updated`.
   it("maps every environment:list row keyed by header, including a second row", () => {
     const environments = parseEnvironmentList(readFixture("environment-list.txt"));
 
     expect(environments).toEqual([
-      { id: "acme-demo-env-main", status: "active", type: "production", title: "Main" },
-      { id: "acme-demo-env-stage", status: "active", type: "staging", title: "Staging" },
+      {
+        id: "acme-demo-env-main",
+        title: "Main",
+        status: "active",
+        type: "production",
+        created: "2026-01-01T00:00:00+00:00",
+        machine_name: "main-7demo0",
+        updated: "2026-01-02T00:00:00+00:00",
+      },
+      {
+        id: "acme-demo-env-stage",
+        title: "Staging",
+        status: "active",
+        type: "staging",
+        created: "2026-01-03T00:00:00+00:00",
+        machine_name: "stage-7demo0",
+        updated: "2026-01-04T00:00:00+00:00",
+      },
     ]);
+  });
+
+  it("declares its own REQUIRED_HEADERS", () => {
+    expect(ENVIRONMENT_LIST_REQUIRED_HEADERS).toEqual(["id", "title", "status", "type", "created", "machine_name", "updated"]);
+  });
+
+  it("POSITIVE CONTROL: output missing a required header still throws", () => {
+    expect(() => parseEnvironmentList("ID\tTitle\tStatus\tType\nacme-demo-env-main\tMain\tactive\tproduction\n")).toThrow(
+      MagentoCloudOutputShapeError,
+    );
+  });
+});
+
+// The CLI's own `environment:list` column list is wider than the seven asked
+// for here. The extra column is appended HERE rather than written into the
+// fixture, so the fixture keeps matching the header row the CLI really prints.
+const ENVIRONMENT_LIST_UNDECLARED_MARKER = "DEMOENVIRONMENTPROJECT";
+const environmentListWithUndeclaredColumn = () =>
+  "ID\tTitle\tStatus\tType\tCreated\tMachine name\tUpdated\tProject\n" +
+  `acme-demo-env-main\tMain\tactive\tproduction\t2026-01-01T00:00:00+00:00\tmain-7demo0\t2026-01-02T00:00:00+00:00\t${ENVIRONMENT_LIST_UNDECLARED_MARKER}\n`;
+
+describe("parseEnvironmentList — undeclared columns", () => {
+  // The strongest proof here runs on the SERIALIZED result, not the in-memory
+  // object: a narrow return type is a compile-time claim only, and
+  // `rowsToRecords` keys a record by EVERY header the CLI printed.
+  it("cannot leak an undeclared column even through JSON.stringify", () => {
+    const serialized = JSON.stringify(parseEnvironmentList(environmentListWithUndeclaredColumn()));
+
+    expect(serialized).not.toMatch(/project/i);
+    expect(serialized).not.toContain(ENVIRONMENT_LIST_UNDECLARED_MARKER);
+  });
+
+  // POSITIVE CONTROL: the same probe must find the marker in the raw text.
+  it("positive control: the same probe finds the undeclared column in the raw CLI output", () => {
+    const raw = environmentListWithUndeclaredColumn();
+
+    expect(raw).toMatch(/project/i);
+    expect(raw).toContain(ENVIRONMENT_LIST_UNDECLARED_MARKER);
   });
 });
 

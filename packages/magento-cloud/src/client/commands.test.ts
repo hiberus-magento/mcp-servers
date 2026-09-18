@@ -209,6 +209,71 @@ describe("app:config-get and activity:log are deliberately excluded from --forma
   });
 });
 
+// Every remaining list-shaped read pins its own column set, for the same
+// reason `activity:list` does: left to Adobe's defaults, a column added
+// upstream is serialized straight into a model's context with nothing in this
+// package deciding it should be. Each expected value is spelled out HERE
+// rather than imported from `commands.ts` — a test that asserts a constant
+// against itself pins nothing.
+const PINNED_COLUMN_SETS: ReadonlyArray<{
+  readonly key: readonly string[];
+  readonly args: Record<string, unknown>;
+  readonly columns: string;
+}> = [
+  { key: ["project:list"], args: {}, columns: "id,title,region,status,created_at" },
+  {
+    key: ["environment:list"],
+    args: { projectId: "acme-demo-project" },
+    columns: "id,title,status,type,created,machine_name,updated",
+  },
+  {
+    key: ["route:list"],
+    args: { projectId: "acme-demo-project", environmentId: "acme-demo-env-main" },
+    columns: "route,type,to,url",
+  },
+  {
+    key: ["service:list"],
+    args: { projectId: "acme-demo-project", environmentId: "acme-demo-env-main" },
+    columns: "name,type,disk,size",
+  },
+];
+
+describe("argv builders — every list-shaped read pins its own --columns set", () => {
+  // The pin. An edit that drops `--columns`, or reorders/renames a column,
+  // must fail HERE rather than silently reverting to Adobe's defaults — which
+  // is the shape in which a new upstream column reaches a caller.
+  it.each(PINNED_COLUMN_SETS)("$key.0 always requests exactly its declared column set", ({ key, args, columns }) => {
+    const allowlist = createMagentoCloudAllowlist(BIN);
+    const spec = allowlist.resolve(BIN, key);
+    if (!spec) throw new Error(`expected "${key.join(" ")}" to be registered`);
+
+    const result = validateArgv(spec, args);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const flagIndex = result.value.indexOf("--columns");
+      expect(flagIndex).toBeGreaterThanOrEqual(0);
+      expect(result.value[flagIndex + 1]).toBe(columns);
+    }
+  });
+
+  // `project:list` also offers `organization_id`, `organization_label`,
+  // `organization_name` and `organization_type`, each naming the customer's
+  // organization. They are deliberately not requested.
+  it("project:list never asks for an organization column", () => {
+    const allowlist = createMagentoCloudAllowlist(BIN);
+    const spec = allowlist.resolve(BIN, ["project:list"]);
+    if (!spec) throw new Error("expected project:list to be registered");
+
+    const result = validateArgv(spec, {});
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.join(" ")).not.toMatch(/organization/i);
+    }
+  });
+});
+
 // The CLI's own `activity:list` filters, which this client did not pass
 // through at all: every call fetched the CLI's default page and the caller
 // had no way to narrow it.
@@ -473,5 +538,37 @@ describe("child-environment / spawn-boundary reuse (design.md, Decision 1 domain
     const options = execFileMock.mock.calls[0]?.[2] as Record<string, unknown>;
     expect(options.stdio).toBe("pipe");
     expect(options.stdio).not.toBe("inherit");
+  });
+});
+
+describe("variable:list — the column set is pinned too", () => {
+  // `parseVariableList` already drops the value by construction, but the
+  // REQUEST was still inheriting Adobe's defaults: the parser was safe while
+  // the contract it parsed was not ours to rely on. Every other list-shaped
+  // subcommand pins its columns; this one was missed.
+  //
+  // `value` IS requested, deliberately, and then dropped in the projection —
+  // `hasValue` cannot be derived without seeing whether the cell is empty.
+  // That is the one place this client fetches something it will not return.
+  it("always requests an explicit column set", () => {
+    const spec = createMagentoCloudAllowlist("/usr/local/bin/magento-cloud").resolve(
+      "/usr/local/bin/magento-cloud",
+      ["variable:list"],
+    );
+    expect(spec).toBeDefined();
+    const result = spec!.argsSchema.safeParse({
+      projectId: "acme-demo-project",
+      environmentId: "acme-demo-env-main",
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    const argv = spec!.buildArgv(result.data);
+
+    const flagIndex = argv.indexOf("--columns");
+    expect(flagIndex).toBeGreaterThanOrEqual(0);
+    // Spelled out literally: a test comparing a constant to itself pins nothing.
+    // `is_enabled` is the CLI's own column name and yields the header `Enabled`
+    // — verified against the live CLI, because guessing `enabled` would fail.
+    expect(argv[flagIndex + 1]).toBe("name,level,value,is_enabled");
   });
 });

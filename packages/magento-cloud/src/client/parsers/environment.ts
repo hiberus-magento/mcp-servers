@@ -5,21 +5,57 @@
 import { MagentoCloudOutputShapeError } from "../errors.js";
 import { parseTsvRows, rowsToKeyValueRecord, rowsToRecords } from "../tsv.js";
 
-export const ENVIRONMENT_LIST_REQUIRED_HEADERS = ["id", "status", "type", "title"] as const;
+// The header row `environment:list` prints for the EXPLICIT column set
+// `../commands.ts` asks for (`id,title,status,type,created,machine_name,
+// updated`) — `ID Title Status Type Created Machine name Updated` — run
+// through `normalizeHeaderName` (`Machine name` -> `machine_name`; pinned in
+// `tsv.test.ts`).
+export const ENVIRONMENT_LIST_REQUIRED_HEADERS = [
+  "id",
+  "title",
+  "status",
+  "type",
+  "created",
+  "machine_name",
+  "updated",
+] as const;
 
+/**
+ * The complete set of `environment:list` fields a caller may ever receive — an
+ * ALLOWLIST, not a description. Every other column the CLI prints is dropped by
+ * construction in `parseEnvironmentList` below.
+ */
 export interface EnvironmentListRow {
   readonly id: string;
+  readonly title: string;
   readonly status: string;
   readonly type: string;
-  readonly title: string;
+  readonly created: string;
+  readonly machine_name: string;
+  readonly updated: string;
 }
 
 export function parseEnvironmentList(text: string): readonly EnvironmentListRow[] {
   const rows = parseTsvRows(text);
-  return rowsToRecords<EnvironmentListRow>(rows, {
+  const rawRows = rowsToRecords<EnvironmentListRow>(rows, {
     subcommand: "environment:list",
     requiredHeaders: ENVIRONMENT_LIST_REQUIRED_HEADERS,
   });
+
+  // Field by field, by name — never `{ ...raw }`. `rowsToRecords` keys a
+  // record by EVERY header the CLI printed and the narrow `EnvironmentListRow`
+  // is a compile-time claim only, so a spread would serialize whatever extra
+  // column came back. This check must not depend on the request being right:
+  // it holds even if `--columns` is ever dropped.
+  return rawRows.map((raw) => ({
+    id: raw.id,
+    title: raw.title,
+    status: raw.status,
+    type: raw.type,
+    created: raw.created,
+    machine_name: raw.machine_name,
+    updated: raw.updated,
+  }));
 }
 
 export const ENVIRONMENT_INFO_REQUIRED_KEYS = ["id", "status", "type"] as const;

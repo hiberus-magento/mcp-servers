@@ -135,6 +135,15 @@ describe("normalizeHeaderName — the one place a CLI header becomes a record ke
     ["Deploy time (s)", "deploy_time_s"],
     ["Exec time (s)", "exec_time_s"],
     ["Wait time (s)", "wait_time_s"],
+    // The header cells the four remaining `--columns` sets produce that a
+    // reader would most plausibly get wrong: `environment:list`'s
+    // `machine_name` column is headed with a SPACE, `route:list`'s `url`
+    // column is headed in caps, and `project:list`'s `created_at` column is
+    // headed `Created` — not `Created at`, so the record key is `created`.
+    ["Machine name", "machine_name"],
+    ["URL", "url"],
+    ["Created", "created"],
+    ["Updated", "updated"],
   ])("normalizes %j to %j", (raw, expected) => {
     expect(normalizeHeaderName(raw)).toBe(expected);
   });

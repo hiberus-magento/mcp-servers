@@ -1,2 +1,2 @@
-ID	Title	Region
-acme-demo-project	Demo Storefront	demo-region.example-domain
+ID	Title	Region	Status	Created
+acme-demo-project	Demo Storefront	demo-region.example-domain	active	2026-01-01T00:00:00+00:00
