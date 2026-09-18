@@ -24,18 +24,67 @@ export function parseEnvironmentList(text: string): readonly EnvironmentListRow[
 
 export const ENVIRONMENT_INFO_REQUIRED_KEYS = ["id", "status", "type"] as const;
 
+/**
+ * The complete set of `environment:info` fields a caller may ever receive — an
+ * ALLOWLIST, not a description. Everything else the CLI prints is dropped by
+ * construction in `parseEnvironmentInfo` below.
+ *
+ * Only `ENVIRONMENT_INFO_REQUIRED_KEYS` are guaranteed present, so every other
+ * field is honestly `string | undefined` rather than `string`.
+ */
 export interface EnvironmentInfoRecord {
   readonly id: string;
   readonly status: string;
   readonly type: string;
+  readonly name: string | undefined;
+  readonly machine_name: string | undefined;
+  readonly title: string | undefined;
+  readonly parent: string | undefined;
+  readonly created_at: string | undefined;
+  readonly updated_at: string | undefined;
+  readonly default_domain: string | undefined;
+  readonly edge_hostname: string | undefined;
+  readonly has_domains: string | undefined;
+  readonly is_pr: string | undefined;
+  readonly has_remote: string | undefined;
+  readonly deployment_target: string | undefined;
 }
 
 export function parseEnvironmentInfo(text: string): EnvironmentInfoRecord {
   const rows = parseTsvRows(text);
-  return rowsToKeyValueRecord<EnvironmentInfoRecord>(rows, {
+  const raw = rowsToKeyValueRecord<EnvironmentInfoRecord>(rows, {
     subcommand: "environment:info",
     requiredKeys: ENVIRONMENT_INFO_REQUIRED_KEYS,
   });
+
+  // Field by field, by name — never `{ ...raw }`. `rowsToKeyValueRecord`
+  // returns EVERY top-level pair the CLI printed and the narrow `T` is a
+  // compile-time claim only, so a spread would put all of it into a model's
+  // context the moment the result is serialized.
+  //
+  // `http_access` is the exclusion worth naming: real output nests a
+  // `basic_auth` block under it, so the one field most likely to carry a
+  // credential is also the one a spread would have carried furthest. The
+  // remaining drops (`enable_smtp`, `restrict_robots`,
+  // `clone_parent_on_create`, `max_instance_count`) are simply not
+  // allowlisted — an undeclared key does not reach a caller, whatever it is.
+  return {
+    id: raw.id,
+    status: raw.status,
+    type: raw.type,
+    name: raw.name,
+    machine_name: raw.machine_name,
+    title: raw.title,
+    parent: raw.parent,
+    created_at: raw.created_at,
+    updated_at: raw.updated_at,
+    default_domain: raw.default_domain,
+    edge_hostname: raw.edge_hostname,
+    has_domains: raw.has_domains,
+    is_pr: raw.is_pr,
+    has_remote: raw.has_remote,
+    deployment_target: raw.deployment_target,
+  };
 }
 
 /**

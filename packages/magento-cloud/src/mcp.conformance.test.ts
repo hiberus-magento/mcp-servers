@@ -70,7 +70,23 @@ function parseKeyValueFixture(text: string): Record<string, string> {
   return record;
 }
 
-const EXPECTED_AUTH_STATUS_TEXT = JSON.stringify({ authenticated: true, account: parseKeyValueFixture(AUTH_INFO_FIXTURE_TEXT) });
+// CHANGED DELIBERATELY: the expectation used to be the WHOLE independent
+// reading, which is what `auth:info` printed rather than what an agent is
+// allowed to receive. `parseAuthInfo` now projects an allowlist, so the
+// expectation names those three fields, in the order the parser builds them —
+// this probe compares exact serialized text. The independence that matters is
+// preserved: the VALUES still come from reading the fixture here, never from
+// the parser under test, so a tool that did not spawn a real child still
+// cannot produce this text.
+const AUTH_INFO_FIXTURE_FIELDS = parseKeyValueFixture(AUTH_INFO_FIXTURE_TEXT);
+const EXPECTED_AUTH_STATUS_TEXT = JSON.stringify({
+  authenticated: true,
+  account: {
+    id: AUTH_INFO_FIXTURE_FIELDS.id,
+    username: AUTH_INFO_FIXTURE_FIELDS.username,
+    email: AUTH_INFO_FIXTURE_FIELDS.email,
+  },
+});
 
 const EXPECTED_TOOL_NAMES = [
   "magentocloud_auth_status",

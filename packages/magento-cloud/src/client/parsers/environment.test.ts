@@ -23,34 +23,39 @@ describe("parseEnvironmentList", () => {
 });
 
 describe("parseEnvironmentInfo", () => {
-  // The fixture's `sizing` and `crons` blocks are nested: a bare key line
-  // followed by indented YAML continuation lines, none of them a top-level
-  // `key<TAB>value` pair. The flat scalars are what this parser claims.
-  it("maps environment:info's flat field/value rows, ignoring the header row and every nested block", () => {
+  // CHANGED DELIBERATELY: this assertion used to list every flat scalar the
+  // fixture carries, encoding the "pass the rest through" behaviour that would
+  // have handed a caller `http_access` — under which real output nests a
+  // `basic_auth` block. The parser now projects an allowlist.
+  //
+  // The fixture's `sizing` and `crons` blocks were never ingested: each is a
+  // bare key line followed by indented YAML continuation lines, none of them a
+  // top-level `key<TAB>value` pair.
+  it("maps environment:info to its allowlisted fields, dropping every other key the CLI printed", () => {
     const environment = parseEnvironmentInfo(readFixture("environment-info.txt"));
 
     expect(environment).toEqual({
       id: "acme-demo-env-main",
-      created_at: "2026-01-01T00:00:00+00:00",
-      updated_at: "2026-01-02T00:00:00+00:00",
+      status: "active",
+      type: "production",
       name: "main",
       machine_name: "main-7demo0",
       title: "Main",
-      type: "production",
       parent: "",
+      created_at: "2026-01-01T00:00:00+00:00",
+      updated_at: "2026-01-02T00:00:00+00:00",
       default_domain: "",
+      edge_hostname: "acme-demo-env-main-acme-demo-project.demo-region.example-domain",
       has_domains: "true",
-      clone_parent_on_create: "true",
-      deployment_target: "local",
       is_pr: "false",
       has_remote: "true",
-      status: "active",
-      http_access: "",
-      enable_smtp: "true",
-      restrict_robots: "false",
-      edge_hostname: "acme-demo-env-main-acme-demo-project.demo-region.example-domain",
-      max_instance_count: "1",
+      deployment_target: "local",
     });
+    expect(environment).not.toHaveProperty("http_access");
+    expect(environment).not.toHaveProperty("clone_parent_on_create");
+    expect(environment).not.toHaveProperty("enable_smtp");
+    expect(environment).not.toHaveProperty("restrict_robots");
+    expect(environment).not.toHaveProperty("max_instance_count");
     expect(environment).not.toHaveProperty("sizing");
     expect(environment).not.toHaveProperty("crons");
     expect(environment).not.toHaveProperty("Property");
@@ -87,5 +92,41 @@ describe("parseEnvironmentUrl", () => {
 
   it("POSITIVE CONTROL: throws rather than returning an empty string when the CLI printed no URL", () => {
     expect(() => parseEnvironmentUrl("\n")).toThrow(MagentoCloudOutputShapeError);
+  });
+});
+
+// `http_access` is the notable exclusion: the real output nests a `basic_auth`
+// block under it. The probe flattens that into one top-level pair, so the
+// assertion is about what this parser KEEPS rather than about a quirk of the
+// nested-block reader, and the fixture's own undeclared scalars
+// (`enable_smtp`, `max_instance_count`, ...) are probed alongside it.
+const ENVIRONMENT_INFO_UNDECLARED_PAIRS = "http_access\tbasic_auth demo-user DEMOBASICAUTH\n";
+
+const environmentInfoWithUndeclaredPairs = () => readFixture("environment-info.txt") + ENVIRONMENT_INFO_UNDECLARED_PAIRS;
+
+describe("parseEnvironmentInfo — undeclared keys", () => {
+  // The strongest proof here runs on the SERIALIZED result, not the in-memory
+  // object: the narrow return type is a compile-time claim only.
+  it("cannot leak an undeclared key even through JSON.stringify", () => {
+    const serialized = JSON.stringify(parseEnvironmentInfo(environmentInfoWithUndeclaredPairs()));
+
+    expect(serialized).not.toContain("http_access");
+    expect(serialized).not.toContain("DEMOBASICAUTH");
+    expect(serialized).not.toContain("enable_smtp");
+    expect(serialized).not.toContain("restrict_robots");
+    expect(serialized).not.toContain("max_instance_count");
+    expect(serialized).not.toContain("clone_parent_on_create");
+  });
+
+  // POSITIVE CONTROL: the same probe must find every marker in the raw text.
+  it("positive control: the same probe finds each dropped key in the raw CLI output", () => {
+    const raw = environmentInfoWithUndeclaredPairs();
+
+    expect(raw).toContain("http_access");
+    expect(raw).toContain("DEMOBASICAUTH");
+    expect(raw).toContain("enable_smtp");
+    expect(raw).toContain("restrict_robots");
+    expect(raw).toContain("max_instance_count");
+    expect(raw).toContain("clone_parent_on_create");
   });
 });

@@ -25,31 +25,35 @@ describe("parseProjectList", () => {
 });
 
 describe("parseProjectInfo", () => {
-  // The fixture carries two NESTED blocks (`subscription`, `git`), which the
-  // CLI renders as a bare key line followed by indented YAML continuation
-  // lines. Neither the block name nor its continuation lines are top-level
-  // `key<TAB>value` pairs, so neither is ingested — and the leading
-  // `Property`/`Value` header row is not a pair either.
-  it("maps project:info's flat field/value rows, ignoring the header row and every nested block", () => {
+  // CHANGED DELIBERATELY: this assertion used to list every flat scalar the
+  // fixture carries, encoding the "pass the rest through" behaviour that let
+  // `client_ssh_key` and `subscription_management_uri` reach a caller. The
+  // parser now projects an allowlist, so the assertion names it.
+  //
+  // The fixture's two NESTED blocks (`subscription`, `git`) were never
+  // ingested — the CLI renders them as a bare key line followed by indented
+  // YAML continuation lines, and neither is a top-level `key<TAB>value` pair,
+  // any more than the leading `Property`/`Value` header row is.
+  it("maps project:info to its allowlisted fields, dropping every other key the CLI printed", () => {
     const project = parseProjectInfo(readFixture("project-info.txt"));
 
     expect(project).toEqual({
       id: "acme-demo-project",
+      title: "Demo Storefront",
+      region: "demo-region.example-domain",
+      status: "active",
       created_at: "2026-01-01T00:00:00+00:00",
       updated_at: "2026-01-02T00:00:00+00:00",
-      title: "Demo Storefront",
-      description: "",
-      owner: "acct-demo-0001",
-      namespace: "acme",
-      organization: "org-demo-0001",
       default_branch: "main",
-      status: "active",
       timezone: "UTC",
-      region: "demo-region.example-domain",
-      repository: "demo-user@git.demo-region.example-domain:acme-demo-project.git",
       default_domain: "",
-      url: "https://console.demo-region.example-domain/acme/acme-demo-project",
     });
+    expect(project).not.toHaveProperty("owner");
+    expect(project).not.toHaveProperty("organization");
+    expect(project).not.toHaveProperty("description");
+    expect(project).not.toHaveProperty("namespace");
+    expect(project).not.toHaveProperty("repository");
+    expect(project).not.toHaveProperty("url");
     expect(project).not.toHaveProperty("subscription");
     expect(project).not.toHaveProperty("Property");
   });
@@ -60,5 +64,42 @@ describe("parseProjectInfo", () => {
 
   it("declares its own required keys", () => {
     expect(PROJECT_INFO_REQUIRED_KEYS).toEqual(["id", "title", "region"]);
+  });
+});
+
+// A live smoke test confirmed the real `project:info` prints SSH public key
+// material and a billing URI as TOP-LEVEL pairs. Those pairs are appended
+// HERE rather than written into the fixture, so the fixture keeps matching
+// the output a maintainer actually recaptures, and so the leak probe and its
+// positive control read one and the same text.
+const PROJECT_INFO_UNDECLARED_PAIRS =
+  "client_ssh_key\tssh-rsa DEMOKEYMATERIAL demo@example-domain\nsubscription_management_uri\thttps://accounts.demo-region.example-domain/sub-demo-0001\n";
+
+const projectInfoWithUndeclaredPairs = () => readFixture("project-info.txt") + PROJECT_INFO_UNDECLARED_PAIRS;
+
+describe("parseProjectInfo — undeclared keys", () => {
+  // The strongest proof here runs on the SERIALIZED result, not the in-memory
+  // object: the narrow return type is a compile-time claim only, so only
+  // `JSON.stringify` shows what an agent would actually receive.
+  it("cannot leak an undeclared key even through JSON.stringify", () => {
+    const serialized = JSON.stringify(parseProjectInfo(projectInfoWithUndeclaredPairs()));
+
+    expect(serialized).not.toContain("client_ssh_key");
+    expect(serialized).not.toContain("DEMOKEYMATERIAL");
+    expect(serialized).not.toContain("subscription_management_uri");
+    expect(serialized).not.toContain("repository");
+    expect(serialized).not.toContain("namespace");
+  });
+
+  // POSITIVE CONTROL: the leak test above proves nothing unless the same
+  // probe detects, in the raw CLI output, every marker it claims to catch.
+  it("positive control: the same probe finds each dropped key in the raw CLI output", () => {
+    const raw = projectInfoWithUndeclaredPairs();
+
+    expect(raw).toContain("client_ssh_key");
+    expect(raw).toContain("DEMOKEYMATERIAL");
+    expect(raw).toContain("subscription_management_uri");
+    expect(raw).toContain("repository");
+    expect(raw).toContain("namespace");
   });
 });
