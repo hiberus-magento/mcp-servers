@@ -195,3 +195,191 @@ describe("guardQuery — comments are rejected, never stripped", () => {
     expect(guardQuery("SELECT id FROM t LIMIT 10", { rowCap: ROW_CAP }).ok).toBe(true);
   });
 });
+
+// A CTE-based diagnostic query is an ordinary read, and refusing it pushed
+// operators towards flattening real questions into shapes the guard happened
+// to like. `WITH` is therefore a read-only leading verb — but it is the ONLY
+// one whose statement kind is not decided by its first word, so these tests
+// exist to prove that everything a plain SELECT is subjected to still
+// applies, and that the statement the CTE list actually leads to is checked
+// rather than assumed.
+describe("guardQuery — WITH (common table expressions)", () => {
+  it("accepts a WITH ... SELECT carrying its own LIMIT, unchanged", () => {
+    const query = "WITH recent AS (SELECT id FROM sales_order WHERE status = 'processing') SELECT id FROM recent LIMIT 10";
+
+    const result = guardQuery(query, { rowCap: ROW_CAP });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.query).toBe(query);
+    }
+  });
+
+  it("accepts a multi-CTE list and a CTE column list", () => {
+    const query =
+      "WITH a (id) AS (SELECT id FROM t), b AS (SELECT id FROM u) SELECT a.id FROM a JOIN b ON a.id = b.id LIMIT 5";
+
+    expect(guardQuery(query, { rowCap: ROW_CAP }).ok).toBe(true);
+  });
+
+  it("accepts WITH RECURSIVE", () => {
+    const query = "WITH RECURSIVE nums AS (SELECT 1 AS n UNION ALL SELECT n + 1 FROM nums WHERE n < 5) SELECT n FROM nums LIMIT 5";
+
+    expect(guardQuery(query, { rowCap: ROW_CAP }).ok).toBe(true);
+  });
+
+  // THE test for this change. `WITH` is a non-SELECT leading verb, and the
+  // pre-existing `verb !== "SELECT"` early return skipped LIMIT handling
+  // entirely for every one of those — correct for SHOW/DESCRIBE/EXPLAIN,
+  // catastrophic for a `WITH ... SELECT`, which returns rows exactly like a
+  // plain SELECT and would have run unbounded against a production database.
+  it("injects LIMIT <rowCap> into a WITH ... SELECT that carries none", () => {
+    const query = "WITH recent AS (SELECT id FROM sales_order) SELECT id FROM recent";
+    // The probe is only meaningful if the input genuinely lacks a LIMIT.
+    expect(query).not.toMatch(/LIMIT/i);
+
+    const result = guardQuery(query, { rowCap: ROW_CAP });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.query).toBe(`${query} LIMIT ${ROW_CAP}`);
+    }
+  });
+
+  it("a CTE's own LIMIT is not mistaken for the statement's — the outer statement still gets one injected", () => {
+    const result = guardQuery("WITH recent AS (SELECT id FROM t LIMIT 5) SELECT id FROM recent", { rowCap: ROW_CAP });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.query).toContain(`LIMIT ${ROW_CAP}`);
+    }
+  });
+
+  it("rejects — never clamps — a WITH ... SELECT whose own LIMIT exceeds the cap", () => {
+    const result = guardQuery("WITH recent AS (SELECT id FROM t) SELECT id FROM recent LIMIT 999999", {
+      rowCap: ROW_CAP,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toContain(String(ROW_CAP));
+    }
+  });
+
+  // POSITIVE CONTROL for Rule 2 under the new verb: the bare-`*` ban is not
+  // bypassed by wrapping the query in a CTE.
+  it("positive control: a bare `*` in the outer SELECT of a WITH is still rejected", () => {
+    const result = guardQuery("WITH recent AS (SELECT id FROM t) SELECT * FROM recent", { rowCap: ROW_CAP });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toMatch(/COUNT\(\*\)/);
+    }
+  });
+
+  it("positive control: a bare `*` INSIDE the CTE body is still rejected", () => {
+    expect(guardQuery("WITH recent AS (SELECT t.* FROM t) SELECT id FROM recent", { rowCap: ROW_CAP }).ok).toBe(false);
+  });
+
+  it("positive control: COUNT(*) is still the sole permitted `*` form inside a CTE", () => {
+    expect(guardQuery("WITH c AS (SELECT COUNT(*) AS n FROM t) SELECT n FROM c LIMIT 1", { rowCap: ROW_CAP }).ok).toBe(
+      true,
+    );
+  });
+
+  it("positive control: an exfiltration form is still rejected under a WITH", () => {
+    const result = guardQuery("WITH recent AS (SELECT id FROM t) SELECT id FROM recent INTO OUTFILE '/tmp/x'", {
+      rowCap: ROW_CAP,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toContain("INTO OUTFILE");
+    }
+  });
+
+  it("positive control: a comment is still rejected under a WITH, never stripped", () => {
+    expect(guardQuery("WITH recent AS (SELECT 1 /*!50000 , 2 */) SELECT 1 FROM recent", { rowCap: ROW_CAP }).ok).toBe(
+      false,
+    );
+  });
+
+  // MySQL 8.0 permits `WITH ... UPDATE` and `WITH ... DELETE` (Reference
+  // Manual, "WITH (Common Table Expressions)"): the statement a CTE list
+  // leads to is NOT constrained by the `WITH` keyword. Accepting `WITH` on
+  // its leading word alone would therefore have accepted a delete.
+  //
+  // Each of these asserts the rejection came from the CTE rule and names the
+  // verb it actually found — NOT from the blanket "WITH is not a read-only
+  // leading verb" refusal, which would make these tests pass without the
+  // rule they exist to prove ever running.
+  it.each([
+    ["DELETE", "WITH recent AS (SELECT id FROM t) DELETE FROM t WHERE id IN (SELECT id FROM recent)"],
+    ["UPDATE", "WITH recent AS (SELECT id FROM t) UPDATE t SET status = 'x' WHERE id IN (SELECT id FROM recent)"],
+    ["INSERT", "WITH recent AS (SELECT id FROM t) INSERT INTO u (id) SELECT id FROM recent"],
+    ["REPLACE", "WITH recent AS (SELECT id FROM t) REPLACE INTO u (id) SELECT id FROM recent"],
+  ])("rejects a WITH clause leading to a %s statement", (verb, query) => {
+    const result = guardQuery(query, { rowCap: ROW_CAP });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toContain(verb);
+      expect(result.message).not.toContain("must begin with one of");
+    }
+  });
+
+  // Fail-closed beyond MySQL: a data-modifying CTE body is a PostgreSQL
+  // feature, not a MySQL/MariaDB one — but the guard is not the right place
+  // to bet on which engine is on the other end of `db:sql`.
+  it("rejects a data-modifying CTE body, whatever the outer statement is", () => {
+    const result = guardQuery("WITH gone AS (DELETE FROM t RETURNING id) SELECT id FROM gone", { rowCap: ROW_CAP });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toContain("DELETE");
+      expect(result.message).not.toContain("must begin with one of");
+    }
+  });
+
+  it.each([
+    ["no AS keyword", "WITH recent (SELECT id FROM t) SELECT id FROM recent"],
+    ["no CTE body parentheses", "WITH recent AS SELECT id FROM t SELECT id FROM recent"],
+    ["no CTE name", "WITH AS (SELECT id FROM t) SELECT id FROM recent"],
+    ["nothing after the CTE list", "WITH recent AS (SELECT id FROM t)"],
+    ["a nested WITH as the CTE body", "WITH outer_cte AS (WITH inner_cte AS (SELECT id FROM t) SELECT id FROM inner_cte) SELECT id FROM outer_cte"],
+    // MariaDB allows a `CYCLE … RESTRICT` clause between the CTE list and
+    // the statement verb, so the token after the last `)` is not always the
+    // verb. Rejecting is the fail-closed answer, and an accepted cost.
+    ["MariaDB's CYCLE clause", "WITH RECURSIVE c AS (SELECT id, parent FROM t) CYCLE id RESTRICT SELECT id FROM c"],
+    // MySQL allows `TABLE t` after a CTE list. It is read-only, but it is
+    // not a SELECT, and the guard's LIMIT handling has nothing to say about
+    // it — so it is refused rather than special-cased.
+    ["a TABLE statement after the CTE list", "WITH c AS (SELECT id FROM t) TABLE t"],
+  ])("rejects a WITH clause it cannot parse: %s", (_label, query) => {
+    const result = guardQuery(query, { rowCap: ROW_CAP });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).not.toContain("must begin with one of");
+    }
+  });
+
+  // `INSERT … WITH … SELECT` (the WITH clause AFTER the verb) is the legal
+  // MySQL/MariaDB form for a CTE-fed insert, and it is still a write. It is
+  // caught by the leading-verb rule, not by the CTE rule — this pins that
+  // the two together leave no gap.
+  it.each([
+    ["INSERT", "INSERT INTO u (id) WITH c AS (SELECT id FROM t) SELECT id FROM c"],
+    ["REPLACE", "REPLACE INTO u (id) WITH c AS (SELECT id FROM t) SELECT id FROM c"],
+    ["CREATE TABLE", "CREATE TABLE u AS WITH c AS (SELECT id FROM t) SELECT id FROM c"],
+  ])("rejects a %s whose WITH clause comes after the verb", (_label, query) => {
+    expect(guardQuery(query, { rowCap: ROW_CAP }).ok).toBe(false);
+  });
+
+  // `USE` mutates session state (it changes the default schema for every
+  // subsequent statement on the connection), so it is deliberately NOT a
+  // read-only leading verb even though it reads nothing itself.
+  it("still rejects USE — adding WITH did not widen the verb set further", () => {
+    expect(guardQuery("USE information_schema", { rowCap: ROW_CAP }).ok).toBe(false);
+  });
+});

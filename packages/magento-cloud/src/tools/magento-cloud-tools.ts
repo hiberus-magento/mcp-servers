@@ -1,6 +1,6 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
-// The eight `magentocloud_*` tools (magento-cloud-mcp spec). Lives in its
+// The nine `magentocloud_*` tools (magento-cloud-mcp spec). Lives in its
 // own module, separate from `mcp.ts`, for the same reason as `eds`/`aco`:
 // `mcp.ts` must call `server.connect(transport)` UNCONDITIONALLY at module
 // top level, so a module that connects on import cannot also be imported
@@ -38,12 +38,16 @@ import {
   parseDbSqlRows,
   parseEnvironmentInfo,
   parseEnvironmentList,
+  parseEnvironmentUrls,
   parseProjectInfo,
   parseProjectList,
   parseRouteList,
   parseServiceEndpoints,
   parseServiceList,
   parseVariableList,
+  ACTIVITY_LIMIT_MAX,
+  ACTIVITY_RESULTS,
+  ACTIVITY_STATES,
   ROW_CAP,
 } from "../client/index.js";
 import { resolveMagentoCloudCredentialDirect } from "../credential-provider.js";
@@ -121,13 +125,49 @@ export const magentocloudDescribeProjectInput = z.object({ ...projectScoped }).s
 export const magentocloudListEnvironmentsInput = z.object({ ...projectScoped }).strict();
 export const magentocloudDescribeEnvironmentInput = z.object({ ...environmentScoped }).strict();
 
-const environmentConfigInclude = z.enum(["variables", "routes", "services", "serviceEndpoints", "appConfig"]);
+const environmentConfigInclude = z.enum(["variables", "routes", "services", "serviceEndpoints", "appConfig", "urls"]);
 export const magentocloudGetEnvironmentConfigInput = z
   .object({ ...environmentScoped, include: z.array(environmentConfigInclude).min(1).optional() })
   .strict();
 
+// The filters apply to the LIST branch only. They are rejected alongside
+// `activityId` rather than quietly dropped: `activity:get` has nowhere to
+// put them, and a filter a caller supplied and the tool ignored is a lie
+// about what was searched.
 export const magentocloudGetActivitiesInput = z
-  .object({ projectId: z.string().min(1), environmentId: z.string().min(1).optional(), activityId: z.string().min(1).optional() })
+  .object({
+    projectId: z.string().min(1),
+    environmentId: z.string().min(1).optional(),
+    activityId: z.string().min(1).optional(),
+    limit: z.number().int().positive().max(ACTIVITY_LIMIT_MAX).optional(),
+    type: z.string().min(1).optional(),
+    state: z.enum(ACTIVITY_STATES).optional(),
+    result: z.enum(ACTIVITY_RESULTS).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.activityId === undefined) {
+      return;
+    }
+    for (const field of ["limit", "type", "state", "result"] as const) {
+      if (value[field] !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          path: [field],
+          message: `"${field}" filters the activity list and cannot be combined with "activityId", which fetches one activity directly.`,
+        });
+      }
+    }
+  });
+
+// Every field is REQUIRED, deliberately. The audited fork lets `activityId`
+// be omitted and reads "the most recent activity" instead, which costs a
+// second CLI call to discover the id and then returns a log without saying
+// which activity it belongs to — a result that reads like an answer to the
+// question the caller asked even when the most recent activity is not the
+// one they meant.
+export const magentocloudGetActivityLogInput = z
+  .object({ ...environmentScoped, activityId: z.string().min(1) })
   .strict();
 
 const dbSizeRequest = z.object({ kind: z.literal("size") }).strict();
@@ -266,7 +306,7 @@ function childEnvWithOptionalToken(home: string, path: string): Readonly<Record<
   const getEnvironmentConfig = defineTool({
     name: "magentocloud_get_environment_config",
     description:
-      'Use this to fetch environment configuration facets on demand: "variables", "routes", "services", "serviceEndpoints" (host/port/scheme/service only — credentials are never returned, even though the underlying CLI output carries them), and "appConfig". Read-only.',
+      'Use this to fetch environment configuration facets on demand: "variables", "routes", "services", "serviceEndpoints" (host/port/scheme/service only — credentials are never returned, even though the underlying CLI output carries them), "appConfig", and "urls" (every public URL the environment answers on, in the order the CLI lists them; none is designated primary). Read-only.',
     inputSchema: magentocloudGetEnvironmentConfigInput,
     annotations: READ_ONLY_ANNOTATIONS,
     handler: async (args) => {
@@ -299,6 +339,20 @@ function childEnvWithOptionalToken(home: string, path: string): Readonly<Record<
         const spec = { ...resolveSpec(bin, ["app:config-get"]), env };
         result["appConfig"] = parseAppConfig(await executeReadOnlyCommand({ spec, rawArgs, now }));
       }
+      if (include.has("urls")) {
+        // `parseEnvironmentUrls`, not `parseEnvironmentUrl`: `--pipe` prints
+        // one bare URL per line and designates NO primary, so the honest
+        // result is the list in the order the CLI printed it. A `primary`
+        // field here would be this package asserting something the output
+        // does not say.
+        //
+        // `environment:url` also legitimately FAILS for an environment that
+        // has no URL. That failure is left to propagate on the same path as
+        // every other facet's, so the caller gets the CLI's own words via
+        // `invokeMagentoCloudTool` rather than an invented empty list.
+        const spec = { ...resolveSpec(bin, ["environment:url"]), env };
+        result["urls"] = parseEnvironmentUrls(await executeReadOnlyCommand({ spec, rawArgs, now }));
+      }
       return result;
     },
   });
@@ -306,7 +360,7 @@ function childEnvWithOptionalToken(home: string, path: string): Readonly<Record<
   const getActivities = defineTool({
     name: "magentocloud_get_activities",
     description:
-      "Use this to list recent deployment/activity events for a project (optionally scoped to one environment), or to fetch one activity by activityId. Read-only.",
+      'Use this to list recent deployment/activity events for a project (optionally scoped to one environment), narrowed by any of limit, type (e.g. "environment.push"), state ("in_progress", "pending", "complete", "cancelled") and result ("success", "failure") — or to fetch one activity by activityId, which cannot be combined with those filters. Read-only.',
     inputSchema: magentocloudGetActivitiesInput,
     annotations: READ_ONLY_ANNOTATIONS,
     handler: async (args) => {
@@ -322,12 +376,48 @@ function childEnvWithOptionalToken(home: string, path: string): Readonly<Record<
         return parseActivityGet(stdout);
       }
       const spec = { ...resolveSpec(bin, ["activity:list"]), env };
+      // Field by field, and only when supplied: the spec's own schema is
+      // `.strict()`, so an undefined filter must be absent rather than
+      // present-and-undefined.
       const rawArgs: Record<string, unknown> = { projectId: args.projectId };
       if (args.environmentId !== undefined) {
         rawArgs["environmentId"] = args.environmentId;
       }
+      if (args.limit !== undefined) {
+        rawArgs["limit"] = args.limit;
+      }
+      if (args.type !== undefined) {
+        rawArgs["type"] = args.type;
+      }
+      if (args.state !== undefined) {
+        rawArgs["state"] = args.state;
+      }
+      if (args.result !== undefined) {
+        rawArgs["result"] = args.result;
+      }
       const stdout = await executeReadOnlyCommand({ spec, rawArgs, now });
       return { activities: parseActivityList(stdout) };
+    },
+  });
+
+  const getActivityLog = defineTool({
+    name: "magentocloud_get_activity_log",
+    description:
+      "Use this to read one activity's full deployment/build log by activityId, after magentocloud_get_activities has shown which activity you care about. Returns the log as plain text. The activityId is required — this tool never guesses which activity you meant. Read-only.",
+    inputSchema: magentocloudGetActivityLogInput,
+    annotations: READ_ONLY_ANNOTATIONS,
+    handler: async (args) => {
+      const { bin, home, path } = getRuntime();
+      const spec = { ...resolveSpec(bin, ["activity:log"]), env: childEnvWithOptionalToken(home, path) };
+      // Returned as a raw string, not wrapped in a record: `defineTool`
+      // JSON-stringifies anything that is not a string, and a build log
+      // read through JSON escaping is markedly harder to read than the log
+      // the CLI actually printed.
+      return executeReadOnlyCommand({
+        spec,
+        rawArgs: { projectId: args.projectId, environmentId: args.environmentId, activityId: args.activityId },
+        now,
+      });
     },
   });
 
@@ -365,5 +455,18 @@ function childEnvWithOptionalToken(home: string, path: string): Readonly<Record<
     },
   });
 
-  return [authStatus, listProjects, describeProject, listEnvironments, describeEnvironment, getEnvironmentConfig, getActivities, queryDatabase];
+  return [
+    authStatus,
+    listProjects,
+    describeProject,
+    listEnvironments,
+    describeEnvironment,
+    getEnvironmentConfig,
+    getActivities,
+    queryDatabase,
+    // Appended, not slotted in next to `getActivities`: several tests read
+    // this array positionally, and reordering it would silently re-point
+    // them at a different tool.
+    getActivityLog,
+  ];
 }

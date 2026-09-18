@@ -24,12 +24,22 @@ export type GuardRejection = { readonly ok: false; readonly message: string };
 export type GuardAcceptance = { readonly ok: true; readonly query: GuardedQuery };
 export type GuardResult = GuardAcceptance | GuardRejection;
 
-const READ_ONLY_LEADING_VERBS = ["SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"] as const;
+// `USE` is deliberately absent and must stay absent: it reads nothing, but
+// it mutates SESSION state (the default schema for every later statement on
+// the connection), which is exactly what a read-only guard exists to refuse.
+const READ_ONLY_LEADING_VERBS = ["SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "WITH"] as const;
 type ReadOnlyLeadingVerb = (typeof READ_ONLY_LEADING_VERBS)[number];
 
 function isReadOnlyLeadingVerb(verb: string): verb is ReadOnlyLeadingVerb {
   return (READ_ONLY_LEADING_VERBS as readonly string[]).includes(verb);
 }
+
+// The verbs whose statement RETURNS ROWS and therefore must be bounded by a
+// LIMIT. This is deliberately NOT expressed as `verb !== "SELECT"`, which is
+// what it was before `WITH` existed here: a `WITH … SELECT` returns rows
+// exactly like a plain SELECT, so the old negative test would have handed it
+// the SHOW/DESCRIBE exemption and run it unbounded.
+const LIMIT_BEARING_VERBS: readonly ReadOnlyLeadingVerb[] = ["SELECT", "WITH"];
 
 function reject(message: string): GuardRejection {
   return { ok: false, message };
@@ -84,6 +94,158 @@ function findDisallowedStar(statementText: string): boolean {
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// Rule 1b — the CTE structural check.
+//
+// `WITH` is the only read-only leading verb whose STATEMENT KIND is not
+// decided by its first word. MySQL 8.0 permits a WITH clause "at the
+// beginning of SELECT, UPDATE, and DELETE statements" (Reference Manual,
+// "WITH (Common Table Expressions)"), and MariaDB permits it before UPDATE
+// and DELETE too — so `WITH recent AS (SELECT id FROM t) DELETE FROM t
+// WHERE id IN (SELECT id FROM recent)` is a single, valid, DESTRUCTIVE
+// statement whose leading verb is `WITH`. Adding `WITH` to the verb list
+// without this check would have turned the guard into a delete button.
+//
+// So the CTE list is walked explicitly and BOTH ends are pinned:
+//   - every CTE body must itself begin with SELECT (fail-closed past
+//     MySQL/MariaDB, which do not support a data-modifying CTE body at all;
+//     PostgreSQL's `WITH x AS (DELETE … RETURNING …)` does, and this guard
+//     is not the right place to bet on which engine answers `db:sql`), and
+//   - the statement AFTER the list must begin with SELECT.
+//
+// Anything this cannot parse is REJECTED rather than assumed benign: an
+// unparseable CTE list is precisely the case where "probably a select" is
+// not good enough. The accepted cost is that legitimate-but-exotic forms
+// (a nested `WITH` inside a CTE body, a `MATERIALIZED` hint) are refused.
+// ---------------------------------------------------------------------------
+
+function skipWhitespace(text: string, from: number): number {
+  let i = from;
+  while (i < text.length && /\s/.test(text[i]!)) {
+    i += 1;
+  }
+  return i;
+}
+
+/** Index just past `keyword` at `from`, or undefined. Requires a word
+ * boundary after it, so `ASSET` is never read as the keyword `AS`. */
+function matchKeyword(text: string, from: number, keyword: string): number | undefined {
+  const end = from + keyword.length;
+  if (text.slice(from, end).toUpperCase() !== keyword) {
+    return undefined;
+  }
+  const next = text[end];
+  return next !== undefined && /[A-Za-z0-9_$]/.test(next) ? undefined : end;
+}
+
+/** Index just past a CTE name at `from`, or undefined. A backquoted name
+ * arrives from the lexer with its content already removed, so it is exactly
+ * the two backticks. */
+function matchCteName(text: string, from: number): number | undefined {
+  if (text[from] === "`") {
+    return text[from + 1] === "`" ? from + 2 : undefined;
+  }
+  const match = /^[A-Za-z_][A-Za-z0-9_$]*/.exec(text.slice(from));
+  return match === null ? undefined : from + match[0].length;
+}
+
+/** The `)` closing the `(` at `open`, found by depth rather than by
+ * re-counting: `depths` is the one lexer's own nesting record. */
+function matchingParenIndex(text: string, depths: readonly number[], open: number): number | undefined {
+  const depth = depths[open];
+  for (let i = open + 1; i < text.length; i += 1) {
+    if (text[i] === ")" && depths[i] === depth) {
+      return i;
+    }
+  }
+  return undefined;
+}
+
+/** The first keyword of a CTE body, looking past any leading `(` so that a
+ * parenthesised union — `((SELECT 1) UNION (SELECT 2))` — is read as the
+ * SELECT it is. */
+function bodyLeadingVerb(bodyText: string): string {
+  let i = 0;
+  while (i < bodyText.length && (/\s/.test(bodyText[i]!) || bodyText[i] === "(")) {
+    i += 1;
+  }
+  const match = /^[A-Za-z_]+/.exec(bodyText.slice(i));
+  return (match?.[0] ?? "").toUpperCase();
+}
+
+function rejectUnparseableCte(detail: string): GuardRejection {
+  return reject(
+    `Query's WITH clause could not be parsed (${detail}), so the statement it leads to could not be confirmed ` +
+      "read-only; rewrite it as a plain SELECT or a simpler CTE.",
+  );
+}
+
+function checkCteLeadsToSelect(statementText: string, depths: readonly number[]): { readonly ok: true } | GuardRejection {
+  const afterWith = matchKeyword(statementText, skipWhitespace(statementText, 0), "WITH");
+  if (afterWith === undefined) {
+    return rejectUnparseableCte("it does not begin with WITH");
+  }
+  let i = skipWhitespace(statementText, afterWith);
+  const afterRecursive = matchKeyword(statementText, i, "RECURSIVE");
+  if (afterRecursive !== undefined) {
+    i = skipWhitespace(statementText, afterRecursive);
+  }
+
+  for (;;) {
+    const afterName = matchCteName(statementText, i);
+    if (afterName === undefined) {
+      return rejectUnparseableCte("expected a CTE name");
+    }
+    i = skipWhitespace(statementText, afterName);
+
+    // An optional column list. `AS` is mandatory before the body, so a `(`
+    // here can only be the column list, never the body itself.
+    if (statementText[i] === "(") {
+      const close = matchingParenIndex(statementText, depths, i);
+      if (close === undefined) {
+        return rejectUnparseableCte("unbalanced parentheses in a CTE column list");
+      }
+      i = skipWhitespace(statementText, close + 1);
+    }
+
+    const afterAs = matchKeyword(statementText, i, "AS");
+    if (afterAs === undefined) {
+      return rejectUnparseableCte('expected "AS" after a CTE name');
+    }
+    i = skipWhitespace(statementText, afterAs);
+
+    if (statementText[i] !== "(") {
+      return rejectUnparseableCte('expected "(" opening a CTE body');
+    }
+    const bodyClose = matchingParenIndex(statementText, depths, i);
+    if (bodyClose === undefined) {
+      return rejectUnparseableCte("unbalanced parentheses in a CTE body");
+    }
+    const bodyVerb = bodyLeadingVerb(statementText.slice(i + 1, bodyClose));
+    if (bodyVerb !== "SELECT") {
+      return reject(
+        `Query's CTE body must be a SELECT; found "${bodyVerb.length > 0 ? bodyVerb : "(empty)"}". ` +
+          "A common table expression is only a read here when everything it defines is a read.",
+      );
+    }
+    i = skipWhitespace(statementText, bodyClose + 1);
+
+    if (statementText[i] !== ",") {
+      break;
+    }
+    i = skipWhitespace(statementText, i + 1);
+  }
+
+  if (matchKeyword(statementText, i, "SELECT") === undefined) {
+    const found = leadingVerb(statementText.slice(i));
+    return reject(
+      `Query's statement after the WITH clause must be a SELECT; found "${found.length > 0 ? found : "(empty)"}". ` +
+        "MySQL also allows UPDATE and DELETE to follow a WITH clause, so a CTE is not read-only on its own.",
+    );
+  }
+  return { ok: true };
+}
+
 const EXFILTRATION_FORMS: ReadonlyArray<{ readonly label: string; readonly pattern: RegExp }> = [
   { label: "INTO OUTFILE", pattern: /INTO\s+OUTFILE/i },
   { label: "INTO DUMPFILE", pattern: /INTO\s+DUMPFILE/i },
@@ -121,7 +283,7 @@ type LimitDecision =
   | { readonly ok: true; readonly action: "keep" }
   | GuardRejection;
 
-function evaluateSelectLimit(statementText: string, depths: readonly number[], rowCap: number): LimitDecision {
+function evaluateRowLimit(statementText: string, depths: readonly number[], rowCap: number): LimitDecision {
   const limitIndex = findTopLevelTrailingLimitIndex(statementText, depths);
   if (limitIndex === undefined) {
     return { ok: true, action: "inject" };
@@ -186,6 +348,13 @@ export function guardQuery(rawQuery: string, options: { readonly rowCap: number 
     );
   }
 
+  if (verb === "WITH") {
+    const cteDecision = checkCteLeadsToSelect(statementText, lexed.depths);
+    if (!cteDecision.ok) {
+      return cteDecision;
+    }
+  }
+
   if (findDisallowedStar(statementText)) {
     return reject(
       'Query contains "*" outside of COUNT(*); name the columns explicitly, or use COUNT(*) to count rows. ' +
@@ -198,13 +367,15 @@ export function guardQuery(rawQuery: string, options: { readonly rowCap: number 
     return reject(`Query contains "${exfilForm}", which can write to a server-side file and is never allowed.`);
   }
 
-  if (verb !== "SELECT") {
+  if (!LIMIT_BEARING_VERBS.includes(verb)) {
     // SHOW/DESCRIBE/DESC/EXPLAIN take no injected LIMIT — no meaningful one
     // exists; they are bounded by schema size and maxOutputBytes alone.
+    // `WITH` is NOT in that company: it is in LIMIT_BEARING_VERBS, because
+    // the statement it leads to is a SELECT (checked above) and returns rows.
     return { ok: true, query: brand(rawQuery) };
   }
 
-  const limitDecision = evaluateSelectLimit(statementText, lexed.depths, options.rowCap);
+  const limitDecision = evaluateRowLimit(statementText, lexed.depths, options.rowCap);
   if (!limitDecision.ok) {
     return limitDecision;
   }

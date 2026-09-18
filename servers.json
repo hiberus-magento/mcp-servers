@@ -164,12 +164,17 @@
         {
           "name": "magentocloud_get_environment_config",
           "readOnly": true,
-          "description": "Use this to fetch environment configuration facets on demand: variables, routes, services, serviceEndpoints (credentials never returned), and appConfig."
+          "description": "Use this to fetch environment configuration facets on demand: variables, routes, services, serviceEndpoints (credentials never returned), appConfig, and urls."
         },
         {
           "name": "magentocloud_get_activities",
           "readOnly": true,
-          "description": "Use this to list recent deployment/activity events for a project, or to fetch one activity by activityId."
+          "description": "Use this to list recent deployment/activity events for a project, narrowed by limit, type, state or result — or to fetch one activity by activityId."
+        },
+        {
+          "name": "magentocloud_get_activity_log",
+          "readOnly": true,
+          "description": "Use this to read one activity's full deployment/build log by activityId, as plain text."
         },
         {
           "name": "magentocloud_query_database",

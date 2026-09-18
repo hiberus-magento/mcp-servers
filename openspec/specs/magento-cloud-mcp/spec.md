@@ -3,7 +3,7 @@
 ## Purpose
 
 Defines the `hiberus-magento-cloud-mcp` server (`packages/magento-cloud/src/mcp.ts`):
-its eight-tool task-shaped surface, tool annotations, the never-optional
+its nine-tool task-shaped surface, tool annotations, the never-optional
 `db:sql` query argument, the credential-stripped `serviceEndpoints` result
 shape, actionable failure surfacing for a missing credential or a
 classified CLI failure, and this package's first real exercise of the
@@ -12,26 +12,31 @@ shared conformance suite's exec-path options (`shellOutProbe`,
 
 ## Requirements
 
-### Requirement: Eight-Tool Read-Only Surface, No Others
+### Requirement: Nine-Tool Read-Only Surface, No Others
 
-The server MUST expose exactly these eight tools and no others:
+The server MUST expose exactly these nine tools and no others:
 `magentocloud_auth_status`, `magentocloud_list_projects`,
 `magentocloud_describe_project`, `magentocloud_list_environments`,
 `magentocloud_describe_environment`, `magentocloud_get_environment_config`,
-`magentocloud_get_activities`, `magentocloud_query_database`. Every tool
+`magentocloud_get_activities`, `magentocloud_get_activity_log`,
+`magentocloud_query_database`. Every tool
 MUST be annotated `readOnlyHint: true`, `destructiveHint: false`,
 `idempotentHint: true`, and each description MUST state when to use it.
+
+`magentocloud_get_activity_log` MUST require `activityId`; it MUST NOT
+default to the most recent activity, which would need a second lookup and
+would leave the caller unable to tell which activity was read.
 
 #### Scenario: tools/list matches the declared surface exactly
 
 - GIVEN the running server
 - WHEN `tools/list` is called
-- THEN the response contains exactly these eight tool names, with no tool
+- THEN the response contains exactly these nine tool names, with no tool
   for any mutating operation
 
 #### Scenario: Every tool is annotated read-only, non-destructive, idempotent
 
-- GIVEN each of the eight tools' registrations
+- GIVEN each of the nine tools' registrations
 - WHEN their annotations are inspected
 - THEN each is `readOnlyHint: true`, `destructiveHint: false`,
   `idempotentHint: true`

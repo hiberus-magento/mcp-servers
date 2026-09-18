@@ -110,6 +110,43 @@ export const DEFAULT_MAX_OUTPUT_BYTES = 1_048_576;
 const projectIdSchema = z.string().min(1);
 const environmentIdSchema = z.string().min(1);
 
+// ACTIVITY_LIMIT_MAX: chosen, not a round default (the CLI's own `--limit`
+// default is 10). Weighed the same way ROW_CAP was — against what an agent
+// or a human can actually read in one tool result. 100 activity rows is a
+// long-but-scannable deployment history, and the loader pages the API to
+// satisfy it, so a larger number buys round trips rather than insight.
+export const ACTIVITY_LIMIT_MAX = 100;
+
+// The `--state` and `--result` values the Adobe Commerce Cloud CLI 1.47.0
+// reference documents, and ONLY those.
+//
+// Deliberately excluded: `staged` (present in upstream platformsh/legacy-cli
+// shell completion) and `scheduled` (present in the Platform.sh activity API
+// reference). Three sources disagree about a fifth state, the CLI does no
+// client-side validation of its own, and this package has already shipped
+// once on "the upstream source probably says what the fork does". Four
+// documented values that certainly work beat five where one might not.
+export const ACTIVITY_STATES = ["in_progress", "pending", "complete", "cancelled"] as const;
+export const ACTIVITY_RESULTS = ["success", "failure"] as const;
+
+// `--type` is NOT an enum. The CLI checks a value against a hardcoded type
+// list only to expand wildcards, and sends an unrecognised one to the API
+// anyway — so an allowlist copied from upstream would be a guess about the
+// fork's list wearing the costume of a validation. What IS worth enforcing
+// is the SHAPE: a single dotted lowercase identifier such as
+// `environment.push` or `environment.update.http_access`. That rejects a
+// flag-shaped value the CLI's own option parser could read as an option,
+// and rejects the comma/whitespace-separated multi-value form, which this
+// schema does not model.
+const ACTIVITY_TYPE_PATTERN = /^[a-z][a-z0-9_]*(?:\.[a-z0-9_-]+)*$/;
+
+const activityFilterShape = {
+  limit: z.number().int().positive().max(ACTIVITY_LIMIT_MAX).optional(),
+  type: z.string().regex(ACTIVITY_TYPE_PATTERN).optional(),
+  state: z.enum(ACTIVITY_STATES).optional(),
+  result: z.enum(ACTIVITY_RESULTS).optional(),
+};
+
 function withFormatTsv(argv: readonly string[]): readonly string[] {
   return [...argv, "--format=tsv"];
 }
@@ -226,17 +263,24 @@ function environmentRelationshipsSpec(bin: string) {
 }
 
 function activityListSpec(bin: string) {
-  const argsSchema = projectScoped({ environmentId: environmentIdSchema.optional() });
+  const argsSchema = projectScoped({ environmentId: environmentIdSchema.optional(), ...activityFilterShape });
   return {
     bin,
     subcommand: ["activity:list"],
     argsSchema,
+    // Every filter is optional and appended only when supplied, so the argv
+    // built for an unfiltered call is byte-for-byte what it was before the
+    // filters existed.
     buildArgv: (args: z.infer<typeof argsSchema>) =>
       withFormatTsv([
         "activity:list",
         "--project",
         args.projectId,
         ...(args.environmentId ? ["--environment", args.environmentId] : []),
+        ...(args.limit !== undefined ? ["--limit", String(args.limit)] : []),
+        ...(args.type !== undefined ? ["--type", args.type] : []),
+        ...(args.state !== undefined ? ["--state", args.state] : []),
+        ...(args.result !== undefined ? ["--result", args.result] : []),
       ]),
     timeoutMs: DEFAULT_TIMEOUT_MS,
     maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
@@ -244,15 +288,30 @@ function activityListSpec(bin: string) {
 }
 
 function activityLogSpec(bin: string) {
-  const argsSchema = projectScoped({ activityId: z.string().min(1) });
+  const argsSchema = environmentScoped({ activityId: z.string().min(1) });
   return {
     bin,
     subcommand: ["activity:log"],
     argsSchema,
     // Deliberately no --format flag: activity:log's output is plain
     // deployment-log text (see test/fake-bin/fixtures/activity-log.txt),
-    // not a tabular read.
-    buildArgv: (args: z.infer<typeof argsSchema>) => ["activity:log", args.activityId, "--project", args.projectId],
+    // not a tabular read. The CLI has no `--format` option here at all.
+    //
+    // `--refresh 0` is not optional for a non-interactive caller. The CLI's
+    // own `--refresh` default is 3 seconds, which makes `activity:log` POLL
+    // and keep streaming while the activity is still running — it would never
+    // return, and the only thing this client would ever see is its own
+    // timeout. 0 is the CLI's documented "disable refreshing".
+    buildArgv: (args: z.infer<typeof argsSchema>) => [
+      "activity:log",
+      args.activityId,
+      "--project",
+      args.projectId,
+      "--environment",
+      args.environmentId,
+      "--refresh",
+      "0",
+    ],
     timeoutMs: DEFAULT_TIMEOUT_MS,
     maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
   } satisfies CommandSpec<typeof argsSchema>;

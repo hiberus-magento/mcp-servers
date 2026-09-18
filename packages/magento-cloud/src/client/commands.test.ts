@@ -194,11 +194,136 @@ describe("app:config-get and activity:log are deliberately excluded from --forma
     const spec = allowlist.resolve(BIN, ["activity:log"]);
     if (!spec) throw new Error("expected activity:log to be registered");
 
-    const result = validateArgv(spec, { projectId: "acme-demo-project", activityId: "act-demo-0001" });
+    // CHANGED DELIBERATELY: this call gained `environmentId`, because the
+    // spec now forwards `--environment` (see "activity:log — argv" below).
+    const result = validateArgv(spec, {
+      projectId: "acme-demo-project",
+      environmentId: "acme-demo-env-main",
+      activityId: "act-demo-0001",
+    });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.some((token) => token.startsWith("--format"))).toBe(false);
+    }
+  });
+});
+
+// The CLI's own `activity:list` filters, which this client did not pass
+// through at all: every call fetched the CLI's default page and the caller
+// had no way to narrow it.
+//
+// Accepted values come from the Adobe Commerce Cloud CLI 1.47.0 reference:
+// `--state` is "in_progress, pending, complete, or cancelled", `--result` is
+// "success or failure", `--limit` is an integer (CLI default 10).
+describe("activity:list — optional filters", () => {
+  function activityListArgv(args: Record<string, unknown>) {
+    const allowlist = createMagentoCloudAllowlist(BIN);
+    const spec = allowlist.resolve(BIN, ["activity:list"]);
+    if (!spec) throw new Error("expected activity:list to be registered");
+    return validateArgv(spec, args);
+  }
+
+  it("builds the pre-existing argv unchanged when no filter is given", () => {
+    const result = activityListArgv({ projectId: "acme-demo-project" });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toEqual(["activity:list", "--project", "acme-demo-project", "--format=tsv"]);
+    }
+  });
+
+  it("passes every filter through as its own flag", () => {
+    const result = activityListArgv({
+      projectId: "acme-demo-project",
+      environmentId: "acme-demo-env-main",
+      limit: 25,
+      type: "environment.push",
+      state: "complete",
+      result: "failure",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toEqual([
+        "activity:list",
+        "--project",
+        "acme-demo-project",
+        "--environment",
+        "acme-demo-env-main",
+        "--limit",
+        "25",
+        "--type",
+        "environment.push",
+        "--state",
+        "complete",
+        "--result",
+        "failure",
+        "--format=tsv",
+      ]);
+    }
+  });
+
+  it.each([
+    ["an unknown state", { state: "finished" }],
+    ["an unknown result", { result: "ok" }],
+    ["a zero limit", { limit: 0 }],
+    ["a negative limit", { limit: -1 }],
+    ["a non-integer limit", { limit: 2.5 }],
+    // A flag-shaped filter value must never become an argv token the CLI's
+    // own option parser could read as an option.
+    ["a flag-shaped type", { type: "--format=csv" }],
+    ["a type carrying whitespace", { type: "environment.push environment.deploy" }],
+    ["a comma-separated type list", { type: "environment.push,environment.deploy" }],
+  ])("rejects %s", (_label, filter) => {
+    const result = activityListArgv({ projectId: "acme-demo-project", ...filter });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.reason).toBe("schema-invalid");
+    }
+  });
+
+  it.each(["in_progress", "pending", "complete", "cancelled"])("accepts the documented state %s", (state) => {
+    expect(activityListArgv({ projectId: "acme-demo-project", state }).ok).toBe(true);
+  });
+
+  it.each(["success", "failure"])("accepts the documented result %s", (result) => {
+    expect(activityListArgv({ projectId: "acme-demo-project", result }).ok).toBe(true);
+  });
+});
+
+// CHANGED DELIBERATELY: this spec took only `projectId` + `activityId`.
+// `activity:log` does accept `-e|--environment` (Adobe Commerce Cloud CLI
+// 1.47.0 reference), and the tool that now calls it requires an environment
+// id, so the spec forwards it.
+describe("activity:log — argv", () => {
+  it("passes the activity id, project, environment, and --refresh 0", () => {
+    const allowlist = createMagentoCloudAllowlist(BIN);
+    const spec = allowlist.resolve(BIN, ["activity:log"]);
+    if (!spec) throw new Error("expected activity:log to be registered");
+
+    const result = validateArgv(spec, {
+      projectId: "acme-demo-project",
+      environmentId: "acme-demo-env-main",
+      activityId: "act-demo-0001",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toEqual([
+        "activity:log",
+        "act-demo-0001",
+        "--project",
+        "acme-demo-project",
+        "--environment",
+        "acme-demo-env-main",
+        // Without this the command POLLS (the CLI's own `--refresh` default
+        // is 3 seconds) and does not return while the activity is still
+        // running — a non-interactive caller would only ever see our timeout.
+        "--refresh",
+        "0",
+      ]);
     }
   });
 });
@@ -236,6 +361,12 @@ describe("db:sql spec — the coupling guarantee (design.md, Decision 5)", () =>
     ["SELECT t.* FROM catalog_product_entity t"],
     ["SELECT id FROM catalog_product_entity INTO OUTFILE '/tmp/x'"],
     ["SELECT id FROM catalog_product_entity LIMIT 999999999"],
+    // A CTE list is allowed, but the statement it leads to is still checked:
+    // MySQL permits `WITH … DELETE`, so this is a destructive statement whose
+    // leading verb is the read-only-looking `WITH`.
+    ["WITH doomed AS (SELECT id FROM catalog_product_entity) DELETE FROM catalog_product_entity WHERE id IN (SELECT id FROM doomed)"],
+    ["WITH doomed AS (SELECT id FROM catalog_product_entity) UPDATE catalog_product_entity SET sku = 'x'"],
+    ["WITH everything AS (SELECT t.* FROM catalog_product_entity t) SELECT id FROM everything"],
   ])("rejects %s before buildArgv is ever called", (query) => {
     const spec = dbSqlSpecWithSpy();
 
@@ -261,6 +392,24 @@ describe("db:sql spec — the coupling guarantee (design.md, Decision 5)", () =>
     if (result.ok) {
       const queryToken = result.value.at(-1);
       expect(queryToken).toContain(`LIMIT ${ROW_CAP}`);
+    }
+  });
+
+  it("injects LIMIT <ROW_CAP> into a WITH ... SELECT too, not only a plain SELECT", () => {
+    const spec = dbSqlSpecWithSpy();
+
+    const result = validateArgv(spec, {
+      projectId: "acme-demo-project",
+      environmentId: "acme-demo-env-main",
+      query: "WITH recent AS (SELECT id FROM catalog_product_entity) SELECT id FROM recent",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // The argv token that actually reaches `--raw` is what matters here:
+      // a `WITH ... SELECT` returns rows exactly like a SELECT, so an
+      // unbounded one would reach the database unbounded.
+      expect(result.value.at(-1)).toContain(`LIMIT ${ROW_CAP}`);
     }
   });
 

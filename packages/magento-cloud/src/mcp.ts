@@ -9,7 +9,7 @@
 // (design.md, Decision 1's packaging rationale) — so this package's bundle
 // stays clean of express/hono/ajv/etc.
 //
-// This file is intentionally thin: the eight tool definitions and their
+// This file is intentionally thin: the nine tool definitions and their
 // schemas live in `./tools/magento-cloud-tools.ts`, so the only thing this
 // file does is register them (through `invokeMagentoCloudTool`, which
 // surfaces the three CLI-failure classifications `defineTool.invoke` does

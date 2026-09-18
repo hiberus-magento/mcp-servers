@@ -88,11 +88,14 @@ const EXPECTED_AUTH_STATUS_TEXT = JSON.stringify({
   },
 });
 
+// CHANGED DELIBERATELY: eight became nine — `magentocloud_get_activity_log`
+// exposes the already-allowlisted `activity:log`, which no tool called.
 const EXPECTED_TOOL_NAMES = [
   "magentocloud_auth_status",
   "magentocloud_describe_environment",
   "magentocloud_describe_project",
   "magentocloud_get_activities",
+  "magentocloud_get_activity_log",
   "magentocloud_get_environment_config",
   "magentocloud_list_environments",
   "magentocloud_list_projects",
@@ -165,7 +168,7 @@ describe("checkReadOnlyIsolation (mcp-testing) — positive control against mage
 });
 
 describe(`magento-cloud tool surface on the built bundle: ${serverPath}`, () => {
-  it("declares exactly the eight magentocloud_* tools (tasks.md 9.5)", async () => {
+  it("declares exactly the nine magentocloud_* tools (tasks.md 9.5)", async () => {
     const client = new JsonRpcClient({ command: process.execPath, args: [serverPath] });
     try {
       await client.request("initialize", {
@@ -177,7 +180,7 @@ describe(`magento-cloud tool surface on the built bundle: ${serverPath}`, () => 
       const result = (await client.request("tools/list")) as ToolsListResult;
 
       expect(result.tools.map((tool) => tool.name).sort()).toEqual([...EXPECTED_TOOL_NAMES].sort());
-      expect(result.tools).toHaveLength(8);
+      expect(result.tools).toHaveLength(9);
     } finally {
       client.close();
     }

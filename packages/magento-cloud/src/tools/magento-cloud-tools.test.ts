@@ -13,6 +13,8 @@
 // operation: ssh, every tunnel:* form, db:dump, or the CLI's own
 // api:curl/project:curl/organization:curl/environment:curl passthroughs.
 import { EventEmitter } from "node:events";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import {
   MagentoCloudCommandFailedError,
@@ -55,10 +57,35 @@ function mockExecFileOnce(exitCode: number, stdout: string, stderr: string): voi
 
 const RUNTIME: MagentoCloudRuntime = { bin: "/usr/bin/magento-cloud", home: "/home/demo", path: "/usr/bin" };
 
+/**
+ * The checked-in fixtures are what the real CLI printed. A test that made up
+ * its own stdout would be testing the shape this code already expects — the
+ * exact failure mode that let seven of eight tools ship broken against the
+ * real CLI — so the `environment:url` and `activity:log` cases below feed the
+ * REAL fixture bytes and derive their expectations from those bytes
+ * independently of the parser under test.
+ */
+function readFixture(name: string): string {
+  return readFileSync(fileURLToPath(new URL(`../../test/fake-bin/fixtures/${name}`, import.meta.url)), "utf8");
+}
+
 function buildTools() {
   return createMagentoCloudTools({ getRuntime: () => RUNTIME, now: () => 0 });
 }
 
+/** By name, not by position: the surface is no longer a fixed-length tuple. */
+function toolNamed(name: string) {
+  const tool = buildTools().find((candidate) => candidate.name === name);
+  if (tool === undefined) {
+    throw new Error(`expected a tool named "${name}" to be registered`);
+  }
+  return tool;
+}
+
+// CHANGED DELIBERATELY: eight became nine. `activity:log` was built,
+// allowlisted and fixtured, and then reachable from no tool at all — the
+// deployment log is the one thing an operator actually wants after
+// `magentocloud_get_activities` says an activity failed.
 const EXPECTED_TOOL_NAMES = [
   "magentocloud_auth_status",
   "magentocloud_list_projects",
@@ -67,14 +94,15 @@ const EXPECTED_TOOL_NAMES = [
   "magentocloud_describe_environment",
   "magentocloud_get_environment_config",
   "magentocloud_get_activities",
+  "magentocloud_get_activity_log",
   "magentocloud_query_database",
 ] as const;
 
-describe("createMagentoCloudTools — exactly eight tools", () => {
-  it("registers exactly the eight declared names, and no more", () => {
+describe("createMagentoCloudTools — exactly nine tools", () => {
+  it("registers exactly the nine declared names, and no more", () => {
     const tools = buildTools();
 
-    expect(tools).toHaveLength(8);
+    expect(tools).toHaveLength(9);
     expect(tools.map((t) => t.name).sort()).toEqual([...EXPECTED_TOOL_NAMES].sort());
   });
 
@@ -135,6 +163,158 @@ describe("createMagentoCloudTools — exactly eight tools", () => {
       expect(haystack).not.toContain("environment:drush");
     }
     expect(names).not.toContain("ssh");
+  });
+});
+
+describe("magentocloud_get_activities — list filters", () => {
+  it("lists unfiltered exactly as before when no filter is given", async () => {
+    mockExecFileOnce(0, readFixture("activity-list.txt"), "");
+
+    const result = await toolNamed("magentocloud_get_activities").invoke({ projectId: "acme-demo-project" }, {});
+
+    expect(result.isError).toBeUndefined();
+    const argv = execFileMock.mock.calls.at(-1)?.[1] as readonly string[];
+    expect(argv).toEqual(["activity:list", "--project", "acme-demo-project", "--format=tsv"]);
+  });
+
+  it("passes every supplied filter down to the CLI", async () => {
+    mockExecFileOnce(0, readFixture("activity-list.txt"), "");
+
+    await toolNamed("magentocloud_get_activities").invoke(
+      {
+        projectId: "acme-demo-project",
+        environmentId: "acme-demo-env-main",
+        limit: 5,
+        type: "environment.push",
+        state: "complete",
+        result: "failure",
+      },
+      {},
+    );
+
+    const argv = execFileMock.mock.calls.at(-1)?.[1] as readonly string[];
+    expect(argv).toEqual([
+      "activity:list",
+      "--project",
+      "acme-demo-project",
+      "--environment",
+      "acme-demo-env-main",
+      "--limit",
+      "5",
+      "--type",
+      "environment.push",
+      "--state",
+      "complete",
+      "--result",
+      "failure",
+      "--format=tsv",
+    ]);
+  });
+
+  it.each([
+    ["state", { state: "finished" }],
+    ["result", { result: "ok" }],
+    ["limit", { limit: 0 }],
+  ])("rejects an out-of-domain %s at the wire gate, before any process is spawned", async (_field, filter) => {
+    execFileMock.mockClear();
+
+    await expect(
+      toolNamed("magentocloud_get_activities").invoke({ projectId: "acme-demo-project", ...filter }, {}),
+    ).rejects.toThrow();
+    expect(execFileMock).not.toHaveBeenCalled();
+  });
+
+  // A filter combined with activityId would be silently dropped — the
+  // by-id branch runs `activity:get`, which has no filters at all. Saying so
+  // is better than searching something other than what was asked for.
+  it.each([["limit", { limit: 5 }], ["type", { type: "environment.push" }], ["state", { state: "complete" }], ["result", { result: "success" }]])(
+    "rejects %s combined with activityId instead of ignoring it",
+    async (_field, filter) => {
+      execFileMock.mockClear();
+
+      await expect(
+        toolNamed("magentocloud_get_activities").invoke(
+          { projectId: "acme-demo-project", activityId: "act-demo-0001", ...filter },
+          {},
+        ),
+      ).rejects.toThrow();
+      expect(execFileMock).not.toHaveBeenCalled();
+    },
+  );
+
+  // POSITIVE CONTROL for the rule above: activityId on its own is still the
+  // supported by-id read, so the refinement rejects the COMBINATION rather
+  // than having broken the branch.
+  it("positive control: activityId with no filter still fetches the one activity", async () => {
+    mockExecFileOnce(0, readFixture("activity-get.txt"), "");
+
+    const result = await toolNamed("magentocloud_get_activities").invoke(
+      { projectId: "acme-demo-project", activityId: "act-demo-0001" },
+      {},
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(execFileMock.mock.calls.at(-1)?.[1]).toContain("activity:get");
+  });
+});
+
+describe("magentocloud_get_activity_log", () => {
+  it("returns the deployment log as plain text, exactly as the CLI printed it", async () => {
+    const fixture = readFixture("activity-log.txt");
+    mockExecFileOnce(0, fixture, "");
+
+    const result = await toolNamed("magentocloud_get_activity_log").invoke(
+      { projectId: "acme-demo-project", environmentId: "acme-demo-env-main", activityId: "act-demo-0001" },
+      {},
+    );
+
+    expect(result.isError).toBeUndefined();
+    // Raw text, NOT a JSON-wrapped record: a deployment log is prose, and
+    // JSON-escaping it would make the one thing a caller reads unreadable.
+    expect(result.content[0]?.text).toBe(fixture);
+  });
+
+  it("invokes activity:log with the activity id and no --format flag", async () => {
+    mockExecFileOnce(0, readFixture("activity-log.txt"), "");
+
+    await toolNamed("magentocloud_get_activity_log").invoke(
+      { projectId: "acme-demo-project", environmentId: "acme-demo-env-main", activityId: "act-demo-0001" },
+      {},
+    );
+
+    const argv = execFileMock.mock.calls.at(-1)?.[1] as readonly string[];
+    expect(argv).toContain("activity:log");
+    expect(argv).toContain("act-demo-0001");
+    expect(argv.some((token) => token.startsWith("--format"))).toBe(false);
+  });
+
+  // Deliberately NOT the audited fork's "no id means the most recent
+  // activity": that convenience needs a second CLI call to discover the id,
+  // and then hides WHICH activity was read behind a result that looks like
+  // an answer to the question the caller asked.
+  it.each([
+    ["activityId", { projectId: "p", environmentId: "e" }],
+    ["projectId", { environmentId: "e", activityId: "a" }],
+    ["environmentId", { projectId: "p", activityId: "a" }],
+  ])("requires %s, rejecting the call before any process is spawned", async (_field, args) => {
+    execFileMock.mockClear();
+
+    await expect(toolNamed("magentocloud_get_activity_log").invoke(args, {})).rejects.toThrow();
+    expect(execFileMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a CLI failure as isError: true, carrying the CLI's own message", async () => {
+    const cliStderr = "Activity not found: act-demo-9999";
+    mockExecFileOnce(1, "", cliStderr);
+
+    const result = await invokeMagentoCloudTool(
+      toolNamed("magentocloud_get_activity_log"),
+      { projectId: "p", environmentId: "e", activityId: "act-demo-9999" },
+      {},
+    );
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain(cliStderr);
   });
 });
 
@@ -236,6 +416,82 @@ describe("magentocloud_get_environment_config — credential stripping on SERIAL
     expect(text).not.toMatch(/demo-svc-password-not-real/);
     expect(text).not.toMatch(/user|pass|secret|token/i);
     expect(text).toContain("demo-db-host.internal");
+  });
+});
+
+// `environment:url` was built, parsed and allowlisted, and then called by
+// nothing. It is exposed as a FACET of the environment-config tool rather
+// than as a tool of its own: an environment's URLs are environment
+// configuration, the facet tool already owns "fetch these parts of an
+// environment on demand", and every existing facet already shares the same
+// failure contract (one facet's CLI failure fails the call, carrying that
+// CLI's own message).
+describe("magentocloud_get_environment_config — the urls facet", () => {
+  it("returns every URL the CLI printed, in the order it printed them", async () => {
+    const fixture = readFixture("environment-url.txt");
+    // Derived from the fixture bytes here, NOT from `parseEnvironmentUrls`:
+    // the expectation must not come from the code under test.
+    const expectedUrls = fixture.split("\n").filter((line) => line.trim().length > 0);
+    expect(expectedUrls.length).toBeGreaterThan(1);
+    mockExecFileOnce(0, fixture, "");
+    const [, , , , , getEnvironmentConfig] = buildTools();
+
+    const result = await getEnvironmentConfig!.invoke({ projectId: "p", environmentId: "e", include: ["urls"] }, {});
+
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(result.content[0]?.text ?? "{}")).toEqual({ urls: expectedUrls });
+  });
+
+  it("invokes environment:url with --pipe and no --format flag", async () => {
+    mockExecFileOnce(0, readFixture("environment-url.txt"), "");
+    const [, , , , , getEnvironmentConfig] = buildTools();
+
+    await getEnvironmentConfig!.invoke({ projectId: "p", environmentId: "e", include: ["urls"] }, {});
+
+    const argv = execFileMock.mock.calls.at(-1)?.[1] as readonly string[];
+    expect(argv).toContain("environment:url");
+    expect(argv).toContain("--pipe");
+    expect(argv.some((token) => token.startsWith("--format"))).toBe(false);
+  });
+
+  // `--pipe` prints one bare URL per line and marks NOTHING as primary. The
+  // result therefore has no `primary` field: inventing one would mean
+  // promoting "the CLI seems to print it first" into a claim a caller would
+  // reasonably act on.
+  it("declares no primary URL, because --pipe output carries no primary marker", async () => {
+    mockExecFileOnce(0, readFixture("environment-url.txt"), "");
+    const [, , , , , getEnvironmentConfig] = buildTools();
+
+    const result = await getEnvironmentConfig!.invoke({ projectId: "p", environmentId: "e", include: ["urls"] }, {});
+
+    const text = result.content[0]?.text ?? "";
+    expect(text).not.toMatch(/primary/i);
+    // POSITIVE CONTROL: the same probe DOES find the word when it is present,
+    // so "no match" is evidence of absence rather than of a broken probe.
+    expect(JSON.stringify({ primary: "x" })).toMatch(/primary/i);
+  });
+
+  // `environment:url` legitimately fails for environments that have none
+  // (an inactive environment, for instance). That is a real answer, not a
+  // bug, and it must reach the caller as the CLI's own words.
+  it("surfaces a legitimate environment:url failure as isError: true, carrying the CLI's own message", async () => {
+    const cliStderr = "No URLs found for the environment acme-demo-env-main.";
+    mockExecFileOnce(1, "", cliStderr);
+    const [, , , , , getEnvironmentConfig] = buildTools();
+
+    const result = await invokeMagentoCloudTool(getEnvironmentConfig!, { projectId: "p", environmentId: "e", include: ["urls"] }, {});
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain(cliStderr);
+  });
+
+  it("returns no urls key at all when the facet was not requested", async () => {
+    mockExecFileOnce(0, readFixture("variable-list.txt"), "");
+    const [, , , , , getEnvironmentConfig] = buildTools();
+
+    const result = await getEnvironmentConfig!.invoke({ projectId: "p", environmentId: "e", include: ["variables"] }, {});
+
+    expect(Object.keys(JSON.parse(result.content[0]?.text ?? "{}"))).toEqual(["variables"]);
   });
 });
 

@@ -118,9 +118,19 @@ embedded tab or an embedded newline, rather than naive tab-splitting.
 ### Requirement: db:sql Statement Shape Restriction
 
 The `db:sql` guard MUST accept only a single statement whose leading verb
-is `SELECT`, `SHOW`, `DESCRIBE`, `DESC`, or `EXPLAIN`, and MUST reject a
-query containing any additional top-level `;`-separated statement, before
-any process is spawned.
+is `SELECT`, `SHOW`, `DESCRIBE`, `DESC`, `EXPLAIN`, or `WITH`, and MUST
+reject a query containing any additional top-level `;`-separated statement,
+before any process is spawned. `USE` MUST remain rejected: it reads nothing
+and mutates session state.
+
+A leading `WITH` does NOT by itself make a statement a read. MySQL 8.0
+permits a `WITH` clause at the beginning of `SELECT`, `UPDATE` and `DELETE`
+statements, and MariaDB permits `WITH ... UPDATE`/`WITH ... DELETE` from
+12.3. The guard MUST therefore additionally require that the statement
+following the CTE list begins with `SELECT`, and that every CTE body begins
+with `SELECT`, and MUST reject any `WITH` clause whose structure it cannot
+parse. A `WITH ... SELECT` MUST be subject to the same row-limit handling
+as a plain `SELECT`, and to the same `*` and file-exfiltration rejections.
 
 #### Scenario: Single SELECT statement is accepted
 
@@ -141,6 +151,20 @@ any process is spawned.
   `SELECT`
 - WHEN the guard validates it
 - THEN it is rejected and `execFile` is never called
+
+#### Scenario: A WITH clause leading to a mutating statement is rejected
+
+- GIVEN a query beginning `WITH doomed AS (SELECT id FROM t) DELETE FROM t
+  WHERE id IN (SELECT id FROM doomed)`
+- WHEN the guard validates it
+- THEN it is rejected and `execFile` is never called
+
+#### Scenario: A WITH ... SELECT with no LIMIT gets one injected
+
+- GIVEN a query beginning `WITH recent AS (SELECT id FROM t) SELECT id FROM
+  recent` with no `LIMIT`
+- WHEN the guard validates it
+- THEN it is accepted and the forwarded query carries `LIMIT <rowCap>`
 
 ### Requirement: db:sql SELECT * Rejection
 

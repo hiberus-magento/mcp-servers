@@ -119,8 +119,9 @@ Tools:
 - `magentocloud_describe_project` (read-only) — Use this to get one project's title and region by projectId, before listing its environments.
 - `magentocloud_list_environments` (read-only) — Use this to list a project's environments (id, status, type, title) — most other tools need an environmentId as input.
 - `magentocloud_describe_environment` (read-only) — Use this to get one environment's status and type by projectId/environmentId.
-- `magentocloud_get_environment_config` (read-only) — Use this to fetch environment configuration facets on demand: variables, routes, services, serviceEndpoints (credentials never returned), and appConfig.
-- `magentocloud_get_activities` (read-only) — Use this to list recent deployment/activity events for a project, or to fetch one activity by activityId.
+- `magentocloud_get_environment_config` (read-only) — Use this to fetch environment configuration facets on demand: variables, routes, services, serviceEndpoints (credentials never returned), appConfig, and urls.
+- `magentocloud_get_activities` (read-only) — Use this to list recent deployment/activity events for a project, narrowed by limit, type, state or result — or to fetch one activity by activityId.
+- `magentocloud_get_activity_log` (read-only) — Use this to read one activity's full deployment/build log by activityId, as plain text.
 - `magentocloud_query_database` (read-only) — Use this for a bounded, read-only diagnostic query against an environment's database — a size check, or a single guarded SELECT/SHOW/DESCRIBE/EXPLAIN statement.
 
 Configure in an MCP client. Pin the exact version; pass secrets as environment variable references, never literal values:
