@@ -170,37 +170,89 @@ export function parseListCatalogViewsResult(data: ClassifiedData<unknown>, opera
 // ---------------------------------------------------------------------------
 // ListPolicies — `Q_POLICIES` (exploration.md). Keyed fields: `policyId` AND
 // `name` (both are relied on — `provision`'s policy step looks entries up by
-// `name`, and `aco_toggle_policy` addresses them by `policyId`). `actions` is
-// passed through opaque: its own internal shape is not something any of the
-// six tools inspects.
+// `name`, and `aco_toggle_policy_filter` addresses them by `name` and writes
+// them back by `policyId`).
+//
+// CHANGED DELIBERATELY: `actions` used to be passed through as an opaque
+// `readonly unknown[]`, on the grounds that no tool inspected it. One does
+// now, and more than inspects it: `updatePolicy` REPLACES the policy it is
+// given, so this read is the first half of a read-modify-write and every
+// field it fails to carry is destroyed by the next write. The whole tree is
+// narrowed field by field for that reason, and `policy-update.ts` projects
+// it back into the mutation's input.
+//
+// `PolicyResult.enabled` is gone with it. `PolicyResponse` has no state
+// field of any name — asking for one fails the whole query — so nothing on
+// the wire could ever populate it. Enable/disable exists on a FILTER, which
+// is `PolicyFilter.enabled` below and is real.
 // ---------------------------------------------------------------------------
+
+/** One `actions[].triggers[]` entry. Written back verbatim. */
+export interface PolicyTrigger {
+  readonly name?: string;
+  readonly transportType?: string;
+}
+
+/**
+ * One `actions[].filters[]` entry — the thing an operator enables or
+ * disables in the ACO Admin UI.
+ *
+ * `values` (plural) is the list the UI sends. `value` (singular) is read but
+ * NEVER written back: the only evidence of `UpdatePolicyRequest`'s shape is
+ * the UI's own Save, which sends the other five members and no `value`, and
+ * an input member that type does not declare fails the whole mutation.
+ * `policy-update.ts` carries the full reasoning.
+ */
+export interface PolicyFilter {
+  readonly attribute?: string;
+  readonly values?: readonly string[];
+  readonly value?: string;
+  readonly enabled?: boolean;
+  readonly actionFilterOperator?: string;
+  readonly valueSource?: string;
+}
+
+export interface PolicyAction {
+  readonly triggers?: readonly PolicyTrigger[];
+  readonly filters?: readonly PolicyFilter[];
+}
+
 export interface PolicyResult {
   readonly policyId: string;
   readonly name: string;
   readonly mandatory?: boolean;
-  readonly actions?: readonly unknown[];
-  /**
-   * ALWAYS `undefined` today, and not a schema gap: `PolicyResponse` has no
-   * state field at all — not `enabled`, `active`, `status`, `isEnabled`,
-   * `state` or `disabled` — and asking for one fails the whole query, so
-   * `LIST_POLICIES_DOCUMENT` no longer requests it (`policies.ts`). Nothing
-   * on the wire can populate this.
-   *
-   * It survives as an optional field only because `aco_toggle_policy` reads
-   * it to decide whether a no-op can be proven, and that tool is frozen
-   * pending a product decision: Adobe's own Admin UI offers only "View
-   * details" and "Delete" on a policy (enable/disable exists on FILTERS,
-   * not policies), so whether the tool should exist at all is unresolved.
-   * Removing this field is part of that decision, not of this fix — the
-   * handler's current behaviour (`undefined` never equals the requested
-   * state, so it always writes rather than claiming `changed: false` on
-   * unknown state) is unchanged and still correct.
-   */
-  readonly enabled?: boolean;
+  readonly actions?: readonly PolicyAction[];
 }
 
 export interface ListPoliciesResult {
   readonly policies: readonly PolicyResult[];
+}
+
+function parsePolicyTrigger(entry: unknown): PolicyTrigger {
+  const triggerRecord = asRecord(entry);
+  return { ...withOptional("name", optionalString(triggerRecord, "name")), ...withOptional("transportType", optionalString(triggerRecord, "transportType")) };
+}
+
+function parsePolicyFilter(entry: unknown): PolicyFilter {
+  const filterRecord = asRecord(entry);
+  return {
+    ...withOptional("attribute", optionalString(filterRecord, "attribute")),
+    ...withOptional("values", optionalStringArray(filterRecord, "values")),
+    ...withOptional("value", optionalString(filterRecord, "value")),
+    ...withOptional("enabled", optionalBoolean(filterRecord, "enabled")),
+    ...withOptional("actionFilterOperator", optionalString(filterRecord, "actionFilterOperator")),
+    ...withOptional("valueSource", optionalString(filterRecord, "valueSource")),
+  };
+}
+
+function parsePolicyAction(entry: unknown): PolicyAction {
+  const actionRecord = asRecord(entry);
+  const triggersValue = actionRecord["triggers"];
+  const filtersValue = actionRecord["filters"];
+  return {
+    ...withOptional("triggers", Array.isArray(triggersValue) ? triggersValue.map(parsePolicyTrigger) : undefined),
+    ...withOptional("filters", Array.isArray(filtersValue) ? filtersValue.map(parsePolicyFilter) : undefined),
+  };
 }
 
 export function parseListPoliciesResult(data: ClassifiedData<unknown>, operationName: string): ListPoliciesResult {
@@ -210,13 +262,12 @@ export function parseListPoliciesResult(data: ClassifiedData<unknown>, operation
     const policyId = requireString(policyRecord, "policyId", operationName, "policies[].policyId");
     const name = requireString(policyRecord, "name", operationName, "policies[].name");
     const actionsValue = policyRecord["actions"];
-    const actions = Array.isArray(actionsValue) ? (actionsValue as readonly unknown[]) : undefined;
+    const actions = Array.isArray(actionsValue) ? actionsValue.map(parsePolicyAction) : undefined;
     return {
       policyId,
       name,
       ...withOptional("mandatory", optionalBoolean(policyRecord, "mandatory")),
       ...withOptional("actions", actions),
-      ...withOptional("enabled", optionalBoolean(policyRecord, "enabled")),
     };
   });
   return { policies };
@@ -265,9 +316,32 @@ export interface SearchCatalogItem {
   readonly attributes: Readonly<Record<string, unknown>>;
 }
 
+/**
+ * One entry of `Aggregation.buckets`, which is of the INTERFACE type
+ * `Bucket`. `title` is the interface's ONLY common field — the bucket label.
+ * Everything else comes from one implementation and is therefore optional
+ * here:
+ *
+ *   - `count` — `ScalarBucket`, `RangeBucket`, `CategoryBucket`
+ *   - `from`/`to` — `RangeBucket`
+ *   - `min`/`max` — `StatsBucket`, which has NO `count`
+ *
+ * `count` must stay optional rather than defaulting to `0`: a `StatsBucket`
+ * reports a range, and "no counted values" is a different claim from "zero
+ * products match".
+ *
+ * CHANGED DELIBERATELY: this read `value`, a field no `Bucket`
+ * implementation has. It is gone rather than accepted alongside `title` —
+ * nothing on the wire can produce it, and tolerating it would teach the
+ * next reader that it is still a live shape.
+ */
 export interface SearchCatalogBucket {
-  readonly value?: string;
+  readonly title?: string;
   readonly count?: number;
+  readonly from?: number;
+  readonly to?: number;
+  readonly min?: number;
+  readonly max?: number;
 }
 
 export interface SearchCatalogFacet {
@@ -284,7 +358,14 @@ export interface SearchCatalogResult {
 
 function parseBucket(bucket: unknown): SearchCatalogBucket {
   const bucketRecord = asRecord(bucket);
-  return { ...withOptional("value", optionalString(bucketRecord, "value")), ...withOptional("count", optionalNumber(bucketRecord, "count")) };
+  return {
+    ...withOptional("title", optionalString(bucketRecord, "title")),
+    ...withOptional("count", optionalNumber(bucketRecord, "count")),
+    ...withOptional("from", optionalNumber(bucketRecord, "from")),
+    ...withOptional("to", optionalNumber(bucketRecord, "to")),
+    ...withOptional("min", optionalNumber(bucketRecord, "min")),
+    ...withOptional("max", optionalNumber(bucketRecord, "max")),
+  };
 }
 
 function parseFacet(entry: unknown): SearchCatalogFacet {

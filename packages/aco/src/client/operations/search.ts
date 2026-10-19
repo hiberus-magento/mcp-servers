@@ -6,6 +6,18 @@
 import type { MerchandisingRequestContext, MerchandisingTransport } from "../http.js";
 import { parseSearchCatalogResult, type SearchCatalogResult } from "../types.js";
 
+// `Aggregation.buckets` is of the INTERFACE type `Bucket`, whose only
+// common field is `title`. This document asked for `value` and `count`:
+// `value` is on no implementation at all, and `count` is reachable only
+// through an inline fragment, so EVERY selected subfield was invalid — which
+// is what the live `Field "buckets" of type "Aggregation" must have a
+// selection of subfields` means here, not a missing selection set. The four
+// implementations are `ScalarBucket` (count/id/title), `RangeBucket`
+// (count/from/to/title), `CategoryBucket` (count/id/path/title) and
+// `StatsBucket` (max/min/title) — `StatsBucket` carries no `count` at all,
+// which is why `SearchCatalogBucket.count` is optional rather than
+// defaulted (types.ts).
+//
 // `phrase` is `String!` on `productSearch`, not `String`: declaring it
 // nullable answers `Variable "$phrase" of type "String" used in position
 // expecting type "String!"`, which fails the whole query — this document
@@ -20,8 +32,11 @@ const SEARCH_CATALOG_DOCUMENT = `query SearchCatalog($phrase: String!, $pageSize
       attribute
       title
       buckets {
-        value
-        count
+        title
+        ... on ScalarBucket { count }
+        ... on RangeBucket { count from to }
+        ... on CategoryBucket { count }
+        ... on StatsBucket { min max }
       }
     }
     items {

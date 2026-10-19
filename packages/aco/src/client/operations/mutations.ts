@@ -116,22 +116,99 @@ export async function createPolicy(transport: AdminTransport, input: CreatePolic
   });
 }
 
-export interface UpdatePolicyInput {
-  readonly policyId: string;
-  readonly enabled: boolean;
+// `updatePolicy` takes ONE `UpdatePolicyRequest!` argument carrying the
+// whole policy, and REPLACES what it is given: this document and its input
+// type are the ACO Admin UI's own Save request, captured from a real
+// successful call, not a shape inferred from the response.
+//
+// It used to be `updatePolicy(policyId:, enabled:)`. `UpdatePolicyRequest`
+// has no `enabled` member — sending one is a validation error that executes
+// nothing — and there is no policy-level enable/disable anywhere in this
+// API: the Admin UI offers "View details" and "Delete" on a policy, and
+// "Edit / Disable / Delete" on a FILTER. Disabling is therefore a
+// read-modify-write of the whole policy with one filter's `enabled` flipped
+// (`policy-update.ts` owns that projection).
+//
+// `createdAt`/`updatedAt` are response-only — selected because the captured
+// request selects them, never sent.
+export interface UpdatePolicyTriggerInput {
+  readonly transportType: string;
+  readonly name: string;
 }
 
-const UPDATE_POLICY_DOCUMENT = `mutation UpdatePolicy($policyId: ID!, $enabled: Boolean!) {
-  updatePolicy(policyId: $policyId, enabled: $enabled) {
+/**
+ * Exactly the five members the captured request sends. There is no singular
+ * `value` here on purpose: our read selects one, the UI's Save does not send
+ * one, and an undeclared input member fails the whole mutation.
+ */
+export interface UpdatePolicyFilterInput {
+  readonly attribute: string;
+  readonly enabled: boolean;
+  readonly actionFilterOperator: string;
+  readonly valueSource: string;
+  readonly values: readonly string[];
+}
+
+export interface UpdatePolicyActionInput {
+  readonly triggers: readonly UpdatePolicyTriggerInput[];
+  readonly filters: readonly UpdatePolicyFilterInput[];
+}
+
+export interface UpdatePolicyInput {
+  readonly policyId: string;
+  readonly name: string;
+  readonly mandatory: boolean;
+  readonly actions: readonly UpdatePolicyActionInput[];
+}
+
+const UPDATE_POLICY_DOCUMENT = `mutation UpdatePolicy($policyRequest: UpdatePolicyRequest!) {
+  updatePolicy(policyRequest: $policyRequest) {
     policyId
+    name
+    mandatory
+    createdAt
+    updatedAt
+    actions {
+      triggers {
+        transportType
+        name
+      }
+      filters {
+        attribute
+        values
+        enabled
+        actionFilterOperator
+        valueSource
+      }
+    }
   }
 }`;
 
 export async function updatePolicy(transport: AdminTransport, input: UpdatePolicyInput): Promise<void> {
+  // Built member by member, never spread. A spread posts whatever the
+  // caller happens to be holding — including the singular `value` the read
+  // carries — and one undeclared member of `UpdatePolicyRequest` fails the
+  // whole mutation. The narrow input type documents the shape; this
+  // projection is what actually enforces it on the wire.
+  const policyRequest = {
+    policyId: input.policyId,
+    name: input.name,
+    mandatory: input.mandatory,
+    actions: input.actions.map((action) => ({
+      triggers: action.triggers.map((trigger) => ({ transportType: trigger.transportType, name: trigger.name })),
+      filters: action.filters.map((filter) => ({
+        attribute: filter.attribute,
+        enabled: filter.enabled,
+        actionFilterOperator: filter.actionFilterOperator,
+        valueSource: filter.valueSource,
+        values: [...filter.values],
+      })),
+    })),
+  };
   await transport.execute({
     track: "admin",
     document: UPDATE_POLICY_DOCUMENT,
-    variables: { policyId: input.policyId, enabled: input.enabled },
+    variables: { policyRequest },
     idempotent: false,
     parse: () => undefined,
   });

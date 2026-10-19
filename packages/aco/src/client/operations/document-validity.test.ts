@@ -92,6 +92,22 @@ describe("documentDefects (proven against synthetic documents)", () => {
     expect(documentDefects("query ListThings { things(size: $size) { id } }")).toEqual(["uses $size without declaring it"]);
   });
 
+  /**
+   * Two shipped documents select an INTERFACE-typed field through inline
+   * fragments (`buckets { title ... on ScalarBucket { count } }`). The
+   * variable scan walks fragment selection sets like any other, but this
+   * scan is schema-free: it can see that a fragment is well formed and
+   * nothing more. That `ScalarBucket` is a real implementation of `Bucket`
+   * is pinned per operation, in `search.test.ts`/`facets.test.ts`.
+   */
+  it("accepts inline fragments on an interface-typed field", () => {
+    expect(documentDefects("query ListThings($size: Int) { things(size: $size) { buckets { title ... on ScalarBucket { count } } } }")).toEqual([]);
+  });
+
+  it("still reports an unused variable inside a document that uses inline fragments", () => {
+    expect(documentDefects("query ListThings($size: Int) { things { buckets { title ... on ScalarBucket { count } } } }")).toEqual(["declares $size and never uses it"]);
+  });
+
   it("rejects an unparseable document", () => {
     const defects = documentDefects("query ListThings { things { id ");
     expect(defects).toHaveLength(1);
@@ -103,6 +119,11 @@ describe("the document collector itself", () => {
   it("finds a document hoisted into a const, which is the shape every operation module uses", () => {
     const source = "const LIST_THINGS_DOCUMENT = `query ListThings { things { id } }`;\n";
     expect(extractDocuments(source, "things.ts")).toEqual([{ file: "things.ts", constName: "LIST_THINGS_DOCUMENT", document: "query ListThings { things { id } }" }]);
+  });
+
+  it("collects a document whose selection uses inline fragments, braces and all", () => {
+    const source = "const LIST_THINGS_DOCUMENT = `query ListThings { things { buckets { title ... on ScalarBucket { count } } } }`;\n";
+    expect(extractDocuments(source, "things.ts")[0]?.document).toBe("query ListThings { things { buckets { title ... on ScalarBucket { count } } } }");
   });
 
   it("finds a document written inline at the `document:` field", () => {

@@ -12,7 +12,15 @@ import { createAdminTransport } from "../http.js";
 import { listPolicies } from "./policies.js";
 
 const POLICIES_FIXTURE = JSON.parse(readFileSync(fileURLToPath(new URL("../../../fixtures/policies.json", import.meta.url)), "utf8")) as {
-  readonly policies: readonly { readonly policyId: string; readonly name: string; readonly mandatory: boolean; readonly actions: readonly unknown[] }[];
+  readonly policies: readonly {
+    readonly policyId: string;
+    readonly name: string;
+    readonly mandatory: boolean;
+    readonly actions: readonly {
+      readonly triggers: readonly { readonly name: string; readonly transportType: string }[];
+      readonly filters: readonly { readonly attribute: string; readonly values: readonly string[]; readonly value?: string; readonly enabled: boolean; readonly actionFilterOperator: string; readonly valueSource: string }[];
+    }[];
+  }[];
 };
 
 const NOOP_SLEEP = async (): Promise<void> => undefined;
@@ -83,29 +91,55 @@ describe("listPolicies", () => {
     expect(selectionUnder(document, "filters")).toContain("enabled");
   });
 
-  // CHANGED DELIBERATELY: the title used to claim `enabled` was "requested
-  // defensively" from Adobe's schema. It is not requested at all any more —
-  // `PolicyResponse` has no such field — so this now proves only that the
-  // PARSER stays tolerant of an `enabled` key, which is all that keeps
-  // `aco_toggle_policy` (frozen pending a product decision) compiling and
-  // behaving as it does. No wire shape can produce this input today.
-  it("round-trips an `enabled` key when one is present in the response payload (parser tolerance only — the document no longer requests it)", async () => {
-    const { fetch } = createFetchDouble({
-      "POST /admin/graphql ListPolicies": graphQlOk({ policies: [{ policyId: "pol-demo-2", name: "home-decor-discount", mandatory: false, actions: [], enabled: true }] }),
-    });
-    const transport = createAdminTransport({ fetch, now: FIXED_NOW, sleep: NOOP_SLEEP, baseUrl: "https://admin.aco.example/admin/graphql", tokenProvider: stubTokenProvider() });
+  // CHANGED DELIBERATELY — two tests removed here, not weakened:
+  //
+  //   - "round-trips an `enabled` key when one is present in the response
+  //     payload (parser tolerance only)" and
+  //   - "resolves `enabled` to undefined when Adobe's schema does not
+  //     return it".
+  //
+  // Both exercised `PolicyResult.enabled`, an optional field kept alive
+  // solely so the frozen `aco_toggle_policy` could read it. That tool is
+  // gone (`aco_toggle_policy_filter` operates on a FILTER's `enabled`,
+  // which is real), the field is gone with it, and a test that feeds a
+  // parser a key no wire shape can produce proves nothing about the wire.
+  // The filter-level `enabled` is covered by the round-trip assertions
+  // below and in `tools/aco-tools.test.ts`.
 
-    const result = await listPolicies(transport);
-
-    expect(result.policies[0]?.enabled).toBe(true);
-  });
-
-  it("resolves `enabled` to undefined when Adobe's schema does not return it (the canonical fixture's own shape)", async () => {
+  /**
+   * `actions` used to be passed through as an opaque `unknown[]`. It is the
+   * payload of a read-modify-write now: `updatePolicy` REPLACES the policy,
+   * so every field the read drops is destroyed on the next write. The whole
+   * tree is therefore narrowed field by field, and this asserts it survives
+   * the parse intact.
+   */
+  it("narrows the whole actions tree — triggers and filters, field for field", async () => {
     const { fetch } = createFetchDouble({ "POST /admin/graphql ListPolicies": graphQlOk(POLICIES_FIXTURE) });
     const transport = createAdminTransport({ fetch, now: FIXED_NOW, sleep: NOOP_SLEEP, baseUrl: "https://admin.aco.example/admin/graphql", tokenProvider: stubTokenProvider() });
 
     const result = await listPolicies(transport);
 
-    expect(result.policies[0]?.enabled).toBeUndefined();
+    const action = result.policies[0]?.actions?.[0];
+    expect(action?.triggers).toEqual(POLICIES_FIXTURE.policies[0]?.actions[0]?.triggers);
+    expect(action?.filters).toEqual(POLICIES_FIXTURE.policies[0]?.actions[0]?.filters);
+    expect(action?.filters?.[0]?.enabled).toBe(true);
+    expect(action?.filters?.[1]?.enabled).toBe(false);
+  });
+
+  /**
+   * The read is one half of the round trip, so its selection must cover
+   * every field `UpdatePolicyRequest` accepts — a field the read omits is a
+   * field the write destroys. `value` (singular) is selected but
+   * deliberately NOT written back; `policy-update.ts` records why.
+   */
+  it("selects every filter field the update mutation's input accepts", async () => {
+    const { fetch, calls } = createFetchDouble({ "POST /admin/graphql ListPolicies": graphQlOk(POLICIES_FIXTURE) });
+    const transport = createAdminTransport({ fetch, now: FIXED_NOW, sleep: NOOP_SLEEP, baseUrl: "https://admin.aco.example/admin/graphql", tokenProvider: stubTokenProvider() });
+
+    await listPolicies(transport);
+
+    const document = (JSON.parse(calls[0]?.body ?? "{}") as { readonly query?: string }).query ?? "";
+    expect(selectionUnder(document, "filters").sort()).toEqual(["actionFilterOperator", "attribute", "enabled", "value", "valueSource", "values"]);
+    expect(selectionUnder(document, "triggers").sort()).toEqual(["name", "transportType"]);
   });
 });

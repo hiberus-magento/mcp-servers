@@ -23,6 +23,7 @@ import { defineTool, type RegisteredTool } from "@hiberus-magento/mcp-core";
 import { z } from "zod";
 import { createAcoClient, type AcoClient } from "../client/index.js";
 import { createAdminTokenProvider, relayCredentialFailure } from "../credential-provider.js";
+import { findFiltersByAttribute, projectPolicyForUpdate, withFilterEnabled } from "../policy-update.js";
 
 // ---------------------------------------------------------------------------
 // Schemas — all `.strict()` (design.md, Decision 3: deliberate inverse of
@@ -66,20 +67,30 @@ const acoListPriceBooksInput = z
 
 const acoListPoliciesInput = z.object({}).strict();
 
-/** `.min(1).max(50)` — capped in-schema (design.md, Decision 3). */
-export const nonEmptyPolicyNames = z.array(z.string().min(1)).min(1).max(50);
-
 /**
  * `mode` is kept (not dropped) so the *absence* of an `"all"` branch is
  * legible on the wire as `"enum": ["named"]` in the JSON Schema an agent
  * reads (design.md, Decision 3). `z.literal("named")` is the ONLY literal —
  * there is no second one, and none may ever be added without a reviewable,
  * named diff to this exact line.
+ *
+ * CHANGED DELIBERATELY: this was `{ mode, names: string[], enabled }` on
+ * `aco_toggle_policy`, a list of up to 50 POLICY names. There is no
+ * policy-level enable/disable in this API — `UpdatePolicyRequest` has no
+ * `enabled` member, and the ACO Admin UI offers enable/disable on a FILTER
+ * only — so a toggle is a whole-policy replacement with one filter flipped.
+ * One target per call: batching fifty whole-policy replacements behind one
+ * call multiplies the blast radius of a destructive write.
+ *
+ * A filter has no id, so it is addressed by the `attribute` it carries
+ * within the named policy. An attribute matching more than one filter is
+ * refused, never guessed at.
  */
-export const acoTogglePolicyInput = z
+export const acoTogglePolicyFilterInput = z
   .object({
     mode: z.literal("named"),
-    names: nonEmptyPolicyNames,
+    policyName: z.string().min(1),
+    attribute: z.string().min(1),
     enabled: z.boolean(),
   })
   .strict();
@@ -103,6 +114,20 @@ export interface AcoToolsConfig {
 }
 
 const DRAFT_VIEW_PATTERN = /_draft$/i;
+
+/**
+ * `aco_toggle_policy_filter`'s result. `previous` is absent when no write
+ * was attempted at all (`reason` says why); `changed: false` with a
+ * `previous` is the genuine no-op at the already-held state.
+ */
+interface PolicyFilterToggleResult {
+  readonly policyName: string;
+  readonly attribute: string;
+  readonly previous?: boolean;
+  readonly current: boolean;
+  readonly changed: boolean;
+  readonly reason?: string;
+}
 
 const TIER_B_RECOVERY_SENTENCE =
   "Requires an ACO admin credential; if it has expired, run `hiberus-aco auth token set` and retry — the server does not need restarting.";
@@ -202,7 +227,7 @@ export function createAcoTools(config: AcoToolsConfig): readonly AcoMcpTool[] {
 
   const acoListPolicies = defineTool({
     name: "aco_list_policies",
-    description: `Use this to list every policy configured in this tenant, before deciding which to enable or disable with aco_toggle_policy. ${TIER_B_RECOVERY_SENTENCE}`,
+    description: `Use this to list every policy configured in this tenant with its actions and filters, before deciding which filter to enable or disable with aco_toggle_policy_filter. ${TIER_B_RECOVERY_SENTENCE}`,
     inputSchema: acoListPoliciesInput,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
     handler: async () => {
@@ -215,43 +240,53 @@ export function createAcoTools(config: AcoToolsConfig): readonly AcoMcpTool[] {
     },
   });
 
-  const acoTogglePolicy = defineTool({
-    name: "aco_toggle_policy",
-    description: `Use this to enable or disable one or more named policies. There is no "apply to all" mode — name every policy explicitly. A policy already at the target state is left untouched and reported with changed: false. ${TIER_B_RECOVERY_SENTENCE}`,
-    inputSchema: acoTogglePolicyInput,
+  const acoTogglePolicyFilter = defineTool({
+    name: "aco_toggle_policy_filter",
+    description: `Use this to enable or disable ONE filter inside ONE named policy, addressed by the attribute that filter carries (list them first with aco_list_policies). There is no policy-level enable/disable in this API and no "apply to all" mode. The write replaces the whole policy, so this reads it first and sends every other field back unchanged; if the read did not return a field the write must carry, or the attribute matches no filter or more than one, nothing is written and the result says why. A filter already at the target state is left untouched and reported with changed: false. ${TIER_B_RECOVERY_SENTENCE}`,
+    inputSchema: acoTogglePolicyFilterInput,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     handler: async (args) => {
       const { client } = getRuntime();
+      const refuse = (reason: string): PolicyFilterToggleResult => ({ policyName: args.policyName, attribute: args.attribute, current: args.enabled, changed: false, reason });
       try {
         const { policies } = await client.policies.listPolicies();
-        const byName = new Map(policies.map((policy) => [policy.name, policy]));
-        const results: { readonly name: string; readonly previous: boolean | undefined; readonly current: boolean; readonly changed: boolean }[] = [];
-        for (const name of args.names) {
-          const existing = byName.get(name);
-          if (existing === undefined) {
-            results.push({ name, previous: undefined, current: args.enabled, changed: false });
-            continue;
-          }
-          // `existing.enabled` is undefined when Adobe's schema does not
-          // return it (a genuine, documented gap — types.ts's PolicyResult
-          // comment) — in that case a no-op cannot be proven, so the
-          // mutation is always issued rather than silently claiming
-          // `changed: false` on unknown state.
-          if (existing.enabled === args.enabled) {
-            results.push({ name, previous: existing.enabled, current: args.enabled, changed: false });
-            continue;
-          }
-          await client.policies.updatePolicy({ policyId: existing.policyId, enabled: args.enabled });
-          results.push({ name, previous: existing.enabled, current: args.enabled, changed: true });
+        const policy = policies.find((candidate) => candidate.name === args.policyName);
+        if (policy === undefined) {
+          return refuse(`No policy named "${args.policyName}" was found.`);
         }
-        return { results };
+
+        const matches = findFiltersByAttribute(policy, args.attribute);
+        if (matches.length > 1) {
+          // Addressing is by attribute because filters have no id. Picking
+          // one of several would write the whole policy back on a guess.
+          return refuse(`Policy "${args.policyName}" has ${String(matches.length)} filters on attribute "${args.attribute}"; this tool addresses filters by attribute and will not guess which one you mean.`);
+        }
+        const match = matches[0];
+        if (match === undefined) {
+          return refuse(`Policy "${args.policyName}" has no filter on attribute "${args.attribute}".`);
+        }
+
+        if (match.filter.enabled === args.enabled) {
+          return { policyName: args.policyName, attribute: args.attribute, previous: match.filter.enabled, current: args.enabled, changed: false };
+        }
+
+        // `updatePolicy` REPLACES the policy, so an unprojectable field is
+        // not a field we can default past: writing a guessed value into a
+        // whole-policy replacement destroys the real one. Refuse instead.
+        const projection = projectPolicyForUpdate(withFilterEnabled(policy, match, args.enabled));
+        if (!projection.ok) {
+          return refuse(`Policy "${args.policyName}" cannot be written back without losing data: the read returned no value for ${projection.missing.join(", ")}. Nothing was written.`);
+        }
+
+        await client.policies.updatePolicy(projection.input);
+        return { policyName: args.policyName, attribute: args.attribute, previous: match.filter.enabled, current: args.enabled, changed: true };
       } catch (error) {
         relayCredentialFailure(error);
       }
     },
   });
 
-  return [acoSearchCatalog, acoGetFacetValues, acoListCatalogViews, acoListPriceBooks, acoListPolicies, acoTogglePolicy];
+  return [acoSearchCatalog, acoGetFacetValues, acoListCatalogViews, acoListPriceBooks, acoListPolicies, acoTogglePolicyFilter];
 }
 
 // ---------------------------------------------------------------------------

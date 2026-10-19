@@ -113,13 +113,53 @@ describe("the six admin mutations", () => {
     expect(calls[0]?.operationName).toBe("CreatePolicy");
   });
 
-  it("updatePolicy issues the named UpdatePolicy mutation", async () => {
+  // CHANGED DELIBERATELY: this call used to be
+  // `updatePolicy(transport, { policyId, enabled: false })`.
+  // `UpdatePolicyRequest` has no `enabled` member — sending one is a
+  // validation error that executes nothing — and there is no policy-level
+  // enable/disable in this API at all. The mutation carries the WHOLE
+  // policy, exactly as the ACO Admin UI's own Save does.
+  const FULL_POLICY_INPUT = {
+    policyId: MUTATIONS_FIXTURE.updatePolicy.updatePolicy.policyId,
+    name: "outdoor-gear-discount",
+    mandatory: false,
+    actions: [
+      {
+        triggers: [{ transportType: "GRAPHQL", name: "on-catalog-read" }],
+        filters: [{ attribute: "vertical", enabled: false, actionFilterOperator: "IN", valueSource: "STATIC", values: ["outdoor-gear"] }],
+      },
+    ],
+  } as const;
+
+  it("updatePolicy issues the named UpdatePolicy mutation, carrying the whole policy in one $policyRequest variable", async () => {
     const { fetch, calls } = createFetchDouble({ "POST /admin/graphql UpdatePolicy": graphQlOk(MUTATIONS_FIXTURE.updatePolicy) });
     const transport = createAdminTransport({ fetch, now: FIXED_NOW, sleep: NOOP_SLEEP, baseUrl: "https://admin.aco.example/admin/graphql", tokenProvider: stubTokenProvider() });
 
-    await updatePolicy(transport, { policyId: MUTATIONS_FIXTURE.updatePolicy.updatePolicy.policyId, enabled: false });
+    await updatePolicy(transport, FULL_POLICY_INPUT);
 
     expect(calls[0]?.operationName).toBe("UpdatePolicy");
+    const posted = JSON.parse(calls[0]?.body ?? "{}") as { readonly query?: string; readonly variables?: Readonly<Record<string, unknown>> };
+    expect(posted.query ?? "").toContain("$policyRequest: UpdatePolicyRequest!");
+    expect(posted.variables).toEqual({ policyRequest: FULL_POLICY_INPUT });
+  });
+
+  /**
+   * The variables are built field by field, never spread from the input: a
+   * spread would put whatever the caller happens to be holding onto the
+   * wire, and an unknown member of `UpdatePolicyRequest` is a validation
+   * error that executes nothing. The singular `value` our read selects is
+   * the concrete case — it must not reach the write.
+   */
+  it("posts only the five filter fields the input accepts — never the singular `value`", async () => {
+    const { fetch, calls } = createFetchDouble({ "POST /admin/graphql UpdatePolicy": graphQlOk(MUTATIONS_FIXTURE.updatePolicy) });
+    const transport = createAdminTransport({ fetch, now: FIXED_NOW, sleep: NOOP_SLEEP, baseUrl: "https://admin.aco.example/admin/graphql", tokenProvider: stubTokenProvider() });
+
+    await updatePolicy(transport, { ...FULL_POLICY_INPUT, actions: [{ ...FULL_POLICY_INPUT.actions[0], filters: [{ ...FULL_POLICY_INPUT.actions[0].filters[0], value: "outdoor-gear" } as never] }] });
+
+    const body = calls[0]?.body ?? "";
+    expect(body).not.toContain('"value"');
+    const posted = JSON.parse(body) as { readonly variables: { readonly policyRequest: { readonly actions: readonly { readonly filters: readonly Record<string, unknown>[] }[] } } };
+    expect(Object.keys(posted.variables.policyRequest.actions[0]?.filters[0] ?? {}).sort()).toEqual(["actionFilterOperator", "attribute", "enabled", "valueSource", "values"]);
   });
 
   it("deletePolicy issues the named DeletePolicy mutation", async () => {

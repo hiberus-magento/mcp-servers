@@ -84,7 +84,11 @@ describe("createAcoClient — wiring", () => {
       "POST /admin/graphql UpdatePolicy": [graphQlErrors([{ message: "slow down", extensions: { classification: "too-many-requests" } }]), graphQlOk({ updatePolicy: { policyId: "pol-demo-1" } })],
     });
 
-    await expect(client.policies.updatePolicy({ policyId: "pol-demo-1", enabled: false })).rejects.toThrow();
+    // CHANGED DELIBERATELY: the input used to be `{ policyId, enabled }`.
+    // `UpdatePolicyRequest` has no `enabled` member — the mutation carries
+    // the whole policy (`operations/mutations.ts`). What this test proves —
+    // a throttled mutation is never replayed — is unchanged.
+    await expect(client.policies.updatePolicy({ policyId: "pol-demo-1", name: "outdoor-gear-discount", mandatory: false, actions: [] })).rejects.toThrow();
 
     expect(calls).toHaveLength(1);
   });

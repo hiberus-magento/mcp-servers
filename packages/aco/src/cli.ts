@@ -25,6 +25,7 @@ import {
   resolveAcoCredentialDirect,
   selectAdminProvider,
 } from "./credential-provider.js";
+import { projectPolicyForUpdate } from "./policy-update.js";
 
 // ---------------------------------------------------------------------------
 // CLI-only operations (aco-cli spec, "CLI-Only Operations Excluded from
@@ -231,20 +232,52 @@ async function runPolicyList(deps: CliDeps): Promise<CliRunResult> {
   }
 }
 
+/**
+ * "Disable a policy" does not exist in this API: `UpdatePolicyRequest` has
+ * no `enabled` member, and the Admin UI offers enable/disable on a FILTER
+ * only. The nearest honest reading of `policy disable --all` is therefore
+ * "disable every FILTER of every policy", which is what this does — one
+ * whole-policy replacement per policy that still has an enabled filter,
+ * since `updatePolicy` replaces rather than patches.
+ *
+ * A policy the read cannot describe completely enough to write back is
+ * SKIPPED and named, never written with defaulted fields: the write would
+ * destroy whatever the read failed to carry.
+ */
 async function runPolicyDisableAll(flags: Record<string, string>, deps: CliDeps): Promise<CliRunResult> {
   const write = flags["yes"] === "true";
   try {
     const { policies } = await deps.client.policies.listPolicies();
+    const withEnabledFilters = policies.filter((policy) => (policy.actions ?? []).some((action) => (action.filters ?? []).some((filter) => filter.enabled === true)));
     if (!write) {
-      return { exitCode: 0, stdout: `Dry run — would disable ${policies.length} polic${policies.length === 1 ? "y" : "ies"}. Pass --yes to apply.\n` };
+      return { exitCode: 0, stdout: `Dry run — would disable every filter of ${countPolicies(withEnabledFilters.length)}. Pass --yes to apply.\n` };
     }
-    for (const policy of policies) {
-      await deps.client.policies.updatePolicy({ policyId: policy.policyId, enabled: false });
+
+    const skipped: string[] = [];
+    let disabled = 0;
+    for (const policy of withEnabledFilters) {
+      const allFiltersOff = { ...policy, actions: (policy.actions ?? []).map((action) => ({ ...action, ...(action.filters === undefined ? {} : { filters: action.filters.map((filter) => ({ ...filter, enabled: false })) }) })) };
+      const projection = projectPolicyForUpdate(allFiltersOff);
+      if (!projection.ok) {
+        skipped.push(`${policy.name} (no value read for ${projection.missing.join(", ")})`);
+        continue;
+      }
+      await deps.client.policies.updatePolicy(projection.input);
+      disabled += 1;
     }
-    return { exitCode: 0, stdout: `Disabled ${policies.length} polic${policies.length === 1 ? "y" : "ies"}.\n` };
+
+    const summary = `Disabled every filter of ${countPolicies(disabled)}.\n`;
+    if (skipped.length > 0) {
+      return { exitCode: 1, stdout: summary, stderr: `Skipped without writing, to avoid destroying unread fields: ${skipped.join("; ")}.` };
+    }
+    return { exitCode: 0, stdout: summary };
   } catch (error) {
     return { exitCode: 1, stderr: renderError(error) };
   }
+}
+
+function countPolicies(count: number): string {
+  return `${String(count)} polic${count === 1 ? "y" : "ies"}`;
 }
 
 async function runPolicyDelete(flags: Record<string, string>, deps: CliDeps): Promise<CliRunResult> {

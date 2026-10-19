@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { persistCredential } from "@hiberus-magento/mcp-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createFetchDouble, graphQlErrors, graphQlOk } from "./testing/fetch-double.js";
+import { createFetchDouble, graphQlErrors, graphQlOk, type RecordedCall } from "./testing/fetch-double.js";
 import { createAcoClient } from "./client/index.js";
 import { ACO_TOKEN_ENV_VAR } from "./credential-provider.js";
 import { CLI_ONLY_OPERATIONS, CLI_OPTIONS, runCli, type CliDeps } from "./cli.js";
@@ -47,7 +47,7 @@ describe("CLI_ONLY_OPERATIONS", () => {
   });
 });
 
-function makeDeps(routes: Record<string, unknown>, configDir: string): { deps: CliDeps; calls: readonly { readonly operationName: string | undefined }[] } {
+function makeDeps(routes: Record<string, unknown>, configDir: string): { deps: CliDeps; calls: readonly RecordedCall[] } {
   const { fetch, calls } = createFetchDouble(routes as never);
   const client = createAcoClient({
     fetch,
@@ -151,7 +151,7 @@ describe("provision — dry-run default and idempotency", () => {
   it("with no --yes flag, issues zero mutations and states this was a dry run", async () => {
     const { deps, calls } = makeDeps(
       {
-        "POST /graphql FacetValues": graphQlOk({ productSearch: { facets: [{ attribute: "vertical", buckets: [{ value: "outdoor-gear", count: 5 }] }] } }),
+        "POST /graphql FacetValues": graphQlOk({ productSearch: { facets: [{ attribute: "vertical", buckets: [{ title: "outdoor-gear", count: 5 }] }] } }),
         "POST /admin/graphql ListPolicies": graphQlOk({ policies: [] }),
         "POST /admin/graphql ListCatalogViews": graphQlOk({ catalogViews: [] }),
       },
@@ -171,7 +171,7 @@ describe("provision — dry-run default and idempotency", () => {
     let viewsState: readonly { viewId: string; name: string; policyIds: readonly string[] }[] = [];
     const { deps } = makeDeps(
       {
-        "POST /graphql FacetValues": graphQlOk({ productSearch: { facets: [{ attribute: "vertical", buckets: [{ value: "outdoor-gear", count: 5 }] }] } }),
+        "POST /graphql FacetValues": graphQlOk({ productSearch: { facets: [{ attribute: "vertical", buckets: [{ title: "outdoor-gear", count: 5 }] }] } }),
         "POST /admin/graphql ListPolicies": () => graphQlOk({ policies: policiesState }),
         "POST /admin/graphql CreatePolicy": () => {
           policiesState = [...policiesState, { policyId: "pol-demo-1", name: "outdoor-gear-discount" }];
@@ -202,6 +202,99 @@ describe("provision — dry-run default and idempotency", () => {
     // Second pass against unchanged state: still exactly one policy, one catalog view.
     expect(policiesState).toHaveLength(1);
     expect(viewsState).toHaveLength(1);
+  });
+});
+
+/**
+ * "Disable a policy" does not exist in this API: `UpdatePolicyRequest` has
+ * no `enabled` member, and enable/disable is a FILTER operation. This
+ * command therefore disables every FILTER of every policy, one whole-policy
+ * replacement each — and `updatePolicy` REPLACES, so the replacement has to
+ * carry everything the read returned.
+ */
+describe("policy disable --all — every FILTER of every policy, written back whole", () => {
+  let configDir: string;
+
+  beforeEach(() => {
+    configDir = mkdtempSync(join(tmpdir(), "aco-cli-disable-"));
+  });
+
+  afterEach(() => {
+    rmSync(configDir, { recursive: true, force: true });
+  });
+
+  const POLICY_WIRE = {
+    policyId: "pol-demo-1",
+    name: "outdoor-gear-discount",
+    mandatory: false,
+    actions: [
+      {
+        triggers: [{ name: "on-catalog-read", transportType: "GRAPHQL" }],
+        filters: [
+          { attribute: "vertical", values: ["outdoor-gear"], value: "outdoor-gear", enabled: true, actionFilterOperator: "IN", valueSource: "STATIC" },
+          { attribute: "price_band", values: ["mid"], enabled: false, actionFilterOperator: "IN", valueSource: "STATIC" },
+        ],
+      },
+    ],
+  };
+
+  it("with no --yes flag, issues zero mutations and says what it would do", async () => {
+    const { deps, calls } = makeDeps({ "POST /admin/graphql ListPolicies": graphQlOk({ policies: [POLICY_WIRE] }) }, configDir);
+
+    const result = await runCli(["policy", "disable", "--all"], deps);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout ?? "").toMatch(/dry run/i);
+    expect(result.stdout ?? "").toContain("filter");
+    expect(calls.filter((call) => call.operationName === "UpdatePolicy")).toHaveLength(0);
+  });
+
+  it("--yes writes each policy back whole, with every filter disabled and nothing else changed", async () => {
+    const { deps, calls } = makeDeps(
+      {
+        "POST /admin/graphql ListPolicies": graphQlOk({ policies: [POLICY_WIRE] }),
+        "POST /admin/graphql UpdatePolicy": graphQlOk({ updatePolicy: { policyId: "pol-demo-1" } }),
+      },
+      configDir,
+    );
+
+    const result = await runCli(["policy", "disable", "--all", "--yes"], deps);
+
+    expect(result.exitCode).toBe(0);
+    const update = calls.find((call) => call.operationName === "UpdatePolicy");
+    const posted = JSON.parse(update?.body ?? "{}") as { readonly variables?: { readonly policyRequest?: unknown } };
+    expect(posted.variables?.policyRequest).toEqual({
+      policyId: "pol-demo-1",
+      name: "outdoor-gear-discount",
+      mandatory: false,
+      actions: [
+        {
+          triggers: [{ transportType: "GRAPHQL", name: "on-catalog-read" }],
+          filters: [
+            { attribute: "vertical", enabled: false, actionFilterOperator: "IN", valueSource: "STATIC", values: ["outdoor-gear"] },
+            { attribute: "price_band", enabled: false, actionFilterOperator: "IN", valueSource: "STATIC", values: ["mid"] },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("skips and names a policy the read did not describe completely, rather than writing defaults over it", async () => {
+    const { policyId, name, actions } = POLICY_WIRE;
+    const { deps, calls } = makeDeps(
+      {
+        "POST /admin/graphql ListPolicies": graphQlOk({ policies: [{ policyId, name, actions }] }),
+        "POST /admin/graphql UpdatePolicy": graphQlOk({ updatePolicy: { policyId: "pol-demo-1" } }),
+      },
+      configDir,
+    );
+
+    const result = await runCli(["policy", "disable", "--all", "--yes"], deps);
+
+    expect(calls.filter((call) => call.operationName === "UpdatePolicy")).toHaveLength(0);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr ?? "").toContain("outdoor-gear-discount");
+    expect(result.stderr ?? "").toContain("mandatory");
   });
 });
 

@@ -16,7 +16,7 @@
 //   - tasks.md 6.1: `tools/list` on the built bundle returns exactly the six
 //     declared tool names (deep-equal, sorted) — the artifact-layer proof of
 //     5.1 (unit) and this file (built bundle).
-//   - tasks.md 6.3: `aco_toggle_policy`'s `mode` field carries NO `"all"`
+//   - tasks.md 6.3: `aco_toggle_policy_filter`'s `mode` field carries NO `"all"`
 //     branch in the JSON Schema the built server actually serves — the
 //     third of the three independent no-`"all"`-branch proofs.
 //
@@ -50,7 +50,7 @@ const EXPECTED_TOOL_NAMES = [
   "aco_list_policies",
   "aco_list_price_books",
   "aco_search_catalog",
-  "aco_toggle_policy",
+  "aco_toggle_policy_filter",
 ] as const;
 
 interface ToolsListToolShape {
@@ -89,11 +89,11 @@ describe(`aco tool surface on the built bundle: ${serverPath}`, () => {
     expect(tools).toHaveLength(6);
   });
 
-  it("aco_toggle_policy's mode field carries no \"all\" branch on the built bundle (tasks.md 6.3)", () => {
-    const toggle = tools.find((tool) => tool.name === "aco_toggle_policy");
-    expect(toggle, "aco_toggle_policy was not found in tools/list").toBeDefined();
+  it("aco_toggle_policy_filter's mode field carries no \"all\" branch on the built bundle (tasks.md 6.3)", () => {
+    const toggle = tools.find((tool) => tool.name === "aco_toggle_policy_filter");
+    expect(toggle, "aco_toggle_policy_filter was not found in tools/list").toBeDefined();
     const modeSchema = toggle?.inputSchema?.properties?.["mode"];
-    expect(modeSchema, "aco_toggle_policy's inputSchema has no \"mode\" property").toBeDefined();
+    expect(modeSchema, "aco_toggle_policy_filter's inputSchema has no \"mode\" property").toBeDefined();
     // The built JSON Schema renders a single zod literal as `const`, never
     // `enum` — see the file-header deviation note.
     expect(modeSchema?.const).toBe("named");

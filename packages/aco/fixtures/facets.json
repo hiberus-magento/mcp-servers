@@ -1,8 +1,11 @@
 {
   "facetable": {
-    "productSearch": { "facets": [{ "attribute": "color", "buckets": [{ "value": "green", "count": 3 }] }] }
+    "productSearch": { "facets": [{ "attribute": "color", "title": "Color", "buckets": [{ "title": "green", "count": 3 }] }] }
   },
   "nonFacetable": {
-    "productSearch": { "facets": [{ "attribute": "color", "buckets": [] }] }
+    "productSearch": { "facets": [{ "attribute": "color", "title": "Color", "buckets": [] }] }
+  },
+  "statsOnly": {
+    "productSearch": { "facets": [{ "attribute": "price", "title": "Price", "buckets": [{ "title": "price", "min": 10, "max": 90 }] }] }
   }
 }

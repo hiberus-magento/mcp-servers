@@ -18,6 +18,7 @@
 // set is non-empty — a silently-empty scan is a guard that proves nothing.
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { Kind, parse, visit, type FieldNode } from "graphql";
 
 export const OPERATIONS_DIR = fileURLToPath(new URL("../client/operations/", import.meta.url));
 
@@ -59,4 +60,44 @@ export function operationModuleNames(): string[] {
 /** Every GraphQL document shipped under `client/operations/`. */
 export function collectOperationDocuments(): CollectedDocument[] {
   return operationModuleNames().flatMap((name) => extractDocuments(readFileSync(`${OPERATIONS_DIR}${name}`, "utf8"), name));
+}
+
+export interface FieldSelection {
+  /** Field names selected directly on the field itself. */
+  readonly fields: readonly string[];
+  /** Field names selected inside each inline fragment, keyed by its type condition. */
+  readonly fragmentFields: Record<string, readonly string[]>;
+}
+
+/**
+ * The selection set of the FIRST occurrence of `fieldName` in `document`,
+ * split into plain fields and per-type inline fragments.
+ *
+ * Needed because the schema-free validity scan cannot see types: it cannot
+ * know that `Bucket` is an interface, that `ScalarBucket` implements it, or
+ * that `value` is a field no implementation has. Only an assertion written
+ * against the verified schema can, which is why the two `productSearch`
+ * operation tests pin their `buckets` selection with this.
+ */
+export function selectionOf(document: string, fieldName: string): FieldSelection {
+  const fields: string[] = [];
+  const fragmentFields: Record<string, readonly string[]> = {};
+  let found = false;
+  visit(parse(document), {
+    Field: (node) => {
+      if (found || node.name.value !== fieldName) {
+        return;
+      }
+      found = true;
+      for (const selection of node.selectionSet?.selections ?? []) {
+        if (selection.kind === Kind.FIELD) {
+          fields.push(selection.name.value);
+        }
+        if (selection.kind === Kind.INLINE_FRAGMENT && selection.typeCondition !== undefined) {
+          fragmentFields[selection.typeCondition.name.value] = selection.selectionSet.selections.filter((inner): inner is FieldNode => inner.kind === Kind.FIELD).map((inner) => inner.name.value);
+        }
+      }
+    },
+  });
+  return { fields, fragmentFields };
 }

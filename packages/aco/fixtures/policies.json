@@ -1,3 +1,18 @@
 {
-  "policies": [{ "policyId": "pol-demo-1", "name": "outdoor-gear-discount", "mandatory": false, "actions": [] }]
+  "policies": [
+    {
+      "policyId": "pol-demo-1",
+      "name": "outdoor-gear-discount",
+      "mandatory": false,
+      "actions": [
+        {
+          "triggers": [{ "name": "on-catalog-read", "transportType": "GRAPHQL" }],
+          "filters": [
+            { "attribute": "vertical", "values": ["outdoor-gear"], "value": "outdoor-gear", "enabled": true, "actionFilterOperator": "IN", "valueSource": "STATIC" },
+            { "attribute": "price_band", "values": ["mid", "high"], "enabled": false, "actionFilterOperator": "IN", "valueSource": "STATIC" }
+          ]
+        }
+      ]
+    }
+  ]
 }

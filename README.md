@@ -79,8 +79,8 @@ Tools:
 - `aco_get_facet_values` (read-only) — Use this to check whether an attribute is facetable for a catalog view and list its available values with counts. No credential is required for an unprotected view.
 - `aco_list_catalog_views` (read-only) — Use this to discover the catalog views (viewId, locales, default price book, policies) available in this tenant. Requires an ACO admin credential.
 - `aco_list_price_books` (read-only) — Use this to list price books, optionally filtered by searchTerm, and to page through more with the returned scrollId. Requires an ACO admin credential.
-- `aco_list_policies` (read-only) — Use this to list every policy configured in this tenant, before deciding which to enable or disable. Requires an ACO admin credential.
-- `aco_toggle_policy` — Use this to enable or disable one or more named policies. There is no "apply to all" mode. Requires an ACO admin credential.
+- `aco_list_policies` (read-only) — Use this to list every policy configured in this tenant with its actions and filters, before deciding which filter to enable or disable. Requires an ACO admin credential.
+- `aco_toggle_policy_filter` — Use this to enable or disable one filter inside one named policy, addressed by the attribute it carries. There is no policy-level enable/disable in this API and no "apply to all" mode. Requires an ACO admin credential.
 
 Configure in an MCP client. Pin the exact version; pass secrets as environment variable references, never literal values:
 

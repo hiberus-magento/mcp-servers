@@ -38,8 +38,33 @@ import type { FacetValuesResult, ListCatalogViewsResult, ListPoliciesResult, Lis
 
 export { AcoError, AcoOperationError, AcoSchemaMismatchError, AcoThrottledError, AcoTransportError, AdminScopeError, CatalogViewAccessError };
 export type { AcoErrorKind, RetryableAcoError } from "./errors.js";
-export type { CatalogViewLayer, CatalogViewLayerSource, CatalogViewResult, FacetValuesResult, ListCatalogViewsResult, ListPoliciesResult, ListPriceBooksResult, ListScopesResult, PolicyResult, PriceBookResult, SearchCatalogResult } from "./types.js";
-export type { CreateChannelInput, CreatePolicyInput, DeleteChannelInput, DeletePolicyInput, UpdateChannelInput, UpdatePolicyInput } from "./operations/mutations.js";
+export type {
+  CatalogViewLayer,
+  CatalogViewLayerSource,
+  CatalogViewResult,
+  FacetValuesResult,
+  ListCatalogViewsResult,
+  ListPoliciesResult,
+  ListPriceBooksResult,
+  ListScopesResult,
+  PolicyAction,
+  PolicyFilter,
+  PolicyResult,
+  PolicyTrigger,
+  PriceBookResult,
+  SearchCatalogResult,
+} from "./types.js";
+export type {
+  CreateChannelInput,
+  CreatePolicyInput,
+  DeleteChannelInput,
+  DeletePolicyInput,
+  UpdateChannelInput,
+  UpdatePolicyActionInput,
+  UpdatePolicyFilterInput,
+  UpdatePolicyInput,
+  UpdatePolicyTriggerInput,
+} from "./operations/mutations.js";
 export type { FacetValuesOptions } from "./operations/facets.js";
 export type { ListPriceBooksOptions } from "./operations/price-books.js";
 export type { SearchCatalogOptions } from "./operations/search.js";

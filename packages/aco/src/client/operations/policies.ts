@@ -1,7 +1,7 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
 // `ListPolicies` — `Q_POLICIES` (exploration.md). Admin track. Backs
-// `aco_list_policies`, `aco_toggle_policy`'s lookup step, and `provision`'s
+// `aco_list_policies`, `aco_toggle_policy_filter`'s lookup step, and `provision`'s
 // policy step's name-keyed idempotency check.
 //
 // This document once requested a policy-level `enabled` "defensively"

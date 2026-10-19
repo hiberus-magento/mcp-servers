@@ -3,11 +3,12 @@
 // RED-first (tasks.md Phase 5). Covers: exactly six tools, asserted by
 // count AND name (unit — the runtime proof; the built-bundle conformance
 // proof is Phase 6, out of scope here); the CLI-only exclusion list has no
-// corresponding tool name; `aco_toggle_policy`'s runtime rejection of
-// `mode: "all"` / empty / omitted `names` / unknown keys (the SECOND of
-// three independent no-"all"-branch proofs — the first is `mcp.test-d.ts`,
-// the third is Phase 6's built-bundle JSON Schema check); the no-op-at-
-// already-held-state requirement; the two-tier credential boundary (Tier A
+// corresponding tool name; `aco_toggle_policy_filter`'s runtime rejection
+// of `mode: "all"` / an omitted target / unknown keys (the SECOND of three
+// independent no-"all"-branch proofs — the first is `mcp.test-d.ts`, the
+// third is Phase 6's built-bundle JSON Schema check); the LOSSLESSNESS of
+// its whole-policy read-modify-write and the no-op-at-already-held-state
+// requirement; the two-tier credential boundary (Tier A
 // always succeeds, Tier B fails actionably with no credential); the
 // facet-values tool-layer sampling-fallback boundary (mirrors client-layer
 // 2.8, proven independently here); Merchandising tools sending no
@@ -19,13 +20,34 @@ import { persistCredential } from "@hiberus-magento/mcp-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAcoClient, type AcoClient } from "../client/index.js";
 import { createAdminTokenProvider } from "../credential-provider.js";
-import { createFetchDouble, graphQlErrors, graphQlOk } from "../testing/fetch-double.js";
+import { createFetchDouble, graphQlErrors, graphQlOk, type RecordedCall } from "../testing/fetch-double.js";
 import { CLI_ONLY_OPERATIONS } from "../cli.js";
-import { acoTogglePolicyInput, createAcoTools, nonEmptyPolicyNames } from "./aco-tools.js";
+import { acoTogglePolicyFilterInput, createAcoTools } from "./aco-tools.js";
 
 const TIER_A_TOOLS = ["aco_search_catalog", "aco_get_facet_values"] as const;
-const TIER_B_TOOLS = ["aco_list_catalog_views", "aco_list_price_books", "aco_list_policies", "aco_toggle_policy"] as const;
+const TIER_B_TOOLS = ["aco_list_catalog_views", "aco_list_price_books", "aco_list_policies", "aco_toggle_policy_filter"] as const;
 const ALL_SIX = [...TIER_A_TOOLS, ...TIER_B_TOOLS] as const;
+
+/**
+ * A policy with every member `UpdatePolicyRequest` accepts populated, plus
+ * the singular `value` the read selects and the write must not send. Two
+ * filters and a trigger, so "everything else came back unchanged" is an
+ * assertion with something to say.
+ */
+const FULL_POLICY_WIRE = {
+  policyId: "pol-demo-1",
+  name: "outdoor-gear-discount",
+  mandatory: true,
+  actions: [
+    {
+      triggers: [{ name: "on-catalog-read", transportType: "GRAPHQL" }],
+      filters: [
+        { attribute: "vertical", values: ["outdoor-gear"], value: "outdoor-gear", enabled: true, actionFilterOperator: "IN", valueSource: "STATIC" },
+        { attribute: "price_band", values: ["mid", "high"], enabled: false, actionFilterOperator: "IN", valueSource: "STATIC" },
+      ],
+    },
+  ],
+} as const;
 
 function base64url(value: string): string {
   return Buffer.from(value).toString("base64url");
@@ -37,7 +59,7 @@ function persistValidBearer(configDir: string): void {
   persistCredential("aco", token, configDir);
 }
 
-function buildClient(routes: Record<string, unknown>, configDir: string): { client: AcoClient; calls: readonly { readonly operationName: string | undefined; readonly headers: Readonly<Record<string, string>> }[] } {
+function buildClient(routes: Record<string, unknown>, configDir: string): { client: AcoClient; calls: readonly RecordedCall[] } {
   const { fetch, calls } = createFetchDouble(routes as never);
   const client = createAcoClient({
     fetch,
@@ -80,40 +102,49 @@ describe("createAcoTools — exactly six tools", () => {
   });
 });
 
-describe("aco_toggle_policy — the type is exactly `mode: \"named\"`, no all branch (runtime proof #2 of 3)", () => {
-  it("safeParse rejects mode: \"all\"", () => {
-    const result = acoTogglePolicyInput.safeParse({ mode: "all", names: ["outdoor-gear-discount"], enabled: true });
-    expect(result.success).toBe(false);
+// CHANGED DELIBERATELY — `aco_toggle_policy` is now
+// `aco_toggle_policy_filter`, and this block's `names`-array cases moved
+// with it:
+//
+//   - "safeParse rejects an empty names array", "rejects an omitted names
+//     field" and "nonEmptyPolicyNames caps at 50" tested a list of POLICY
+//     names, capped at 50. There is no policy-level enable/disable in this
+//     API to apply to a list: disabling is a whole-policy replacement with
+//     one filter flipped, and batching fifty of those behind one call
+//     multiplies the blast radius of a destructive write and leaves no
+//     honest answer when the twentieth fails. The tool addresses exactly
+//     one filter in one policy, so there is no list to cap.
+//   - `mode: "named"` is kept exactly as it was, and so are the three
+//     independent no-`"all"`-branch proofs that read it.
+describe('aco_toggle_policy_filter — the type is exactly `mode: "named"`, no all branch (runtime proof #2 of 3)', () => {
+  const VALID = { mode: "named", policyName: "outdoor-gear-discount", attribute: "price_band", enabled: true };
+
+  it('safeParse rejects mode: "all"', () => {
+    expect(acoTogglePolicyFilterInput.safeParse({ ...VALID, mode: "all" }).success).toBe(false);
   });
 
-  it("safeParse rejects an empty names array", () => {
-    const result = acoTogglePolicyInput.safeParse({ mode: "named", names: [], enabled: true });
-    expect(result.success).toBe(false);
+  it("safeParse rejects an omitted policyName", () => {
+    expect(acoTogglePolicyFilterInput.safeParse({ mode: "named", attribute: "price_band", enabled: true }).success).toBe(false);
   });
 
-  it("safeParse rejects an omitted names field", () => {
-    const result = acoTogglePolicyInput.safeParse({ mode: "named", enabled: true });
-    expect(result.success).toBe(false);
+  it("safeParse rejects an omitted attribute — a policy is not an addressable target on its own", () => {
+    expect(acoTogglePolicyFilterInput.safeParse({ mode: "named", policyName: "outdoor-gear-discount", enabled: true }).success).toBe(false);
+  });
+
+  it("safeParse rejects an empty attribute", () => {
+    expect(acoTogglePolicyFilterInput.safeParse({ ...VALID, attribute: "" }).success).toBe(false);
   });
 
   it("safeParse rejects an unknown key (.strict())", () => {
-    const result = acoTogglePolicyInput.safeParse({ mode: "named", names: ["x"], enabled: true, extra: "nope" });
-    expect(result.success).toBe(false);
+    expect(acoTogglePolicyFilterInput.safeParse({ ...VALID, extra: "nope" }).success).toBe(false);
   });
 
   it("safeParse accepts the valid shape", () => {
-    const result = acoTogglePolicyInput.safeParse({ mode: "named", names: ["outdoor-gear-discount"], enabled: true });
-    expect(result.success).toBe(true);
-  });
-
-  it("nonEmptyPolicyNames caps at 50", () => {
-    const tooMany = Array.from({ length: 51 }, (_, i) => `policy-${i}`);
-    expect(nonEmptyPolicyNames.safeParse(tooMany).success).toBe(false);
-    expect(nonEmptyPolicyNames.safeParse(tooMany.slice(0, 50)).success).toBe(true);
+    expect(acoTogglePolicyFilterInput.safeParse(VALID).success).toBe(true);
   });
 });
 
-describe("aco_toggle_policy — no-op at the already-held state", () => {
+describe("aco_toggle_policy_filter — the write is a whole-policy replacement, so it must be lossless", () => {
   let configDir: string;
 
   beforeEach(() => {
@@ -124,65 +155,125 @@ describe("aco_toggle_policy — no-op at the already-held state", () => {
     rmSync(configDir, { recursive: true, force: true });
   });
 
-  it("issues no updatePolicy for a policy already at the target enabled state", async () => {
+  function togglePolicyFilterTool(routes: Record<string, unknown>): { tool: ReturnType<typeof createAcoTools>[number]; calls: readonly RecordedCall[] } {
     persistValidBearer(configDir);
-    const { client, calls } = buildClient(
-      { "POST /admin/graphql ListPolicies": graphQlOk({ policies: [{ policyId: "pol-demo-1", name: "outdoor-gear-discount", mandatory: false, actions: [], enabled: true }] }) },
-      configDir,
-    );
+    const { client, calls } = buildClient(routes, configDir);
     const tools = createAcoTools({ getRuntime: () => ({ client }) });
-    const toggle = tools.find((t) => t.name === "aco_toggle_policy")!;
+    return { tool: tools.find((t) => t.name === "aco_toggle_policy_filter")!, calls };
+  }
 
-    const result = await toggle.invoke({ mode: "named", names: ["outdoor-gear-discount"], enabled: true }, {});
+  const UPDATE_OK = graphQlOk({ updatePolicy: { policyId: "pol-demo-1" } });
+
+  /**
+   * THE test for this tool. `updatePolicy` REPLACES the policy, so a toggle
+   * that sends back anything less than the whole policy silently deletes
+   * the rest of it. One filter is flipped; every other field of the posted
+   * request must be exactly what was read.
+   */
+  it("posts back every field of the policy unchanged, with only the addressed filter's `enabled` flipped", async () => {
+    const { tool, calls } = togglePolicyFilterTool({
+      "POST /admin/graphql ListPolicies": graphQlOk({ policies: [FULL_POLICY_WIRE] }),
+      "POST /admin/graphql UpdatePolicy": UPDATE_OK,
+    });
+
+    const result = await tool.invoke({ mode: "named", policyName: "outdoor-gear-discount", attribute: "price_band", enabled: true }, {});
 
     expect(result.isError).toBeUndefined();
-    expect(calls.filter((c) => c.operationName === "UpdatePolicy")).toHaveLength(0);
-    const text = result.content[0]?.text ?? "";
-    expect(text).toContain('"changed":false');
-  });
-
-  it("mutates rather than claiming a no-op when Adobe omits `enabled` entirely", async () => {
-    // The reverse-engineered CLI's own ListPolicies query has no `enabled`
-    // field, so a real tenant may return policies without it. Claiming
-    // "changed: false" there would tell an agent the policy is already in the
-    // requested state when nothing is actually known — the one outcome worse
-    // than an extra write. This is the absent-field case; the tests around it
-    // all set `enabled` explicitly.
-    persistValidBearer(configDir);
-    const { client, calls } = buildClient(
-      {
-        "POST /admin/graphql ListPolicies": graphQlOk({ policies: [{ policyId: "pol-demo-1", name: "outdoor-gear-discount", mandatory: false, actions: [] }] }),
-        "POST /admin/graphql UpdatePolicy": graphQlOk({ updatePolicy: { policyId: "pol-demo-1" } }),
-      },
-      configDir,
-    );
-    const tools = createAcoTools({ getRuntime: () => ({ client }) });
-    const toggle = tools.find((t) => t.name === "aco_toggle_policy")!;
-
-    const result = await toggle.invoke({ mode: "named", names: ["outdoor-gear-discount"], enabled: true }, {});
-
-    expect(result.isError).toBeUndefined();
-    expect(calls.filter((c) => c.operationName === "UpdatePolicy")).toHaveLength(1);
+    const update = calls.find((call) => call.operationName === "UpdatePolicy");
+    const posted = JSON.parse(update?.body ?? "{}") as { readonly variables?: { readonly policyRequest?: unknown } };
+    expect(posted.variables?.policyRequest).toEqual({
+      policyId: "pol-demo-1",
+      name: "outdoor-gear-discount",
+      mandatory: true,
+      actions: [
+        {
+          triggers: [{ transportType: "GRAPHQL", name: "on-catalog-read" }],
+          filters: [
+            { attribute: "vertical", enabled: true, actionFilterOperator: "IN", valueSource: "STATIC", values: ["outdoor-gear"] },
+            { attribute: "price_band", enabled: true, actionFilterOperator: "IN", valueSource: "STATIC", values: ["mid", "high"] },
+          ],
+        },
+      ],
+    });
     expect(result.content[0]?.text ?? "").toContain('"changed":true');
   });
 
-  it("issues updatePolicy when the target state differs from the current one", async () => {
-    persistValidBearer(configDir);
-    const { client, calls } = buildClient(
-      {
-        "POST /admin/graphql ListPolicies": graphQlOk({ policies: [{ policyId: "pol-demo-1", name: "outdoor-gear-discount", mandatory: false, actions: [], enabled: false }] }),
-        "POST /admin/graphql UpdatePolicy": graphQlOk({ updatePolicy: { policyId: "pol-demo-1" } }),
-      },
-      configDir,
-    );
-    const tools = createAcoTools({ getRuntime: () => ({ client }) });
-    const toggle = tools.find((t) => t.name === "aco_toggle_policy")!;
+  it("never puts the singular `value` on the wire — it is read-only, and an undeclared input member fails the whole mutation", async () => {
+    const { tool, calls } = togglePolicyFilterTool({
+      "POST /admin/graphql ListPolicies": graphQlOk({ policies: [FULL_POLICY_WIRE] }),
+      "POST /admin/graphql UpdatePolicy": UPDATE_OK,
+    });
 
-    const result = await toggle.invoke({ mode: "named", names: ["outdoor-gear-discount"], enabled: true }, {});
+    await tool.invoke({ mode: "named", policyName: "outdoor-gear-discount", attribute: "price_band", enabled: true }, {});
 
-    expect(calls.filter((c) => c.operationName === "UpdatePolicy")).toHaveLength(1);
+    expect(calls.find((call) => call.operationName === "UpdatePolicy")?.body ?? "").not.toContain('"value"');
+  });
+
+  it("issues no UpdatePolicy when the addressed filter already holds the target state", async () => {
+    const { tool, calls } = togglePolicyFilterTool({ "POST /admin/graphql ListPolicies": graphQlOk({ policies: [FULL_POLICY_WIRE] }) });
+
+    const result = await tool.invoke({ mode: "named", policyName: "outdoor-gear-discount", attribute: "vertical", enabled: true }, {});
+
+    expect(result.isError).toBeUndefined();
+    expect(calls.filter((c) => c.operationName === "UpdatePolicy")).toHaveLength(0);
+    expect(result.content[0]?.text ?? "").toContain('"changed":false');
+  });
+
+  /**
+   * CHANGED DELIBERATELY: the superseded tool wrote on absent state, because
+   * a policy-level `enabled` was never on the wire and an extra write was
+   * the lesser evil. A FILTER's `enabled` IS on the wire and is a member the
+   * write must send back, so an absent one is unknown state inside a
+   * whole-policy replacement — writing a guessed `false` into it is data
+   * loss, not an extra write. The tool refuses.
+   */
+  it("refuses, and writes nothing, when a field the write must send back was not read", async () => {
+    const incomplete = { policyId: "pol-demo-1", name: "outdoor-gear-discount", actions: [{ triggers: [], filters: [{ attribute: "price_band", values: ["mid"], enabled: false, actionFilterOperator: "IN", valueSource: "STATIC" }] }] };
+    const { tool, calls } = togglePolicyFilterTool({
+      "POST /admin/graphql ListPolicies": graphQlOk({ policies: [incomplete] }),
+      "POST /admin/graphql UpdatePolicy": UPDATE_OK,
+    });
+
+    const result = await tool.invoke({ mode: "named", policyName: "outdoor-gear-discount", attribute: "price_band", enabled: true }, {});
+
+    expect(calls.filter((c) => c.operationName === "UpdatePolicy")).toHaveLength(0);
     const text = result.content[0]?.text ?? "";
-    expect(text).toContain('"changed":true');
+    expect(text).toContain('"changed":false');
+    expect(text).toContain("mandatory");
+  });
+
+  it("refuses when no filter carries the attribute, and names the attribute", async () => {
+    const { tool, calls } = togglePolicyFilterTool({ "POST /admin/graphql ListPolicies": graphQlOk({ policies: [FULL_POLICY_WIRE] }) });
+
+    const result = await tool.invoke({ mode: "named", policyName: "outdoor-gear-discount", attribute: "colour", enabled: true }, {});
+
+    expect(calls.filter((c) => c.operationName === "UpdatePolicy")).toHaveLength(0);
+    expect(result.content[0]?.text ?? "").toContain("colour");
+  });
+
+  it("refuses rather than guessing when more than one filter carries the attribute", async () => {
+    const twoMatches = {
+      ...FULL_POLICY_WIRE,
+      actions: [
+        FULL_POLICY_WIRE.actions[0],
+        { triggers: [], filters: [{ attribute: "price_band", values: ["low"], enabled: false, actionFilterOperator: "IN", valueSource: "STATIC" }] },
+      ],
+    };
+    const { tool, calls } = togglePolicyFilterTool({ "POST /admin/graphql ListPolicies": graphQlOk({ policies: [twoMatches] }), "POST /admin/graphql UpdatePolicy": UPDATE_OK });
+
+    const result = await tool.invoke({ mode: "named", policyName: "outdoor-gear-discount", attribute: "price_band", enabled: true }, {});
+
+    expect(calls.filter((c) => c.operationName === "UpdatePolicy")).toHaveLength(0);
+    expect(result.content[0]?.text ?? "").toContain('"changed":false');
+  });
+
+  it("refuses when no policy carries the name", async () => {
+    const { tool, calls } = togglePolicyFilterTool({ "POST /admin/graphql ListPolicies": graphQlOk({ policies: [FULL_POLICY_WIRE] }) });
+
+    const result = await tool.invoke({ mode: "named", policyName: "home-decor-discount", attribute: "price_band", enabled: true }, {});
+
+    expect(calls.filter((c) => c.operationName === "UpdatePolicy")).toHaveLength(0);
+    expect(result.content[0]?.text ?? "").toContain("home-decor-discount");
   });
 });
 
@@ -201,7 +292,7 @@ describe("Tier boundary (design.md, Decision 0) — no admin credential resolvab
     const { client } = buildClient(
       {
         "POST /graphql SearchCatalog": graphQlOk({ productSearch: { total_count: 0, items: [], facets: [] } }),
-        "POST /graphql FacetValues": graphQlOk({ productSearch: { facets: [{ attribute: "color", buckets: [{ value: "green", count: 1 }] }] } }),
+        "POST /graphql FacetValues": graphQlOk({ productSearch: { facets: [{ attribute: "color", buckets: [{ title: "green", count: 1 }] }] } }),
       },
       configDir,
     );
@@ -214,7 +305,7 @@ describe("Tier boundary (design.md, Decision 0) — no admin credential resolvab
 
     for (const name of TIER_B_TOOLS) {
       const tool = tools.find((t) => t.name === name)!;
-      const args = name === "aco_toggle_policy" ? { mode: "named" as const, names: ["x"], enabled: true } : {};
+      const args = name === "aco_toggle_policy_filter" ? { mode: "named" as const, policyName: "outdoor-gear-discount", attribute: "price_band", enabled: true } : {};
       const result = await tool.invoke(args, {});
       expect(result.isError).toBe(true);
       const text = result.content[0]?.text ?? "";
@@ -404,7 +495,7 @@ describe("Annotations match declared read/destructive/idempotent semantics", () 
     rmSync(configDir, { recursive: true, force: true });
   });
 
-  it("the five non-mutating tools are true/false/true; aco_toggle_policy is false/true/true", () => {
+  it("the five non-mutating tools are true/false/true; aco_toggle_policy_filter is false/true/true", () => {
     const { client } = buildClient({}, configDir);
     const tools = createAcoTools({ getRuntime: () => ({ client }) });
 
@@ -412,7 +503,7 @@ describe("Annotations match declared read/destructive/idempotent semantics", () 
       const tool = tools.find((t) => t.name === name)!;
       expect(tool.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false, idempotentHint: true });
     }
-    const toggle = tools.find((t) => t.name === "aco_toggle_policy")!;
+    const toggle = tools.find((t) => t.name === "aco_toggle_policy_filter")!;
     expect(toggle.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true, idempotentHint: true });
   });
 });

@@ -15,7 +15,7 @@
 // old expectations asserted a shape the service no longer returns.
 import { describe, expect, it } from "vitest";
 import { AcoSchemaMismatchError } from "./errors.js";
-import { parseListCatalogViewsResult, parseListPoliciesResult, parseListPriceBooksResult } from "./types.js";
+import { parseListCatalogViewsResult, parseListPoliciesResult, parseListPriceBooksResult, parseSearchCatalogResult } from "./types.js";
 
 describe("parseListCatalogViewsResult", () => {
   it("passes through an unrecognized extra field without throwing", () => {
@@ -115,5 +115,41 @@ describe("parseListPoliciesResult", () => {
       expect(mismatch.operationName).toBe("ListPolicies");
       expect(mismatch.fieldPath).toBe("policies[].name");
     }
+  });
+});
+
+/**
+ * `Bucket` is an INTERFACE: its only common field is `title`. `count` lives
+ * on `ScalarBucket`/`RangeBucket`/`CategoryBucket`; `StatsBucket` has
+ * `min`/`max` and no `count` at all. This parser read a `value` field that
+ * exists on no implementation, so every bucket narrowed to `{}`.
+ */
+describe("parseSearchCatalogResult — buckets are of the Bucket INTERFACE", () => {
+  it("reads the interface's own `title`, which is the bucket label", () => {
+    const result = parseSearchCatalogResult({ productSearch: { total_count: 1, items: [], facets: [{ attribute: "color", title: "Color", buckets: [{ title: "green", count: 3 }] }] } } as never);
+    expect(result.facets[0]?.buckets?.[0]).toEqual({ title: "green", count: 3 });
+  });
+
+  it("leaves `count` ABSENT for a StatsBucket rather than defaulting it to zero", () => {
+    const result = parseSearchCatalogResult({ productSearch: { total_count: 1, items: [], facets: [{ attribute: "price", buckets: [{ title: "price", min: 10, max: 90 }] }] } } as never);
+    const bucket = result.facets[0]?.buckets?.[0];
+    expect(bucket).not.toHaveProperty("count");
+    expect(bucket?.min).toBe(10);
+    expect(bucket?.max).toBe(90);
+  });
+
+  it("keeps a RangeBucket's from/to", () => {
+    const result = parseSearchCatalogResult({ productSearch: { total_count: 1, items: [], facets: [{ attribute: "price", buckets: [{ title: "10-20", count: 4, from: 10, to: 20 }] }] } } as never);
+    expect(result.facets[0]?.buckets?.[0]).toEqual({ title: "10-20", count: 4, from: 10, to: 20 });
+  });
+
+  /**
+   * Positive control for the correction: the retired spelling must not be
+   * silently accepted, or a response still shaped the old way would keep
+   * these tests green while the live query returns nothing.
+   */
+  it("does not read the retired `value` spelling, which is on no Bucket implementation", () => {
+    const result = parseSearchCatalogResult({ productSearch: { total_count: 1, items: [], facets: [{ attribute: "color", buckets: [{ value: "green", count: 3 }] }] } } as never);
+    expect(result.facets[0]?.buckets?.[0]).toEqual({ count: 3 });
   });
 });

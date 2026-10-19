@@ -8,7 +8,7 @@ independent tiers, and the bootstrap for each is genuinely different:
   Merchandising surface and needs **no credential at all** for an
   unprotected catalog view. There is nothing to bootstrap for it.
 - **Tier B** (`aco_list_catalog_views`, `aco_list_price_books`,
-  `aco_list_policies`, `aco_toggle_policy`) talks to the admin GraphQL
+  `aco_list_policies`, `aco_toggle_policy_filter`) talks to the admin GraphQL
   surface and needs an admin Bearer. Everything below is about getting that
   Bearer, correctly, on the first try.
 
@@ -197,7 +197,11 @@ subcommand are excluded from the MCP surface by design — none of them have,
 or will ever get, a corresponding MCP tool. Bulk provisioning, destructive
 deletes, and interactive credential management are high blast radius or
 inherently require a human confirming a destination, and are left to a
-human at the terminal via `hiberus-aco`. `aco_toggle_policy` is the one
-mutating MCP tool this server exposes, and it operates only on explicitly
-named policies — there is no "apply to all" mode anywhere on the MCP
-surface.
+human at the terminal via `hiberus-aco`. `aco_toggle_policy_filter` is the
+one mutating MCP tool this server exposes, and it operates on exactly one
+filter inside one explicitly named policy — there is no "apply to all" mode
+anywhere on the MCP surface, and no policy-level enable/disable exists in
+this API to offer one. Because `updatePolicy` replaces the whole policy
+rather than patching it, that tool reads the policy first and writes every
+other field back unchanged; if the read did not return something the write
+must carry, it writes nothing and says so.
