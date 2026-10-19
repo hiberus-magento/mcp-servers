@@ -7,32 +7,26 @@
 // keyable at all, and named operations also make `AcoSchemaMismatchError`
 // and every log line nameable.
 //
-// `client/operations/` does not exist yet — it is Phase 2's deliverable.
-// The checker function itself is proven here, now, against synthetic
-// fixtures (a real RED/GREEN cycle, not deferred): a named query, a named
-// mutation, an anonymous `query { }`, and the bare `{ }` shorthand. The
-// directory-level scan below is written to run against the real tree the
-// moment it exists; until then it holds vacuously (there is nothing to
-// violate), and Phase 2 is expected to keep it passing for real once
-// `operations/*.ts` documents land.
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+// The checker function itself is proven against synthetic fixtures (a real
+// RED/GREEN cycle): a named query, a named mutation, an anonymous
+// `query { }`, and the bare `{ }` shorthand.
+//
+// CHANGED DELIBERATELY: the directory scan below used to find its documents
+// with its own `document:\s*`...`` regex, written in Phase 1 against a
+// directory that did not exist yet. Every operation module Phase 2 actually
+// shipped hoists its document into a `const <NAME>_DOCUMENT` instead, so
+// that regex matched NOTHING and this scan passed vacuously for the whole
+// life of the package. It now shares the collector in
+// `testing/operation-documents.ts` with `operations/document-validity.test.ts`,
+// and asserts the scan found something — a guard that can silently find
+// nothing is the same defect class it exists to catch.
 import { describe, expect, it } from "vitest";
-
-const OPERATIONS_DIR = fileURLToPath(new URL("./operations/", import.meta.url));
+import { collectOperationDocuments, operationModuleNames } from "../testing/operation-documents.js";
 
 const NAMED_OPERATION_PATTERN = /^\s*(?:query|mutation|subscription)\s+[A-Za-z_]\w*/;
 
 function isNamedOperationDocument(document: string): boolean {
   return NAMED_OPERATION_PATTERN.test(document);
-}
-
-function extractDocumentLiterals(source: string): string[] {
-  // Matches a template literal assigned as the value of a `document:` field
-  // — the shape every `client/operations/*.ts` module uses (design.md,
-  // Decision 5's `GraphQlOperation.document`).
-  const matches = [...source.matchAll(/document:\s*`([^`]*)`/g)];
-  return matches.map((match) => match[1] ?? "");
 }
 
 describe("isNamedOperationDocument (proven against synthetic fixtures)", () => {
@@ -53,26 +47,16 @@ describe("isNamedOperationDocument (proven against synthetic fixtures)", () => {
   });
 });
 
-describe("client/operations/ — every document is named (real scan, once Phase 2 populates the directory)", () => {
+describe("client/operations/ — every document is named (real scan)", () => {
+  const documents = collectOperationDocuments();
+
+  it("is actually scanning documents — every operation module contributes one", () => {
+    expect(documents.length).toBeGreaterThan(0);
+    expect([...new Set(documents.map((entry) => entry.file))].sort()).toEqual(operationModuleNames());
+  });
+
   it("contains no anonymous GraphQL document", () => {
-    if (!existsSync(OPERATIONS_DIR)) {
-      // Phase 2 has not landed yet — vacuously true: there is nothing under
-      // client/operations/ to violate the rule.
-      expect(true).toBe(true);
-      return;
-    }
-    const violations: string[] = [];
-    for (const entry of readdirSync(OPERATIONS_DIR, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith(".ts") || entry.name.endsWith(".test.ts")) {
-        continue;
-      }
-      const source = readFileSync(`${OPERATIONS_DIR}${entry.name}`, "utf8");
-      for (const document of extractDocumentLiterals(source)) {
-        if (!isNamedOperationDocument(document)) {
-          violations.push(`${entry.name}: anonymous document "${document.slice(0, 40)}"`);
-        }
-      }
-    }
+    const violations = documents.filter((entry) => !isNamedOperationDocument(entry.document)).map((entry) => `${entry.file} ${entry.constName}: anonymous document "${entry.document.slice(0, 40)}"`);
     expect(violations).toEqual([]);
   });
 });

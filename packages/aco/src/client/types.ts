@@ -180,14 +180,21 @@ export interface PolicyResult {
   readonly mandatory?: boolean;
   readonly actions?: readonly unknown[];
   /**
-   * Added in Phase 5 (tasks.md 5.7/5.8): a genuine schema gap discovered
-   * during apply, not part of the Python CLI's own `Q_POLICIES` field list
-   * (exploration.md) — that CLI's own `policy enable`/`disable` never reads
-   * current state back either. Requested defensively so `aco_toggle_policy`
-   * can implement its no-op-at-already-held-state requirement WHEN Adobe's
-   * schema actually returns it; when absent (undefined), the toggle handler
-   * cannot prove a no-op and always writes the change instead of
-   * silently claiming `changed: false` on unknown state.
+   * ALWAYS `undefined` today, and not a schema gap: `PolicyResponse` has no
+   * state field at all — not `enabled`, `active`, `status`, `isEnabled`,
+   * `state` or `disabled` — and asking for one fails the whole query, so
+   * `LIST_POLICIES_DOCUMENT` no longer requests it (`policies.ts`). Nothing
+   * on the wire can populate this.
+   *
+   * It survives as an optional field only because `aco_toggle_policy` reads
+   * it to decide whether a no-op can be proven, and that tool is frozen
+   * pending a product decision: Adobe's own Admin UI offers only "View
+   * details" and "Delete" on a policy (enable/disable exists on FILTERS,
+   * not policies), so whether the tool should exist at all is unresolved.
+   * Removing this field is part of that decision, not of this fix — the
+   * handler's current behaviour (`undefined` never equals the requested
+   * state, so it always writes rather than claiming `changed: false` on
+   * unknown state) is unchanged and still correct.
    */
   readonly enabled?: boolean;
 }

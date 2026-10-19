@@ -50,7 +50,10 @@ describe("createAcoClient — wiring", () => {
   it("wires the merchandising transport, so an unprotected search succeeds with no credential", async () => {
     const { client, calls } = makeClient({ "POST /graphql SearchCatalog": graphQlOk({ productSearch: { total_count: 0, items: [], facets: [] } }) });
 
-    await client.search.searchCatalog({ viewId: "acv-demo-outdoor-gear-eu", locale: "en_US" });
+    // CHANGED DELIBERATELY: `phrase` is now required on SearchCatalogOptions —
+    // `$phrase` is `String!`, and an omitted variable is a server-side
+    // validation error, not an "everything" search.
+    await client.search.searchCatalog({ viewId: "acv-demo-outdoor-gear-eu", locale: "en_US", phrase: "tent" });
 
     expect(calls[0]?.headers["authorization"]).toBeUndefined();
   });

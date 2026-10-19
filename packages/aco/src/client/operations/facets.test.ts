@@ -53,4 +53,25 @@ describe("getFacetValues", () => {
     }
     expect(calls).toHaveLength(1);
   });
+
+  /**
+   * The document text is part of the contract: the fetch double routes on
+   * the operation NAME alone, so the version of this document that declared
+   * `$attribute` and never referenced it passed both tests above while
+   * being invalid against every GraphQL server (the live service answered
+   * `Variable "$attribute" is never used.`). The attribute is a client-side
+   * selection over the one response, never a query variable.
+   */
+  it("posts a document with no variables, and sends none — the attribute selects from the result", async () => {
+    const { fetch, calls } = createFetchDouble({
+      "POST /graphql FacetValues": graphQlOk(FACETS_FIXTURE.facetable),
+    });
+    const transport = createMerchandisingTransport({ fetch, now: FIXED_NOW, sleep: NOOP_SLEEP, baseUrl: "https://merch.aco.example/graphql" });
+
+    await getFacetValues(transport, { ...CONTEXT, attribute: "color" });
+
+    const posted = JSON.parse(calls[0]?.body ?? "{}") as { readonly query?: string; readonly variables?: Readonly<Record<string, unknown>> };
+    expect(posted.query ?? "").not.toContain("$");
+    expect(posted.variables).toEqual({});
+  });
 });

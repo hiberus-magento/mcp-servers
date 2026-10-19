@@ -12,7 +12,15 @@
 import type { MerchandisingRequestContext, MerchandisingTransport } from "../http.js";
 import { parseFacetValuesWire, type FacetValuesResult } from "../types.js";
 
-const FACET_VALUES_DOCUMENT = `query FacetValues($attribute: String!) {
+// The attribute is NOT a query variable: `productSearch` takes no
+// per-attribute argument (its arguments are `phrase`/`page_size`/
+// `current_page`, as `search.ts`'s sibling document shows), so the one
+// request returns every facet and `getFacetValues` selects the requested
+// one from the result below. The document used to declare `$attribute` and
+// never reference it, which is invalid against every GraphQL server — the
+// live service answered `Variable "$attribute" is never used.` and ran
+// nothing. Declaring it was the mistake, not forgetting to use it.
+const FACET_VALUES_DOCUMENT = `query FacetValues {
   productSearch(phrase: "", page_size: 0, current_page: 1) {
     facets {
       attribute
@@ -33,7 +41,6 @@ export async function getFacetValues(transport: MerchandisingTransport, options:
     {
       track: "merchandising",
       document: FACET_VALUES_DOCUMENT,
-      variables: { attribute: options.attribute },
       parse: (data) => parseFacetValuesWire(data),
     },
     options,

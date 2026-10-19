@@ -40,4 +40,25 @@ describe("searchCatalog", () => {
     expect(calls[0]?.headers["ac-view-id"]).toBe("acv-demo-outdoor-gear-eu");
     expect(calls[0]?.headers["authorization"]).toBeUndefined();
   });
+
+  /**
+   * `productSearch(phrase:)` is `String!`. The document declared
+   * `$phrase: String`, which no conformant server accepts in that position
+   * — the live service answered `Variable "$phrase" of type "String" used
+   * in position expecting type "String!"` and ran nothing. The assertion
+   * above never saw it, because the fetch double routes on the operation
+   * NAME and never reads the declaration.
+   */
+  it("declares $phrase as the non-null String! the field requires, and always sends it", async () => {
+    const { fetch, calls } = createFetchDouble({
+      "POST /graphql SearchCatalog": graphQlOk(SEARCH_FIXTURE),
+    });
+    const transport = createMerchandisingTransport({ fetch, now: FIXED_NOW, sleep: NOOP_SLEEP, baseUrl: "https://merch.aco.example/graphql" });
+
+    await searchCatalog(transport, { viewId: "acv-demo-outdoor-gear-eu", locale: "en_US", phrase: "tent" });
+
+    const posted = JSON.parse(calls[0]?.body ?? "{}") as { readonly query?: string; readonly variables?: Readonly<Record<string, unknown>> };
+    expect(posted.query ?? "").toContain("$phrase: String!");
+    expect(posted.variables?.["phrase"]).toBe("tent");
+  });
 });
