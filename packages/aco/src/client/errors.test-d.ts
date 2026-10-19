@@ -11,7 +11,7 @@ import type { RetryableAcoError } from "./errors.js";
 
 test("AdminScopeError is not assignable to RetryableAcoError", () => {
   // @ts-expect-error — a live scope failure must never be replayed.
-  const value: RetryableAcoError = new AdminScopeError({ operationName: "ListChannels" });
+  const value: RetryableAcoError = new AdminScopeError({ operationName: "ListCatalogViews" });
   void value;
 });
 
@@ -29,6 +29,6 @@ test("AcoOperationError is not assignable to RetryableAcoError", () => {
 
 test("AcoSchemaMismatchError is not assignable to RetryableAcoError", () => {
   // @ts-expect-error — a stale-schema failure will not resolve itself on retry.
-  const value: RetryableAcoError = new AcoSchemaMismatchError({ operationName: "ListChannels", fieldPath: "channels[].channelId" });
+  const value: RetryableAcoError = new AcoSchemaMismatchError({ operationName: "ListCatalogViews", fieldPath: "catalogViews[].viewId" });
   void value;
 });

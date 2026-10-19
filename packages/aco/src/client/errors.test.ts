@@ -29,7 +29,7 @@ describe("AcoError hierarchy", () => {
   });
 
   it("AdminScopeError's remedy names BOTH exits: re-mint and paste", () => {
-    const error = new AdminScopeError({ operationName: "ListChannels", message: "forbidden" });
+    const error = new AdminScopeError({ operationName: "ListCatalogViews", message: "forbidden" });
 
     expect(error).toBeInstanceOf(AcoError);
     expect(error.kind).toBe("admin-scope");
@@ -39,7 +39,7 @@ describe("AcoError hierarchy", () => {
   });
 
   it("AdminScopeError.confidence is the runtime string \"heuristic\", not just a comment", () => {
-    const error = new AdminScopeError({ operationName: "ListChannels", message: "forbidden" });
+    const error = new AdminScopeError({ operationName: "ListCatalogViews", message: "forbidden" });
 
     // A real runtime field: readable by a caller at runtime, not just documentation.
     expect(error.confidence).toBe("heuristic");
@@ -88,13 +88,13 @@ describe("AcoError hierarchy", () => {
   });
 
   it("AcoSchemaMismatchError names the operation and the field path in its remedy", () => {
-    const error = new AcoSchemaMismatchError({ operationName: "ListChannels", fieldPath: "channels[].channelId" });
+    const error = new AcoSchemaMismatchError({ operationName: "ListCatalogViews", fieldPath: "catalogViews[].viewId" });
 
     expect(error).toBeInstanceOf(AcoError);
     expect(error.kind).toBe("schema-mismatch");
     expect(error.signalledBy).toBe("client");
     expect(error.confidence).toBe("certain");
-    expect(error.remedy).toContain("ListChannels");
-    expect(error.remedy).toContain("channels[].channelId");
+    expect(error.remedy).toContain("ListCatalogViews");
+    expect(error.remedy).toContain("catalogViews[].viewId");
   });
 });

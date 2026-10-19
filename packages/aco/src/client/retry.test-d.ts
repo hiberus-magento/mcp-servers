@@ -14,7 +14,7 @@ test("AdminScopeError is not assignable to RetryOutcome.error", () => {
   const outcome: RetryOutcome = {
     // @ts-expect-error — AdminScopeError is deliberately excluded from the
     // retryable union (AcoThrottledError | AcoTransportError).
-    error: new AdminScopeError({ operationName: "ListChannels" }),
+    error: new AdminScopeError({ operationName: "ListCatalogViews" }),
     idempotent: true,
   };
   void outcome;

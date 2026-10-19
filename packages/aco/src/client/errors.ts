@@ -183,7 +183,7 @@ export class AcoTransportError extends AcoError {
 
 export interface AcoSchemaMismatchErrorOptions {
   readonly operationName: string;
-  /** e.g. `channels[].channelId` — the keyed field the response was missing. */
+  /** e.g. `catalogViews[].viewId` — the keyed field the response was missing. */
   readonly fieldPath: string;
 }
 

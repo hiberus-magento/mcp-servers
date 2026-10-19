@@ -153,7 +153,7 @@ describe("provision — dry-run default and idempotency", () => {
       {
         "POST /graphql FacetValues": graphQlOk({ productSearch: { facets: [{ attribute: "vertical", buckets: [{ value: "outdoor-gear", count: 5 }] }] } }),
         "POST /admin/graphql ListPolicies": graphQlOk({ policies: [] }),
-        "POST /admin/graphql ListChannels": graphQlOk({ channels: [] }),
+        "POST /admin/graphql ListCatalogViews": graphQlOk({ catalogViews: [] }),
       },
       configDir,
     );
@@ -168,7 +168,7 @@ describe("provision — dry-run default and idempotency", () => {
 
   it("--yes issues mutations on pass 1, and none on pass 2 against unchanged state", async () => {
     let policiesState: readonly { policyId: string; name: string }[] = [];
-    let channelsState: readonly { channelId: string; name: string; policyIds: readonly string[] }[] = [];
+    let viewsState: readonly { viewId: string; name: string; policyIds: readonly string[] }[] = [];
     const { deps } = makeDeps(
       {
         "POST /graphql FacetValues": graphQlOk({ productSearch: { facets: [{ attribute: "vertical", buckets: [{ value: "outdoor-gear", count: 5 }] }] } }),
@@ -177,14 +177,14 @@ describe("provision — dry-run default and idempotency", () => {
           policiesState = [...policiesState, { policyId: "pol-demo-1", name: "outdoor-gear-discount" }];
           return graphQlOk({ createPolicy: { policyId: "pol-demo-1" } });
         },
-        "POST /admin/graphql ListChannels": () => graphQlOk({ channels: channelsState.map((c) => ({ channelId: c.channelId, name: c.name, scopes: [], policyIds: c.policyIds })) }),
+        "POST /admin/graphql ListCatalogViews": () => graphQlOk({ catalogViews: viewsState.map((v) => ({ viewId: v.viewId, name: v.name, sources: [], policyIds: v.policyIds })) }),
         "POST /admin/graphql CreateChannel": () => {
-          channelsState = [...channelsState, { channelId: "chan-demo-1", name: "outdoor-gear-view", policyIds: [] }];
-          return graphQlOk({ createChannel: { channelId: "chan-demo-1" } });
+          viewsState = [...viewsState, { viewId: "acv-demo-1", name: "outdoor-gear-view", policyIds: [] }];
+          return graphQlOk({ createChannel: { channelId: "acv-demo-1" } });
         },
         "POST /admin/graphql UpdateChannel": () => {
-          channelsState = channelsState.map((c) => (c.channelId === "chan-demo-1" ? { ...c, policyIds: ["pol-demo-1"] } : c));
-          return graphQlOk({ updateChannel: { channelId: "chan-demo-1" } });
+          viewsState = viewsState.map((v) => (v.viewId === "acv-demo-1" ? { ...v, policyIds: ["pol-demo-1"] } : v));
+          return graphQlOk({ updateChannel: { channelId: "acv-demo-1" } });
         },
       },
       configDir,
@@ -194,14 +194,14 @@ describe("provision — dry-run default and idempotency", () => {
     const pass1 = await runCli(["provision", "--file", "verticals.json", "--yes"], realDeps);
     expect(pass1.exitCode).toBe(0);
     expect(policiesState).toHaveLength(1);
-    expect(channelsState).toHaveLength(1);
+    expect(viewsState).toHaveLength(1);
 
     const pass2 = await runCli(["provision", "--file", "verticals.json", "--yes"], realDeps);
     expect(pass2.exitCode).toBe(0);
     expect(pass2.stdout ?? "").not.toMatch(/dry run/i);
-    // Second pass against unchanged state: still exactly one policy, one channel.
+    // Second pass against unchanged state: still exactly one policy, one catalog view.
     expect(policiesState).toHaveLength(1);
-    expect(channelsState).toHaveLength(1);
+    expect(viewsState).toHaveLength(1);
   });
 });
 

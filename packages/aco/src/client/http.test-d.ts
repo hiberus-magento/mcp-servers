@@ -19,7 +19,7 @@ test("MerchandisingTransportDeps has no tokenProvider field to read", () => {
 });
 
 declare const merchandisingTransport: MerchandisingTransport;
-declare const adminOperation: GraphQlOperation<"admin", { readonly channels: readonly unknown[] }>;
+declare const adminOperation: GraphQlOperation<"admin", { readonly catalogViews: readonly unknown[] }>;
 declare const merchContext: { readonly viewId: string; readonly locale: string };
 
 test("an admin GraphQlOperation is not assignable to MerchandisingTransport.execute", () => {

@@ -13,7 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { SYNTHETIC_AC_PRICE_BOOK_ID_PREFIX, SYNTHETIC_LOCALES, SYNTHETIC_VERTICALS } from "@hiberus-magento/mcp-testing";
 import type { CreateChannelResult, CreatePolicyResult } from "./operations/mutations.js";
-import type { ChannelResult, PolicyResult } from "./types.js";
+import type { CatalogViewResult, PolicyResult } from "./types.js";
 import { provision, type ProvisionDeps, type ProvisionVerticalInput } from "./provision.js";
 
 const LOCALE = SYNTHETIC_LOCALES[0];
@@ -35,13 +35,13 @@ function verticalInput(overrides: Partial<ProvisionVerticalInput> = {}): Provisi
 }
 
 interface FakeState {
-  readonly channels: ChannelResult[];
+  readonly catalogViews: CatalogViewResult[];
   readonly policies: PolicyResult[];
   readonly productCounts: Record<string, number>;
 }
 
 function makeDeps(state: Partial<FakeState> = {}) {
-  const channels: ChannelResult[] = state.channels !== undefined ? [...state.channels] : [];
+  const catalogViews: CatalogViewResult[] = state.catalogViews !== undefined ? [...state.catalogViews] : [];
   const policies: PolicyResult[] = state.policies !== undefined ? [...state.policies] : [];
   const productCounts = state.productCounts ?? {};
   const calls = { createChannel: 0, updateChannel: 0, createPolicy: 0, countMatchingProducts: 0 };
@@ -59,19 +59,22 @@ function makeDeps(state: Partial<FakeState> = {}) {
       policies.push({ policyId, name: input.name });
       return { policyId };
     },
-    listChannels: async () => ({ views: [...channels] }),
+    listCatalogViews: async () => ({ views: [...catalogViews] }),
+    // The three mutations still speak `channelId` on the wire — that rename
+    // was never verified against the live service, so this fake mirrors the
+    // shape the client still sends rather than assuming it moved too.
     createChannel: async (input): Promise<CreateChannelResult> => {
       calls.createChannel += 1;
-      const channelId = `chn-demo-${channels.length + 1}`;
-      channels.push({ channelId, name: input.name, locales: [input.locale] });
+      const channelId = `acv-demo-${catalogViews.length + 1}`;
+      catalogViews.push({ viewId: channelId, name: input.name, locales: [input.locale] });
       return { channelId };
     },
     updateChannel: async (input) => {
       calls.updateChannel += 1;
-      const index = channels.findIndex((channel) => channel.channelId === input.channelId);
+      const index = catalogViews.findIndex((view) => view.viewId === input.channelId);
       if (index >= 0) {
-        const current = channels[index] as ChannelResult;
-        channels[index] = {
+        const current = catalogViews[index] as CatalogViewResult;
+        catalogViews[index] = {
           ...current,
           ...(input.defaultPriceBookId !== undefined ? { defaultPriceBookId: input.defaultPriceBookId } : {}),
           ...(input.policyIds !== undefined ? { policyIds: input.policyIds } : {}),
@@ -80,7 +83,7 @@ function makeDeps(state: Partial<FakeState> = {}) {
     },
   };
 
-  return { deps, calls, channels, policies };
+  return { deps, calls, catalogViews, policies };
 }
 
 describe("provision", () => {

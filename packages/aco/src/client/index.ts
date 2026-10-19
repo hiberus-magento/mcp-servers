@@ -25,7 +25,7 @@ import {
 } from "./errors.js";
 import { createAdminTransport, createMerchandisingTransport, type AdminTransport, type MerchandisingRequestContext, type MerchandisingTransport } from "./http.js";
 import type { CatalogViewAccessTokenSupplier } from "./headers.js";
-import { listChannels } from "./operations/channels.js";
+import { listCatalogViews } from "./operations/catalog-views.js";
 import { getFacetValues, type FacetValuesOptions } from "./operations/facets.js";
 import { createChannel, createPolicy, deleteChannel, deletePolicy, updateChannel, updatePolicy } from "./operations/mutations.js";
 import { listPriceBooks, type ListPriceBooksOptions } from "./operations/price-books.js";
@@ -34,11 +34,11 @@ import { listScopes } from "./operations/scopes.js";
 import { searchCatalog, type SearchCatalogOptions } from "./operations/search.js";
 import { provision, type ProvisionOptions, type ProvisionResult } from "./provision.js";
 import { decideRetry } from "./retry.js";
-import type { FacetValuesResult, ListChannelsResult, ListPoliciesResult, ListPriceBooksResult, ListScopesResult, SearchCatalogResult } from "./types.js";
+import type { FacetValuesResult, ListCatalogViewsResult, ListPoliciesResult, ListPriceBooksResult, ListScopesResult, SearchCatalogResult } from "./types.js";
 
 export { AcoError, AcoOperationError, AcoSchemaMismatchError, AcoThrottledError, AcoTransportError, AdminScopeError, CatalogViewAccessError };
 export type { AcoErrorKind, RetryableAcoError } from "./errors.js";
-export type { ChannelResult, FacetValuesResult, ListChannelsResult, ListPoliciesResult, ListPriceBooksResult, ListScopesResult, PolicyResult, PriceBookResult, SearchCatalogResult } from "./types.js";
+export type { CatalogViewLayer, CatalogViewLayerSource, CatalogViewResult, FacetValuesResult, ListCatalogViewsResult, ListPoliciesResult, ListPriceBooksResult, ListScopesResult, PolicyResult, PriceBookResult, SearchCatalogResult } from "./types.js";
 export type { CreateChannelInput, CreatePolicyInput, DeleteChannelInput, DeletePolicyInput, UpdateChannelInput, UpdatePolicyInput } from "./operations/mutations.js";
 export type { FacetValuesOptions } from "./operations/facets.js";
 export type { ListPriceBooksOptions } from "./operations/price-books.js";
@@ -118,8 +118,14 @@ export interface AcoClient {
   readonly scopes: {
     readonly listScopes: () => Promise<ListScopesResult>;
   };
-  readonly channels: {
-    readonly listChannels: () => Promise<ListChannelsResult>;
+  /**
+   * `listCatalogViews` is the renamed admin query (`operations/catalog-views.ts`).
+   * The three mutations keep their original wire names: that rename was
+   * never verified against the live service, and naming them as though it
+   * had been is the same mistake this rename is fixing.
+   */
+  readonly catalogViews: {
+    readonly listCatalogViews: () => Promise<ListCatalogViewsResult>;
     readonly createChannel: (input: Parameters<typeof createChannel>[1]) => ReturnType<typeof createChannel>;
     readonly updateChannel: (input: Parameters<typeof updateChannel>[1]) => ReturnType<typeof updateChannel>;
     readonly deleteChannel: (input: Parameters<typeof deleteChannel>[1]) => ReturnType<typeof deleteChannel>;
@@ -187,8 +193,8 @@ export function createAcoClient(deps: AcoClientDeps): AcoClient {
     scopes: {
       listScopes: () => listScopes(admin),
     },
-    channels: {
-      listChannels: () => listChannels(admin),
+    catalogViews: {
+      listCatalogViews: () => listCatalogViews(admin),
       createChannel: (input) => createChannel(admin, input),
       updateChannel: (input) => updateChannel(admin, input),
       deleteChannel: (input) => deleteChannel(admin, input),
@@ -226,7 +232,7 @@ export function createAcoClient(deps: AcoClientDeps): AcoClient {
             },
             listPolicies: () => listPolicies(admin),
             createPolicy: (input) => createPolicy(admin, input),
-            listChannels: () => listChannels(admin),
+            listCatalogViews: () => listCatalogViews(admin),
             createChannel: (input) => createChannel(admin, input),
             updateChannel: (input) => updateChannel(admin, input),
           },

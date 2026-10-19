@@ -152,18 +152,22 @@ export function createAcoTools(config: AcoToolsConfig): readonly AcoMcpTool[] {
 
   const acoListCatalogViews = defineTool({
     name: "aco_list_catalog_views",
-    description: `Use this to discover the catalog views (channelId, locales, default price book, policies) available in this tenant — most other tools need a viewId as input, and this is how an agent finds one. Draft views are excluded by default; set includeDrafts to see them. ${TIER_B_RECOVERY_SENTENCE}`,
+    description: `Use this to discover the catalog views (viewId, locales, default price book, policies) available in this tenant — most other tools need a viewId as input, and this is how an agent finds one. Draft views are excluded by default; set includeDrafts to see them. ${TIER_B_RECOVERY_SENTENCE}`,
     inputSchema: acoListCatalogViewsInput,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
     handler: async (args) => {
       const { client } = getRuntime();
       try {
-        const result = await client.channels.listChannels();
+        const result = await client.catalogViews.listCatalogViews();
         const includeDrafts = args.includeDrafts ?? false;
+        // Projected field by field, not spread: `CatalogViewResult` carries
+        // more than an agent needs to pick a view (`allowedPriceBookIds`,
+        // `restrictedAccessKeyIds`, `layers`), and a spread would widen this
+        // tool's output every time the wire narrowing grows a field.
         const views = result.views
           .filter((view) => includeDrafts || view.name === undefined || !DRAFT_VIEW_PATTERN.test(view.name))
           .map((view) => ({
-            channelId: view.channelId,
+            viewId: view.viewId,
             ...present("name", view.name),
             locales: view.locales,
             ...present("defaultPriceBookId", view.defaultPriceBookId),

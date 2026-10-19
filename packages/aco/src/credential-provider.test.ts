@@ -207,7 +207,7 @@ describe("createMintedAdminTokenProvider", () => {
 
 describe("relayCredentialFailure", () => {
   it("rewraps a live AdminScopeError as CredentialExpiredError naming both exits, preserving the original as cause", () => {
-    const original = new AdminScopeError({ operationName: "ListChannels", message: "insufficient scope for this operation" });
+    const original = new AdminScopeError({ operationName: "ListCatalogViews", message: "insufficient scope for this operation" });
 
     let caught: unknown;
     try {

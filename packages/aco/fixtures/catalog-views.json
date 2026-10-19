@@ -1,0 +1,15 @@
+{
+  "catalogViews": [
+    {
+      "viewId": "acv-demo-outdoor-gear-eu",
+      "name": "outdoor_gear_eu_en",
+      "defaultPriceBookId": "acpb-demo-eur",
+      "policyIds": ["pol-demo-1"],
+      "protectionEnabled": false,
+      "allowedPriceBookIds": ["acpb-demo-eur", "acpb-demo-gbp"],
+      "restrictedAccessKeyIds": ["ak-demo-1"],
+      "sources": [{ "locale": "en_US" }],
+      "layers": [{ "order": 0, "source": { "locale": "en_US", "layer": "base" } }]
+    }
+  ]
+}

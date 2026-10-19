@@ -56,7 +56,7 @@ export const CLI_OPTIONS: readonly OptionSpec[] = [
   { name: "--yes", description: "Confirm a write (provision, policy disable --all, view prune, view delete, policy delete)." },
   { name: "--file", description: "Path to a JSON input file (provision's verticals, policy init's scaffold target)." },
   { name: "--name", description: "Target policy name (policy delete)." },
-  { name: "--view", description: "Target catalog view name or channelId (view delete)." },
+  { name: "--view", description: "Target catalog view name or viewId (view delete)." },
   { name: "--document", description: "Raw GraphQL document text (api query)." },
   { name: "--variables", description: "JSON-encoded GraphQL variables (api query)." },
   { name: "--merchandising", description: "Route api query at the Merchandising endpoint instead of the admin endpoint." },
@@ -292,7 +292,7 @@ async function runPolicyInit(flags: Record<string, string>, deps: CliDeps): Prom
 
 async function runViewList(deps: CliDeps): Promise<CliRunResult> {
   try {
-    const result = await deps.client.channels.listChannels();
+    const result = await deps.client.catalogViews.listCatalogViews();
     return { exitCode: 0, stdout: `${JSON.stringify(result, null, 2)}\n` };
   } catch (error) {
     return { exitCode: 1, stderr: renderError(error) };
@@ -302,19 +302,19 @@ async function runViewList(deps: CliDeps): Promise<CliRunResult> {
 async function runViewDelete(flags: Record<string, string>, deps: CliDeps): Promise<CliRunResult> {
   const view = flags["view"];
   if (view === undefined) {
-    return { exitCode: 1, stderr: "view delete requires --view <name-or-channelId>." };
+    return { exitCode: 1, stderr: "view delete requires --view <name-or-viewId>." };
   }
   if (flags["yes"] !== "true") {
     return { exitCode: 1, stderr: "view delete is destructive — pass --yes to confirm." };
   }
   try {
-    const { views } = await deps.client.channels.listChannels();
-    const target = views.find((v) => v.channelId === view || v.name === view);
+    const { views } = await deps.client.catalogViews.listCatalogViews();
+    const target = views.find((v) => v.viewId === view || v.name === view);
     if (target === undefined) {
       return { exitCode: 1, stderr: `No catalog view matching "${view}" was found.` };
     }
-    await deps.client.channels.deleteChannel({ channelId: target.channelId });
-    return { exitCode: 0, stdout: `Deleted catalog view "${view}" (${target.channelId}).\n` };
+    await deps.client.catalogViews.deleteChannel({ channelId: target.viewId });
+    return { exitCode: 0, stdout: `Deleted catalog view "${view}" ().\n` };
   } catch (error) {
     return { exitCode: 1, stderr: renderError(error) };
   }
@@ -332,13 +332,13 @@ const DRAFT_VIEW_PATTERN = /_draft$/i;
 async function runViewPrune(flags: Record<string, string>, deps: CliDeps): Promise<CliRunResult> {
   const write = flags["yes"] === "true";
   try {
-    const { views } = await deps.client.channels.listChannels();
+    const { views } = await deps.client.catalogViews.listCatalogViews();
     const drafts = views.filter((v) => v.name !== undefined && DRAFT_VIEW_PATTERN.test(v.name));
     if (!write) {
       return { exitCode: 0, stdout: `Dry run — would prune ${drafts.length} draft view(s). Pass --yes to apply.\n` };
     }
     for (const draft of drafts) {
-      await deps.client.channels.deleteChannel({ channelId: draft.channelId });
+      await deps.client.catalogViews.deleteChannel({ channelId: draft.viewId });
     }
     return { exitCode: 0, stdout: `Pruned ${drafts.length} draft view(s).\n` };
   } catch (error) {

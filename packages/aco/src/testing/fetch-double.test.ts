@@ -33,23 +33,23 @@ describe("fetch-double route keying", () => {
     const { fetch } = createFetchDouble({ "POST /graphql ListPolicies": graphQlOk({ policies: [] }) });
 
     await expect(
-      fetch("https://admin.aco.example/graphql", { method: "POST", body: JSON.stringify({ query: "query ListChannels { channels { channelId } }" }) }),
-    ).rejects.toThrow(/ListChannels/);
+      fetch("https://admin.aco.example/graphql", { method: "POST", body: JSON.stringify({ query: "query ListCatalogViews { catalogViews { viewId } }" }) }),
+    ).rejects.toThrow(/ListCatalogViews/);
   });
 
   it("two different operations posted to the same pathname are routed independently", async () => {
     const { fetch } = createFetchDouble({
       "POST /graphql ListPolicies": graphQlOk({ policies: [] }),
-      "POST /graphql ListChannels": graphQlOk({ channels: [{ channelId: "acv-demo-outdoor-gear-eu" }] }),
+      "POST /graphql ListCatalogViews": graphQlOk({ catalogViews: [{ viewId: "acv-demo-outdoor-gear-eu" }] }),
     });
 
-    const channelsResponse = await fetch("https://admin.aco.example/graphql", {
+    const catalogViewsResponse = await fetch("https://admin.aco.example/graphql", {
       method: "POST",
-      body: JSON.stringify({ query: "query ListChannels { channels { channelId } }" }),
+      body: JSON.stringify({ query: "query ListCatalogViews { catalogViews { viewId } }" }),
     });
-    const body = (await channelsResponse.json()) as { data: { channels: unknown[] } };
+    const body = (await catalogViewsResponse.json()) as { data: { catalogViews: unknown[] } };
 
-    expect(body.data.channels).toHaveLength(1);
+    expect(body.data.catalogViews).toHaveLength(1);
   });
 });
 

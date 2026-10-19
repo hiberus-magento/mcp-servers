@@ -98,7 +98,7 @@
         {
           "name": "aco_list_catalog_views",
           "readOnly": true,
-          "description": "Use this to discover the catalog views (channelId, locales, default price book, policies) available in this tenant. Requires an ACO admin credential."
+          "description": "Use this to discover the catalog views (viewId, locales, default price book, policies) available in this tenant. Requires an ACO admin credential."
         },
         {
           "name": "aco_list_price_books",

@@ -91,38 +91,77 @@ export function parseListScopesResult(data: ClassifiedData<unknown>): ListScopes
 }
 
 // ---------------------------------------------------------------------------
-// ListChannels — `Q_VIEWS` (exploration.md). Keyed field: `channelId` only.
-// `locales` is derived from `scopes[].locale` (design.md, Decision 3's tool
-// output shape flattens the wire's `scopes` array into `locales`).
+// ListCatalogViews — `Q_VIEWS` (exploration.md). Keyed field: `viewId` only.
+// `locales` is derived from `sources[].locale` (design.md, Decision 3's tool
+// output shape flattens the wire's per-source array into `locales`).
+//
+// CHANGED DELIBERATELY: this parser read `channels[].channelId` and
+// `scopes[].locale` until the admin schema renamed all three
+// (`operations/catalog-views.ts` records what was verified against the live
+// endpoint). The old spelling is gone rather than accepted alongside the
+// new one: a parser that silently tolerates both teaches the next reader
+// that either is still a live shape, and this package has already shipped
+// one wrong model of this schema.
 // ---------------------------------------------------------------------------
-export interface ChannelResult {
-  readonly channelId: string;
+
+/** `layers[].source` — the per-layer origin, distinct from a view's own `sources`. */
+export interface CatalogViewLayerSource {
+  readonly locale?: string;
+  readonly layer?: string;
+}
+
+export interface CatalogViewLayer {
+  readonly order?: number;
+  readonly source?: CatalogViewLayerSource;
+}
+
+export interface CatalogViewResult {
+  readonly viewId: string;
   readonly name?: string;
   readonly locales: readonly string[];
   readonly defaultPriceBookId?: string;
   readonly policyIds?: readonly string[];
   readonly protectionEnabled?: boolean;
+  readonly allowedPriceBookIds?: readonly string[];
+  /** Identifiers of the access keys a protected view is restricted to — ids, never key material. */
+  readonly restrictedAccessKeyIds?: readonly string[];
+  readonly layers?: readonly CatalogViewLayer[];
 }
 
-export interface ListChannelsResult {
-  readonly views: readonly ChannelResult[];
+export interface ListCatalogViewsResult {
+  readonly views: readonly CatalogViewResult[];
 }
 
-export function parseListChannelsResult(data: ClassifiedData<unknown>, operationName: string): ListChannelsResult {
+function parseCatalogViewLayer(entry: unknown): CatalogViewLayer {
+  const layerRecord = asRecord(entry);
+  const sourceValue = layerRecord["source"];
+  const source =
+    sourceValue !== null && typeof sourceValue === "object"
+      ? { ...withOptional("locale", optionalString(asRecord(sourceValue), "locale")), ...withOptional("layer", optionalString(asRecord(sourceValue), "layer")) }
+      : undefined;
+  return { ...withOptional("order", optionalNumber(layerRecord, "order")), ...withOptional("source", source) };
+}
+
+export function parseListCatalogViewsResult(data: ClassifiedData<unknown>, operationName: string): ListCatalogViewsResult {
   const record = asRecord(data);
-  const views = asArray(record["channels"]).map((entry) => {
-    const channelRecord = asRecord(entry);
-    const channelId = requireString(channelRecord, "channelId", operationName, "channels[].channelId");
-    const locales = asArray(channelRecord["scopes"])
-      .map((scope) => optionalString(asRecord(scope), "locale"))
+  const views = asArray(record["catalogViews"]).map((entry) => {
+    const viewRecord = asRecord(entry);
+    const viewId = requireString(viewRecord, "viewId", operationName, "catalogViews[].viewId");
+    const locales = asArray(viewRecord["sources"])
+      .map((source) => optionalString(asRecord(source), "locale"))
       .filter((locale): locale is string => locale !== undefined);
+    const layersValue = viewRecord["layers"];
+    const layers = Array.isArray(layersValue) ? layersValue.map(parseCatalogViewLayer) : undefined;
     return {
-      channelId,
+      viewId,
       locales,
-      ...withOptional("name", optionalString(channelRecord, "name")),
-      ...withOptional("defaultPriceBookId", optionalString(channelRecord, "defaultPriceBookId")),
-      ...withOptional("policyIds", optionalStringArray(channelRecord, "policyIds")),
-      ...withOptional("protectionEnabled", optionalBoolean(channelRecord, "protectionEnabled")),
+      ...withOptional("name", optionalString(viewRecord, "name")),
+      ...withOptional("defaultPriceBookId", optionalString(viewRecord, "defaultPriceBookId")),
+      ...withOptional("policyIds", optionalStringArray(viewRecord, "policyIds")),
+      ...withOptional("protectionEnabled", optionalBoolean(viewRecord, "protectionEnabled")),
+      ...withOptional("allowedPriceBookIds", optionalStringArray(viewRecord, "allowedPriceBookIds")),
+      ...withOptional("restrictedAccessKeyIds", optionalStringArray(viewRecord, "restrictedAccessKeyIds")),
+      ...withOptional("layers", layers),
     };
   });
   return { views };
@@ -213,7 +252,7 @@ export function parseListPriceBooksResult(data: ClassifiedData<unknown>, operati
 // SearchCatalog — `productSearch` (exploration.md). No keyed field: a search
 // result with an unrecognized shape degrades to empty totals/items rather
 // than throwing, because nothing downstream identifies a row by this shape
-// the way `channelId`/`policyId`/`id` are relied on elsewhere.
+// the way `viewId`/`policyId`/`id` are relied on elsewhere.
 // ---------------------------------------------------------------------------
 export interface SearchCatalogItem {
   readonly attributes: Readonly<Record<string, unknown>>;

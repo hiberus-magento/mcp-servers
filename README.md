@@ -77,7 +77,7 @@ Tools:
 
 - `aco_search_catalog` (read-only) — Use this to search a catalog view's products by phrase and page through results, with facet buckets included. No credential is required for an unprotected view.
 - `aco_get_facet_values` (read-only) — Use this to check whether an attribute is facetable for a catalog view and list its available values with counts. No credential is required for an unprotected view.
-- `aco_list_catalog_views` (read-only) — Use this to discover the catalog views (channelId, locales, default price book, policies) available in this tenant. Requires an ACO admin credential.
+- `aco_list_catalog_views` (read-only) — Use this to discover the catalog views (viewId, locales, default price book, policies) available in this tenant. Requires an ACO admin credential.
 - `aco_list_price_books` (read-only) — Use this to list price books, optionally filtered by searchTerm, and to page through more with the returned scrollId. Requires an ACO admin credential.
 - `aco_list_policies` (read-only) — Use this to list every policy configured in this tenant, before deciding which to enable or disable. Requires an ACO admin credential.
 - `aco_toggle_policy` — Use this to enable or disable one or more named policies. There is no "apply to all" mode. Requires an ACO admin credential.

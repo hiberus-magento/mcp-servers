@@ -16,7 +16,7 @@
 // step aborts the WHOLE run before any write — even for verticals that
 // would themselves have validated successfully.
 import type { CreateChannelResult, CreatePolicyResult } from "./operations/mutations.js";
-import type { ListChannelsResult, ListPoliciesResult } from "./types.js";
+import type { ListCatalogViewsResult, ListPoliciesResult } from "./types.js";
 
 export interface CountMatchingProductsInput {
   readonly viewId: string;
@@ -44,7 +44,7 @@ export interface ProvisionDeps {
   readonly countMatchingProducts: (input: CountMatchingProductsInput) => Promise<number>;
   readonly listPolicies: () => Promise<ListPoliciesResult>;
   readonly createPolicy: (input: CreatePolicyDepsInput) => Promise<CreatePolicyResult>;
-  readonly listChannels: () => Promise<ListChannelsResult>;
+  readonly listCatalogViews: () => Promise<ListCatalogViewsResult>;
   readonly createChannel: (input: CreateChannelDepsInput) => Promise<CreateChannelResult>;
   readonly updateChannel: (input: UpdateChannelDepsInput) => Promise<void>;
 }
@@ -140,12 +140,12 @@ export async function provision(deps: ProvisionDeps, options: ProvisionOptions):
   // `defaultPriceBookId` as an input in the same mutation
   // (exploration.md's mapped step 3). An existing view whose `policyIds`
   // already match the target is left untouched.
-  const existingChannels = await deps.listChannels();
-  const channelByName = new Map(existingChannels.views.map((channel) => [channel.name, channel]));
+  const existingViews = await deps.listCatalogViews();
+  const viewByName = new Map(existingViews.views.map((view) => [view.name, view]));
   let viewsChanged = false;
   for (const vertical of options.verticals) {
     const targetPolicyIds = vertical.policyNames.map((name) => policyIdByName.get(name)).filter((id): id is string => id !== undefined);
-    const existing = channelByName.get(vertical.viewName);
+    const existing = viewByName.get(vertical.viewName);
     if (existing === undefined) {
       viewsChanged = true;
       if (write) {
@@ -158,7 +158,7 @@ export async function provision(deps: ProvisionDeps, options: ProvisionOptions):
     if (!samePolicyIds(currentPolicyIds, targetPolicyIds)) {
       viewsChanged = true;
       if (write) {
-        await deps.updateChannel({ channelId: existing.channelId, policyIds: targetPolicyIds });
+        await deps.updateChannel({ channelId: existing.viewId, policyIds: targetPolicyIds });
       }
     }
   }

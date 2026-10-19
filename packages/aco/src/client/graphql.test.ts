@@ -62,7 +62,7 @@ describe("classify()", () => {
   });
 
   it("classifies a permission/scope-shaped message as AdminScopeError", () => {
-    expect(() => classify({ errors: [{ message: "This operation is forbidden for the current scope" }] }, { name: "ListChannels" })).toThrow(
+    expect(() => classify({ errors: [{ message: "This operation is forbidden for the current scope" }] }, { name: "ListCatalogViews" })).toThrow(
       AdminScopeError,
     );
   });

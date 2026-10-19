@@ -297,6 +297,73 @@ describe("Merchandising-track tools send no authorization-shaped header for an u
   });
 });
 
+describe("aco_list_catalog_views — the id an agent feeds back into the other tools", () => {
+  let configDir: string;
+
+  beforeEach(() => {
+    configDir = mkdtempSync(join(tmpdir(), "aco-tools-views-"));
+  });
+
+  afterEach(() => {
+    rmSync(configDir, { recursive: true, force: true });
+  });
+
+  /**
+   * `aco_search_catalog`/`aco_get_facet_values` take `viewId`, and this tool
+   * is how an agent discovers one. It used to emit `channelId` — the admin
+   * schema's own retired spelling — so an agent had to guess that the two
+   * names meant the same identifier.
+   */
+  it("emits viewId, the exact key the other tools take as input", async () => {
+    persistValidBearer(configDir);
+    const { client } = buildClient(
+      {
+        "POST /admin/graphql ListCatalogViews": graphQlOk({
+          catalogViews: [{ viewId: "acv-demo-outdoor-gear-eu", name: "outdoor_gear_eu_en", sources: [{ locale: "en_US" }], defaultPriceBookId: "acpb-demo-eur", policyIds: ["pol-demo-1"], protectionEnabled: false }],
+        }),
+      },
+      configDir,
+    );
+    const tools = createAcoTools({ getRuntime: () => ({ client }) });
+    const listViews = tools.find((t) => t.name === "aco_list_catalog_views")!;
+
+    const result = await listViews.invoke({}, {});
+
+    expect(result.isError).toBeUndefined();
+    const payload = JSON.parse(result.content[0]?.text ?? "{}") as { readonly views: readonly Record<string, unknown>[] };
+    expect(payload.views).toHaveLength(1);
+    expect(payload.views[0]?.["viewId"]).toBe("acv-demo-outdoor-gear-eu");
+    expect(payload.views[0]).not.toHaveProperty("channelId");
+    expect(payload.views[0]?.["locales"]).toEqual(["en_US"]);
+  });
+
+  it("still excludes _draft views by default and includes them on request", async () => {
+    persistValidBearer(configDir);
+    const views = [
+      { viewId: "acv-demo-live", name: "outdoor_gear_eu_en", sources: [{ locale: "en_US" }] },
+      { viewId: "acv-demo-draft", name: "outdoor_gear_eu_en_draft", sources: [{ locale: "en_US" }] },
+    ];
+    const { client } = buildClient({ "POST /admin/graphql ListCatalogViews": graphQlOk({ catalogViews: views }) }, configDir);
+    const tools = createAcoTools({ getRuntime: () => ({ client }) });
+    const listViews = tools.find((t) => t.name === "aco_list_catalog_views")!;
+
+    const hidden = JSON.parse((await listViews.invoke({}, {})).content[0]?.text ?? "{}") as { readonly views: readonly { readonly viewId: string }[] };
+    expect(hidden.views.map((v) => v.viewId)).toEqual(["acv-demo-live"]);
+
+    const shown = JSON.parse((await listViews.invoke({ includeDrafts: true }, {})).content[0]?.text ?? "{}") as { readonly views: readonly { readonly viewId: string }[] };
+    expect(shown.views.map((v) => v.viewId)).toEqual(["acv-demo-live", "acv-demo-draft"]);
+  });
+
+  it("names viewId, not channelId, in its description — an agent picks arguments by description", () => {
+    const { client } = buildClient({}, configDir);
+    const tools = createAcoTools({ getRuntime: () => ({ client }) });
+    const listViews = tools.find((t) => t.name === "aco_list_catalog_views")!;
+
+    expect(listViews.description).toContain("viewId");
+    expect(listViews.description).not.toContain("channelId");
+  });
+});
+
 describe("Descriptions state WHEN to use the tool, and only Tier-B names the credential recovery", () => {
   let configDir: string;
 
