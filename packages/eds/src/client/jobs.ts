@@ -34,8 +34,12 @@ export interface JobBody {
   readonly links: JobLinks;
 }
 
+// No `success` flag. It used to carry `response.ok`, but since `send()`
+// began throwing a named error on every unhandled non-ok status, that value
+// could only ever be `true` — and the two tests asserting it were asserting
+// a constant. A field that cannot be false is not information; the absence
+// of a thrown error is.
 export interface JobEnvelopeResult {
-  readonly success: boolean;
   readonly body: JobBody;
 }
 
@@ -53,9 +57,8 @@ export async function fetchJobEnvelope(http: HttpClient, self: string): Promise<
   // `job.state` and `links.self` out of it on every poll.
   const context = { method: "GET" as const, path: self, label: "the job envelope" };
   const response = await http.send(context);
-  const success = response.ok;
   const body = await readJsonBody<JobBody>(response, context);
-  return { success, body };
+  return { body };
 }
 
 export interface GetJobStatusOptions {

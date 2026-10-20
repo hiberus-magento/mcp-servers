@@ -39,15 +39,29 @@ function makeHttp(routes: Record<string, unknown>) {
 }
 
 describe("fetchJobEnvelope", () => {
-  it("treats HTTP 202 as success — proves === 200 would be the wrong test", async () => {
+  // CHANGED DELIBERATELY: this asserted `result.success === true`, which
+  // became a constant once `send()` started throwing on every unhandled
+  // non-ok status — it could no longer fail, so it proved nothing about
+  // `=== 200` being the wrong test. What still discriminates is that a 202
+  // RESOLVES while a non-2xx REJECTS, so that is what it asserts now.
+  it("accepts HTTP 202 — any 2xx is a success, not just 200", async () => {
     const { http } = makeHttp({
       [`GET ${SELF_PATH}`]: { status: 202, body: RUNNING_FIXTURE },
     });
 
     const result = await fetchJobEnvelope(http, SELF_PATH);
 
-    expect(result.success).toBe(true);
     expect(result.body.job.state).toBe("running");
+  });
+
+  // POSITIVE CONTROL for the case above: without this, "202 resolves" is
+  // satisfied by an implementation that resolves on everything.
+  it("positive control: a non-2xx rejects rather than resolving", async () => {
+    const { http } = makeHttp({
+      [`GET ${SELF_PATH}`]: { status: 500 },
+    });
+
+    await expect(fetchJobEnvelope(http, SELF_PATH)).rejects.toThrow();
   });
 });
 
@@ -122,7 +136,6 @@ describe("getJobStatus", () => {
       name: "job-1",
     });
 
-    expect(result.success).toBe(true);
     expect(result.body.job.state).toBe("running");
   });
 
@@ -138,7 +151,10 @@ describe("getJobStatus", () => {
       name: "job-1",
     });
 
-    expect(result.success).toBe(true);
+    // CHANGED DELIBERATELY: asserted `result.success`, which no longer
+    // exists — it could only ever be true. The request path is what this
+    // case is about, and `calls` already pins it above.
+    expect(result.body.job.state).toBe("running");
   });
 });
 
