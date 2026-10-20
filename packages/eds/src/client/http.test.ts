@@ -8,6 +8,8 @@
 import { describe, expect, it } from "vitest";
 import {
   AdminApiAuthError,
+  AdminApiEmptyBodyError,
+  AdminApiMalformedBodyError,
   AdminApiStatusError,
   AdminRateLimitError,
   ContentSourceThrottledError,
@@ -349,6 +351,79 @@ describe("already-classified statuses keep precedence over the fallback", () => 
       expect((error as EdsErrorLike).remedy).toContain(testCase.remedy);
     });
   }
+});
+
+// RED-first: classifying every non-ok status fixed FAILURES. It left
+// SUCCESSES that carry no body — the Admin API answers a snapshot `DELETE`
+// with `204 text/plain` and zero bytes — and `response.json()` turned those
+// into `Unexpected end of JSON input` too. These assertions pin the
+// boundary between "the API said nothing", "the API said something
+// unreadable", and "the API said something".
+describe("reading a body off a successful response", () => {
+  const EMPTY_BODIES: ReadonlyArray<{ readonly name: string; readonly status: number; readonly body: string | null }> = [
+    { name: "a 204 with no body at all", status: 204, body: null },
+    { name: "a 200 with a zero-length body", status: 200, body: "" },
+    { name: "a 200 whose body is only whitespace", status: 200, body: "\n  \n" },
+  ];
+
+  for (const { name, status, body } of EMPTY_BODIES) {
+    it(`readOptionalJson reports ${name} as a success that returned no content`, async () => {
+      const client = makeClient((async () => new Response(body, { status })) as typeof globalThis.fetch);
+
+      const result = await client.readOptionalJson({ method: "DELETE", path: "/snapshot/acme-demo-org/acme-demo-site-eu/main/launch-2026" });
+
+      expect(result).toEqual({ status, hasContent: false });
+    });
+
+    it(`readJson rejects ${name} with AdminApiEmptyBodyError, never a parse error`, async () => {
+      const client = makeClient((async () => new Response(body, { status })) as typeof globalThis.fetch);
+
+      const error = await rejection(client.readJson({ method: "GET", path: "/status/acme-demo-org/acme-demo-site-eu/main/index", label: "the path status" }));
+
+      expect(error).toBeInstanceOf(AdminApiEmptyBodyError);
+      expect((error as AdminApiEmptyBodyError).message).toContain("GET");
+      expect((error as AdminApiEmptyBodyError).message).toContain("/status/acme-demo-org/acme-demo-site-eu/main/index");
+      expect((error as AdminApiEmptyBodyError).message).toContain("the path status");
+      expect((error as AdminApiEmptyBodyError).message).not.toContain("JSON input");
+    });
+  }
+
+  it("readOptionalJson hands back the body when there is one, so an absent body and an empty document stay distinguishable", async () => {
+    const client = makeClient((async () => new Response(JSON.stringify({}), { status: 200 })) as typeof globalThis.fetch);
+
+    const result = await client.readOptionalJson({ method: "POST", path: "/snapshot/acme-demo-org/acme-demo-site-eu/main/launch-2026" });
+
+    expect(result).toEqual({ status: 200, hasContent: true, content: {} });
+  });
+
+  // Positive control: tolerating an absent body must not become tolerating
+  // an unreadable one, on EITHER reader.
+  for (const reader of ["readJson", "readOptionalJson"] as const) {
+    it(`${reader} rejects a successful response whose body is not JSON`, async () => {
+      const client = makeClient(
+        (async () => new Response("<html>502 Bad Gateway</html>", { status: 200, headers: { "content-type": "text/html" } })) as typeof globalThis.fetch,
+      );
+
+      const error = await rejection(client[reader]({ method: "POST", path: "/live/acme-demo-org/acme-demo-site-eu/main/*", label: "the bulk publish job" }));
+
+      expect(error).toBeInstanceOf(AdminApiMalformedBodyError);
+      expect((error as AdminApiMalformedBodyError).detail).toBe("<html>502 Bad Gateway</html>");
+      expect((error as AdminApiMalformedBodyError).message).toContain("the bulk publish job");
+      expect((error as AdminApiMalformedBodyError).message).not.toContain("JSON input");
+    });
+  }
+
+  // Positive control: the status classification `send()` already does must
+  // keep winning — a 404 with a zero-byte body is an addressing failure,
+  // not "a success that returned nothing".
+  it("a non-ok status is still classified by send(), never reported as an empty body", async () => {
+    const client = makeClient((async () => new Response(null, { status: 404 })) as typeof globalThis.fetch);
+
+    const error = await rejection(client.readOptionalJson({ method: "GET", path: "/snapshot/acme-demo-org/acme-demo-site-eu/main/launch-2026" }));
+
+    expect(error).toBeInstanceOf(AdminApiStatusError);
+    expect(error).not.toBeInstanceOf(AdminApiEmptyBodyError);
+  });
 });
 
 interface EdsErrorLike {

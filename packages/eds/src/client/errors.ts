@@ -25,7 +25,9 @@ export type EdsErrorKind =
   | "gateway"
   | "job-timeout"
   | "admin-api-status"
-  | "admin-api-auth";
+  | "admin-api-auth"
+  | "admin-api-empty-body"
+  | "admin-api-malformed-body";
 
 export abstract class EdsError extends Error {
   abstract readonly kind: EdsErrorKind;
@@ -227,6 +229,69 @@ export class AdminApiAuthError extends EdsError {
     this.detail = options.detail;
     this.credential = options.credential;
     this.remedy = remedy;
+  }
+}
+
+/**
+ * A SUCCESSFUL status whose body this operation required and did not get.
+ *
+ * `send()` classifying every non-ok status fixed failures; it left
+ * successes that carry nothing. The Admin API answers a snapshot `DELETE`
+ * with `204` and zero bytes, and a zero-length body on any 2xx is the same
+ * shape. Where the body IS the answer — a status document, a job envelope,
+ * a page of audit entries — getting none is a real failure, and saying so
+ * is what keeps "the API returned nothing" from being quietly reported as
+ * "there is nothing", which an agent would act on.
+ */
+export class AdminApiEmptyBodyError extends EdsError {
+  readonly kind = "admin-api-empty-body" as const;
+  override readonly status: number;
+  readonly method: string;
+  readonly path: string;
+  readonly label: string | undefined;
+  readonly remedy =
+    "The Admin API accepted the request and returned no document, but this operation has nothing to report without one. " +
+    "Confirm the org, site, ref and path address a document that exists; if they do, the status is worth reporting to Adobe.";
+
+  constructor(context: AdminApiFailureContext) {
+    super(`Admin API returned no content: ${describeRequest(context)} answered HTTP ${context.status} with a zero-length body, ` + `but this operation requires a document.`);
+    this.name = "AdminApiEmptyBodyError";
+    this.status = context.status;
+    this.method = context.method;
+    this.path = context.path;
+    this.label = context.label;
+  }
+}
+
+/**
+ * A successful status whose body is present but is not JSON.
+ *
+ * Deliberately distinct from `AdminApiEmptyBodyError`: tolerating an
+ * ABSENT body must never slide into tolerating an UNREADABLE one. Zero
+ * bytes is the API saying nothing; `<html>...` is the API (or a proxy in
+ * front of it) saying something this client cannot read, and that is still
+ * a failure wherever it happens — including on the operations that accept
+ * an empty body.
+ */
+export class AdminApiMalformedBodyError extends EdsError {
+  readonly kind = "admin-api-malformed-body" as const;
+  override readonly status: number;
+  readonly method: string;
+  readonly path: string;
+  readonly label: string | undefined;
+  readonly detail: string | undefined;
+  readonly remedy =
+    "The Admin API answered with a body that is not JSON — usually an error page from a proxy in front of it rather than the API itself. " +
+    "Retry; if the same path keeps answering this way, report the status and path to Adobe.";
+
+  constructor(context: AdminApiFailureContext) {
+    super(`Admin API returned an unreadable body: ${describeRequest(context)} answered HTTP ${context.status} with content that is not valid JSON. ${describeDetail(context.detail)}`);
+    this.name = "AdminApiMalformedBodyError";
+    this.status = context.status;
+    this.method = context.method;
+    this.path = context.path;
+    this.label = context.label;
+    this.detail = context.detail;
   }
 }
 

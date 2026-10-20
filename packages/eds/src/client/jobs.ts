@@ -6,7 +6,7 @@
 // `links.self` verbatim, never a reconstructed URL: the audited CLI records
 // that the URL topic does not always match the response topic for bulk
 // operations, so reconstructing it is a known bug source.
-import type { HttpClient } from "./http.js";
+import { readJsonBody, type HttpClient } from "./http.js";
 import { JobTimeoutError } from "./errors.js";
 import { sitePath } from "./paths.js";
 
@@ -47,9 +47,14 @@ export interface JobEnvelopeResult {
  * wrong before it was fixed to `response.ok`.
  */
 export async function fetchJobEnvelope(http: HttpClient, self: string): Promise<JobEnvelopeResult> {
-  const response = await http.send({ method: "GET", path: self });
+  // `send` first, not `readJson`: `success` is read off the status and is
+  // part of this function's contract, so the `Response` is needed before
+  // the body. The envelope itself is still required — `waitForJob` reads
+  // `job.state` and `links.self` out of it on every poll.
+  const context = { method: "GET" as const, path: self, label: "the job envelope" };
+  const response = await http.send(context);
   const success = response.ok;
-  const body = (await response.json()) as JobBody;
+  const body = await readJsonBody<JobBody>(response, context);
   return { success, body };
 }
 

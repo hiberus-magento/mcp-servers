@@ -37,7 +37,6 @@ function buildQuery(options: GetAuditLogOptions): string {
 export async function getAuditLog(http: HttpClient, options: GetAuditLogOptions): Promise<Page<AuditLogEntry>> {
   const ref = options.ref ?? "main";
   const path = `/log/${options.org}/${options.site}/${ref}${buildQuery(options)}`;
-  const response = await http.send({ method: "GET", path });
-  const body = (await response.json()) as Page<AuditLogEntry>;
+  const body = await http.readJson<Page<AuditLogEntry>>({ method: "GET", path, label: "the audit log page" });
   return body.nextToken !== undefined ? { entries: body.entries, nextToken: body.nextToken } : { entries: body.entries };
 }

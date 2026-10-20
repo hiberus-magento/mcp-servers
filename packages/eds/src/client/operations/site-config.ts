@@ -4,7 +4,7 @@
 // ALWAYS checked via an explicit `GET` before any `PUT` — never inferred
 // from a caught `409` on the `PUT` itself, which is an assumption inherited
 // from the old Python CLI and never confirmed by Adobe's docs.
-import type { HttpClient } from "../http.js";
+import { readJsonBody, type HttpClient } from "../http.js";
 import { sitePath } from "../paths.js";
 
 function siteConfigPath(org: string, site: string): string {
@@ -52,16 +52,20 @@ interface CdnConfigLookup {
 // simply invented the path, and the JSON parse error that reached the
 // operator hid it.
 async function getCdnConfig(http: HttpClient, params: SiteConfigParams): Promise<CdnConfigLookup> {
-  const response = await http.send({
-    method: "GET",
+  // The one read in this module that cannot use `readJson`: it asks for a
+  // non-ok status via `expectedStatuses`, so it must branch on the
+  // `Response` before any body is read. Once past that branch the document
+  // is required — `cdnPresent: true` with nothing in `cdn` would be a lie.
+  const context = {
+    method: "GET" as const,
     path: `/config/${params.org}/sites/${params.site}/cdn.json`,
     label: "the CDN config",
-    expectedStatuses: CDN_CONFIG_ABSENT_STATUSES,
-  });
+  };
+  const response = await http.send({ ...context, expectedStatuses: CDN_CONFIG_ABSENT_STATUSES });
   if (!response.ok) {
     return { present: false, config: undefined };
   }
-  return { present: true, config: await response.json() };
+  return { present: true, config: await readJsonBody(response, context) };
 }
 
 /**
@@ -72,22 +76,28 @@ async function getCdnConfig(http: HttpClient, params: SiteConfigParams): Promise
  */
 export async function getSiteConfig(http: HttpClient, params: SiteConfigParams): Promise<SiteConfigResult> {
   const [site, cdn, effective] = await Promise.all([
-    http.send({ method: "GET", path: siteConfigPath(params.org, params.site), label: "the site document" }).then((r) => r.json()),
+    http.readJson({ method: "GET", path: siteConfigPath(params.org, params.site), label: "the site document" }),
     getCdnConfig(http, params),
-    http
-      .send({
-        method: "GET",
-        path: sitePath({ resource: "status", org: params.org, site: params.site, ref: "main", suffix: "" }),
-        label: "the effective config",
-      })
-      .then((r) => r.json()),
+    http.readJson({
+      method: "GET",
+      path: sitePath({ resource: "status", org: params.org, site: params.site, ref: "main", suffix: "" }),
+      label: "the effective config",
+    }),
   ]);
   return { site, cdn: cdn.config, cdnPresent: cdn.present, effective };
 }
 
 export interface PutSiteConfigResult {
   readonly existed: boolean;
-  readonly response: unknown;
+  /**
+   * Whether the `PUT` answered with a body at all. A write is allowed to
+   * succeed and say nothing (a `204`), and that is not the same as
+   * answering with an empty document — never inferred from `response`
+   * being falsy.
+   */
+  readonly hasResponse: boolean;
+  /** `undefined` exactly when `hasResponse` is false. */
+  readonly response?: unknown;
 }
 
 /**
@@ -106,7 +116,6 @@ export async function putSiteConfig(http: HttpClient, params: SiteConfigParams, 
   const existenceCheck = await http.send({ method: "GET", path, label: "the site document", expectedStatuses: [404] });
   const existed = existenceCheck.ok;
 
-  const response = await http.send({ method: "PUT", path, body: config });
-  const body = await response.json();
-  return { existed, response: body };
+  const written = await http.readOptionalJson({ method: "PUT", path, body: config, label: "the site document" });
+  return written.hasContent ? { existed, hasResponse: true, response: written.content } : { existed, hasResponse: false };
 }

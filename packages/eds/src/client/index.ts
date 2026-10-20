@@ -34,6 +34,8 @@ import { getStatus, getStatusBulk, type GetStatusBulkOptions, type GetStatusOpti
 
 export {
   AdminApiAuthError,
+  AdminApiEmptyBodyError,
+  AdminApiMalformedBodyError,
   AdminApiStatusError,
   AdminRateLimitError,
   ContentSourceThrottledError,
@@ -45,7 +47,7 @@ export {
   type AdminApiFailureContext,
   type EdsErrorKind,
 } from "./errors.js";
-export type { EdsClientDeps, HttpClient, HttpMethod, SendOptions } from "./http.js";
+export type { EdsClientDeps, HttpClient, HttpMethod, OptionalJsonBody, RequestContext, SendOptions } from "./http.js";
 export type { GetJobStatusOptions, JobBody, JobDescriptor, JobEnvelopeResult, JobLinks, JobPollDeps, JobProgress, JobState, WaitForJobOptions } from "./jobs.js";
 export type { FetchPageOptions, Page } from "./cursor.js";
 export { parseSiteList } from "./types.js";
@@ -54,7 +56,14 @@ export type { AuditLogEntry, GetAuditLogOptions } from "./operations/audit-log.j
 export type { ReindexOptions, ReindexRequest, ReindexResult } from "./operations/index-ops.js";
 export type { JobRef, SetLiveStateOptions, SetLiveStateResult } from "./operations/live.js";
 export type { PutSiteConfigResult, SiteConfigParams, SiteConfigResult } from "./operations/site-config.js";
-export type { AddToSnapshotOptions, RemoveFromSnapshotOptions, ReviewSnapshotOptions, SnapshotRef, SnapshotScope } from "./operations/snapshots.js";
+export type {
+  AddToSnapshotOptions,
+  RemoveFromSnapshotOptions,
+  ReviewSnapshotOptions,
+  SnapshotRef,
+  SnapshotScope,
+  SnapshotWriteResult,
+} from "./operations/snapshots.js";
 export { readBulkStatusResults } from "./operations/status.js";
 export type {
   BulkStatusResource,

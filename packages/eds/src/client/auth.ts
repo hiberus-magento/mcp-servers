@@ -73,8 +73,9 @@ function projectApiKeyRecord(raw: unknown): ApiKeyRecord {
 }
 
 export async function mintApiKey(http: HttpClient, options: MintApiKeyOptions): Promise<MintedApiKey> {
-  const response = await http.send({ method: "POST", path: apiKeysPath(options.org), body: { roles: options.roles } });
-  const body: unknown = await response.json();
+  // The minted key IS the result; a write that returns nothing here would
+  // leave the caller holding a record with no id and no value.
+  const body = await http.readJson({ method: "POST", path: apiKeysPath(options.org), body: { roles: options.roles }, label: "the minted API key" });
   const record = projectApiKeyRecord(body);
   const value = isRecord(body) ? body["value"] : undefined;
   return typeof value === "string" ? { ...record, value } : record;
@@ -95,8 +96,7 @@ export interface ListApiKeysOptions {
  * "CLI-Only Operations Excluded from MCP").
  */
 export async function listApiKeys(http: HttpClient, options: ListApiKeysOptions): Promise<readonly ApiKeyRecord[]> {
-  const response = await http.send({ method: "GET", path: apiKeysPath(options.org) });
-  const body: unknown = await response.json();
+  const body = await http.readJson({ method: "GET", path: apiKeysPath(options.org), label: "the API key list" });
   if (!isRecord(body)) {
     return [];
   }

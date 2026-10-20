@@ -37,8 +37,7 @@ export interface StatusPartitions {
 export async function getStatus(http: HttpClient, options: GetStatusOptions): Promise<StatusPartitions> {
   const ref = options.ref ?? "main";
   const path = sitePath({ resource: "status", org: options.org, site: options.site, ref, suffix: options.path });
-  const response = await http.send({ method: "GET", path });
-  return (await response.json()) as StatusPartitions;
+  return http.readJson<StatusPartitions>({ method: "GET", path, label: "the path status" });
 }
 
 export interface GetStatusBulkOptions {
@@ -172,8 +171,7 @@ export async function getStatusBulk(http: HttpClient, options: GetStatusBulkOpti
   const path = sitePath({ resource: "status", org: options.org, site: options.site, ref, suffix: "*" });
   const body: { paths: readonly string[]; select?: readonly string[] } =
     options.select !== undefined ? { paths: options.paths, select: options.select } : { paths: options.paths };
-  const response = await http.send({ method: "POST", path, body });
-  const wire: unknown = await response.json();
+  const wire = await http.readJson({ method: "POST", path, body, label: "the bulk status job" });
   const job = isRecord(wire) ? wire["job"] : undefined;
   const links = isRecord(wire) && isRecord(wire["links"]) ? wire["links"] : {};
   const base = { job: projectJobRef(job), links: { self: stringOr(links["self"], "") } };

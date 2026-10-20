@@ -220,6 +220,32 @@ describe("missing credential — immediate actionable failure, never a hang (tas
   });
 });
 
+// The operator-facing half of the empty-body defect: the snapshot really
+// was deleted at the service, and `eds_manage_snapshot` still answered
+// `isError: true, Unexpected end of JSON input`. An operator who retries a
+// destructive operation on that basis is acting on a false belief about
+// the state of their site, so the tool result is asserted, not only the
+// client call underneath it.
+describe("eds_manage_snapshot over a 204 with no body", () => {
+  const SNAPSHOT_PATH = "/snapshot/acme-demo-org/acme-demo-site-eu/main/launch-2026";
+
+  it("reports a successful delete as done-with-no-content, never as a JSON parse failure", async () => {
+    const client = makeClient({ [`DELETE ${SNAPSHOT_PATH}`]: { status: 204, headers: { "content-type": "text/plain; charset=utf-8" } } });
+    const tools = createEdsTools({ getRuntime: () => ({ client, org: "acme-demo-org" }) });
+    const tool = tools.find((t) => t.name === "eds_manage_snapshot");
+    if (tool === undefined) {
+      throw new Error("eds_manage_snapshot not found");
+    }
+
+    const result = await tool.invoke({ verb: "delete", site: "acme-demo-site-eu", id: "launch-2026" }, {});
+
+    const text = result.content[0]?.text ?? "";
+    expect(result.isError).not.toBe(true);
+    expect(text).not.toContain("JSON input");
+    expect(JSON.parse(text)).toEqual({ status: 204, hasContent: false });
+  });
+});
+
 describe("mcp.ts installs the stdout guard (tasks.md 7.16)", () => {
   it("passes process.stdin and createStdioServer()'s private stdout into StdioServerTransport", () => {
     const source = readFileSync(fileURLToPath(new URL("./mcp.ts", import.meta.url)), "utf8");

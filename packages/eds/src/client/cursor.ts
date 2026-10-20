@@ -25,8 +25,7 @@ interface PageWire<TEntry> {
 
 export async function fetchPage<TEntry = unknown>(http: HttpClient, path: string, options?: FetchPageOptions): Promise<Page<TEntry>> {
   const fullPath = options?.nextToken !== undefined ? `${path}?nextToken=${encodeURIComponent(options.nextToken)}` : path;
-  const response = await http.send({ method: "GET", path: fullPath });
-  const body = (await response.json()) as PageWire<TEntry>;
+  const body = await http.readJson<PageWire<TEntry>>({ method: "GET", path: fullPath, label: "the page of results" });
   const page: Page<TEntry> = body.nextToken !== undefined ? { entries: body.entries, nextToken: body.nextToken } : { entries: body.entries };
   return page;
 }

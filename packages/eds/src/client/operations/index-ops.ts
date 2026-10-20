@@ -35,6 +35,7 @@ function reindexBody(request: ReindexRequest): { scope: string; paths?: readonly
 export async function reindex(http: HttpClient, options: ReindexOptions): Promise<ReindexResult> {
   const ref = options.ref ?? "main";
   const path = sitePath({ resource: "index", org: options.org, site: options.site, ref, suffix: "*" });
-  const response = await http.send({ method: "POST", path, body: reindexBody(options.request) });
-  return (await response.json()) as ReindexResult;
+  // Like `setLiveState`, the job envelope is the whole result: without it
+  // there is nothing to poll, so an empty body is a failure.
+  return http.readJson<ReindexResult>({ method: "POST", path, body: reindexBody(options.request), label: "the reindex job" });
 }

@@ -36,11 +36,13 @@ interface SetLiveStateWire {
 export async function setLiveState(http: HttpClient, options: SetLiveStateOptions): Promise<SetLiveStateResult> {
   const ref = options.ref ?? "main";
   const path = sitePath({ resource: "live", org: options.org, site: options.site, ref, suffix: "*" });
-  const response = await http.send({
+  // The job envelope IS the result — without `links.self` the caller
+  // cannot poll — so an empty body here is a failure, not a quiet success.
+  const body = await http.readJson<SetLiveStateWire>({
     method: "POST",
     path,
     body: { paths: options.paths, state: options.state },
+    label: "the bulk publish job",
   });
-  const body = (await response.json()) as SetLiveStateWire;
   return { job: body.job, links: body.links, ignoredPaths: body.ignoredPaths ?? [] };
 }
