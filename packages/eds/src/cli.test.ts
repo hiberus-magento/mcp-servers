@@ -97,10 +97,15 @@ describe("setToken", () => {
 });
 
 describe("auth mint", () => {
+  // CHANGED DELIBERATELY: this case used to route the site-level path
+  // `/config/{org}/sites/{site}/apiKeys.json` and assert an `expiresAt`
+  // field. Observed live, that path answers 404 and key records carry
+  // `expiration` — EDS API keys are an ORG-level resource, so `--site` is
+  // not part of minting at all.
   it("prints the minted value alone on stdout; stderr carries the unrecoverable-value banner, id, roles, expiry, and next command; value appears exactly once", async () => {
-    const path = "/config/acme-demo-org/sites/acme-demo-site-eu/apiKeys.json";
+    const path = "/config/acme-demo-org/apiKeys.json";
     const { fetch } = createFetchDouble({
-      [`POST ${path}`]: { status: 200, body: { id: "key-1", value: "minted-once-9f3a", roles: ["publish"], expiresAt: "2027-01-01T00:00:00Z" } },
+      [`POST ${path}`]: { status: 200, body: { id: "key-1", value: "minted-once-9f3a", roles: ["publish"], expiration: "2027-01-01T00:00:00Z" } },
     });
     const client = createEdsClient({
       fetch,
@@ -111,7 +116,7 @@ describe("auth mint", () => {
       org: "acme-demo-org",
     });
 
-    const result = await runCli(["auth", "mint", "--site", "acme-demo-site-eu", "--roles", "publish"], {
+    const result = await runCli(["auth", "mint", "--roles", "publish"], {
       readStdin: async () => "",
       persist: () => "/dev/null",
       configDir: undefined,
@@ -139,7 +144,7 @@ describe("auth mint", () => {
       org: "acme-demo-org",
     });
 
-    const result = await runCli(["auth", "mint", "--site", "acme-demo-site-eu", "--roles", "superuser"], {
+    const result = await runCli(["auth", "mint", "--roles", "superuser"], {
       readStdin: async () => "",
       persist: () => "/dev/null",
       configDir: undefined,
@@ -149,6 +154,94 @@ describe("auth mint", () => {
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toMatch(/superuser/);
+  });
+
+  // The create response was never observed live. If it carries no value the
+  // parser recognises, the operator must be told that plainly — printing
+  // "undefined" as a key would be the worst possible answer here.
+  it("fails loudly, printing no key line, when the response carries no key value", async () => {
+    const { fetch } = createFetchDouble({
+      "POST /config/acme-demo-org/apiKeys.json": {
+        status: 200,
+        body: { id: "key-2", roles: ["publish"], expiration: "2027-01-01T00:00:00Z", description: "demo key" },
+      },
+    });
+    const client = createEdsClient({
+      fetch,
+      now: () => Date.now(),
+      sleep: async () => undefined,
+      tokenProvider: { domain: "eds", getToken: async () => ({ kind: "static", value: "x" }), invalidate: () => undefined, describeRemedy: () => ({ domain: "eds", cliCommand: "c", envVar: "e", configPath: "p", reason: "r" }) },
+      baseUrl: "https://admin.hlx.page",
+      org: "acme-demo-org",
+    });
+
+    const result = await runCli(["auth", "mint", "--roles", "publish"], {
+      readStdin: async () => "",
+      persist: () => "/dev/null",
+      configDir: undefined,
+      client,
+      org: "acme-demo-org",
+    });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stdout ?? "").toBe("");
+    expect(result.stderr ?? "").not.toContain("undefined");
+    expect(result.stderr).toContain("key-2");
+    expect(result.stderr).toContain("hiberus-eds auth keys list");
+  });
+});
+
+describe("auth keys list", () => {
+  const LIST_BODY = {
+    "demo-secret-shaped-outer-key": {
+      description: "demo publishing key",
+      roles: ["config_admin"],
+      id: "demo-key-0001",
+      subject: "demo-author@example-domain",
+      expiration: "2027-01-01T00:00:00Z",
+      created: "2026-10-20T00:00:00Z",
+    },
+  };
+
+  function clientFor(body: unknown) {
+    const { fetch } = createFetchDouble({ "GET /config/acme-demo-org/apiKeys.json": { status: 200, body } } as never);
+    return createEdsClient({
+      fetch,
+      now: () => Date.now(),
+      sleep: async () => undefined,
+      tokenProvider: { domain: "eds", getToken: async () => ({ kind: "static", value: "x" }), invalidate: () => undefined, describeRemedy: () => ({ domain: "eds", cliCommand: "c", envVar: "e", configPath: "p", reason: "r" }) },
+      baseUrl: "https://admin.hlx.page",
+      org: "acme-demo-org",
+    });
+  }
+
+  it("lists each key's metadata and NEVER the secret-shaped object key", async () => {
+    const result = await runCli(["auth", "keys", "list"], {
+      readStdin: async () => "",
+      persist: () => "/dev/null",
+      configDir: undefined,
+      client: clientFor(LIST_BODY),
+      org: "acme-demo-org",
+    });
+
+    expect(result.exitCode).toBe(0);
+    const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+    expect(output).toContain("demo-key-0001");
+    expect(output).toContain("config_admin");
+    expect(output).not.toContain("demo-secret-shaped-outer-key");
+  });
+
+  it("says so plainly when the org has no keys", async () => {
+    const result = await runCli(["auth", "keys", "list"], {
+      readStdin: async () => "",
+      persist: () => "/dev/null",
+      configDir: undefined,
+      client: clientFor({}),
+      org: "acme-demo-org",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(`${result.stdout ?? ""}${result.stderr ?? ""}`).toMatch(/no api keys/i);
   });
 });
 

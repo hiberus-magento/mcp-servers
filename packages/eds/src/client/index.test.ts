@@ -48,6 +48,7 @@ describe("client/index.ts public surface", () => {
 
     expect(client.http).toBeDefined();
     expect(client.auth.mintApiKey).toBeTypeOf("function");
+    expect(client.auth.listApiKeys).toBeTypeOf("function");
     expect(client.operations.snapshots.listSnapshots).toBeTypeOf("function");
   });
 });

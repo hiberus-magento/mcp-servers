@@ -40,7 +40,7 @@
 // agent UI renders it usably) was not tested and is not made here.
 import { defineTool, type RegisteredTool } from "@hiberus-magento/mcp-core";
 import { z } from "zod";
-import { createEdsClient, type EdsClient, type ReindexRequest } from "../client/index.js";
+import { createEdsClient, readBulkStatusResults, type EdsClient, type ReindexRequest } from "../client/index.js";
 import { createEdsTokenProvider } from "../credential-provider.js";
 
 // ---------------------------------------------------------------------------
@@ -190,7 +190,7 @@ export function createEdsTools(config: EdsToolsConfig): readonly EdsMcpTool[] {
   const edsGetStatusBulk = defineTool({
     name: "eds_get_status_bulk",
     description:
-      "Use this when you need status for several paths on a site at once instead of calling eds_get_status in a loop. Submits a bulk status query and waits for the job to finish. Read-only (it queries, it does not mutate).",
+      "Use this when you need status for several paths on a site at once instead of calling eds_get_status in a loop. Returns one entry per path that has content, plus missingPaths naming the requested paths that have none. Read-only (it queries, it does not mutate).",
     inputSchema: getStatusBulkInput,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
     handler: async (args) => {
@@ -202,8 +202,19 @@ export function createEdsTools(config: EdsToolsConfig): readonly EdsMcpTool[] {
         ...present("ref", args.ref),
         ...present("select", args.select),
       });
+      // Observed live: the POST comes back with the job already completed
+      // and its results inline, and the job is NOT retained afterwards —
+      // polling it answers 404. So the poll only runs when the response
+      // itself says the job has not finished (see `status.ts`'s header).
+      if (submitted.results !== undefined) {
+        return { job: submitted.job, results: submitted.results, missingPaths: submitted.missingPaths };
+      }
       const finalJob = await client.jobs.waitForJob({ self: submitted.links.self });
-      return { job: finalJob, progress: finalJob.progress };
+      const job = { name: finalJob.name, topic: finalJob.topic, state: finalJob.state };
+      const polled = readBulkStatusResults(finalJob, args.paths);
+      return polled !== undefined
+        ? { job, results: polled.results, missingPaths: polled.missingPaths, ...present("progress", finalJob.progress) }
+        : { job, ...present("progress", finalJob.progress) };
     },
   });
 

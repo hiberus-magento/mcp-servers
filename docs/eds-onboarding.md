@@ -50,21 +50,39 @@ without being a credential itself.
 
 ## Step 4 — mint a narrower, day-to-day key
 
-The bootstrap key from step 1 is broad. Mint a narrower one scoped to a
-single site for routine use, so the powerful key stays stored away and
+The bootstrap key from step 1 is broad. Mint a narrower one, carrying only
+the roles routine work needs, so the powerful key stays stored away and
 unused:
 
 ```sh
-hiberus-eds auth mint --site acme-demo-site-eu --roles publish,author
+hiberus-eds auth mint --roles publish,author
 ```
+
+API keys belong to the **organization** (`EDS_ORG`), not to a site:
+`/config/{org}/apiKeys.json` is where they live, and the site-level path
+answers 404. `auth mint` therefore takes no `--site` — it rejects one
+rather than accepting a flag it cannot honour.
 
 **The minted value is shown exactly once and cannot be retrieved again.**
 `auth mint` prints the value alone on stdout (so `| pbcopy` or `> key.txt`
 work), and everything else — a banner stating the value is unrecoverable,
-the key id, its roles, its expiry, and the next command to run — goes to
-stderr. Store the value immediately. Pass `--persist` to write it straight
-into the credential file instead of copying it by hand; that overwrites the
-currently stored key, so use it deliberately.
+the key id, its roles, its expiration, and the next command to run — goes
+to stderr. Store the value immediately. Pass `--persist` to write it
+straight into the credential file instead of copying it by hand; that
+overwrites the currently stored key, so use it deliberately.
+
+If the API answers without a key value, `auth mint` prints no key line at
+all and exits non-zero, saying the key may still have been created — check
+`hiberus-eds auth keys list` before minting again rather than retrying
+blind.
+
+```sh
+hiberus-eds auth keys list
+```
+
+lists the org's keys by id, roles and expiration. It never prints key
+material: the Admin API keys its records BY a secret-shaped string, and
+that string is never read.
 
 Confirmed roles (verified against `https://www.aem.live/docs/admin.html`,
 the same set for both organization- and site-scoped keys): `admin`,
@@ -75,7 +93,7 @@ the same set for both organization- and site-scoped keys): `admin`,
 
 ```sh
 export EDS_ORG=acme-demo-org
-export EDS_TOKEN="<the minted site-scoped value>"
+export EDS_TOKEN="<the minted value>"
 ```
 
 From here, `hiberus-eds auth status` and the `hiberus-eds-mcp` server both

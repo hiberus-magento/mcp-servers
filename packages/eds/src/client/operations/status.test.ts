@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { createFetchDouble } from "../../testing/fetch-double.js";
 import { AdminApiAuthError } from "../errors.js";
 import { createHttpClient } from "../http.js";
-import { getStatus, getStatusBulk } from "./status.js";
+import { getStatus, getStatusBulk, readBulkStatusResults } from "./status.js";
 
 function makeHttp(routes: Record<string, unknown>) {
   const { fetch, calls } = createFetchDouble(routes as never);
@@ -75,5 +75,121 @@ describe("getStatusBulk", () => {
     expect((error as AdminApiAuthError).message).toContain("permission");
     expect((error as AdminApiAuthError).message).toContain("hiberus-eds auth token set");
     expect((error as AdminApiAuthError).message).not.toContain("JSON input");
+  });
+});
+
+// RED-first: observed live against the Admin API — the bulk-status POST
+// returns 200 with the job ALREADY completed and its per-path results
+// inline at `job.data.resources`. The follow-up GET this code used to issue
+// (`/job/{org}/{site}/{ref}/status/{name}`, the job's own `links.self`)
+// answers 404 `[AWS] Not Found`, and `GET .../status` lists `jobs: []` —
+// completed jobs are not retained, so that poll could never succeed.
+const BULK_POST_PATH = "/status/acme-demo-org/acme-demo-site-eu/main/*";
+
+/** The shape of a real 200 response, with synthetic identifiers throughout. */
+const COMPLETED_BULK_BODY = {
+  job: {
+    topic: "status",
+    user: "demo-author@example-domain",
+    name: "job-2026-10-20t00-00-00-000z",
+    state: "stopped",
+    createTime: "2026-10-20T00:00:00.000Z",
+    startTime: "2026-10-20T00:00:00.100Z",
+    stopTime: "2026-10-20T00:00:00.900Z",
+    invocationId: "00000000-0000-4000-8000-000000000000",
+    data: {
+      paths: [{ path: "/" }, { path: "/drafts/test" }],
+      pathsOnly: false,
+      select: ["preview", "live"],
+      phase: "completed",
+      resources: [
+        {
+          path: "/",
+          previewLastModified: "Mon, 19 Oct 2026 10:00:00 GMT",
+          previewSourceLastModified: "Mon, 19 Oct 2026 09:59:00 GMT",
+          previewLastModifiedBy: "demo-author@example-domain",
+          publishLastModified: "Mon, 19 Oct 2026 10:01:00 GMT",
+          publishSourceLastModified: "Mon, 19 Oct 2026 09:59:00 GMT",
+          publishLastModifiedBy: "demo-author@example-domain",
+        },
+      ],
+    },
+  },
+  links: {
+    list: "https://admin.hlx.page/job/acme-demo-org/acme-demo-site-eu/main/status",
+    self: "https://admin.hlx.page/job/acme-demo-org/acme-demo-site-eu/main/status/job-2026-10-20t00-00-00-000z",
+  },
+};
+
+describe("getStatusBulk — a job that is already finished when the POST returns", () => {
+  it("reads the per-path results inline from job.data.resources and issues NO job GET", async () => {
+    // No GET route is registered on purpose: the fetch double throws on an
+    // unregistered route, so a follow-up poll fails this test loudly.
+    const { http, calls } = makeHttp({ [`POST ${BULK_POST_PATH}`]: { status: 200, body: COMPLETED_BULK_BODY } });
+
+    const result = await getStatusBulk(http, { org: "acme-demo-org", site: "acme-demo-site-eu", paths: ["/", "/drafts/test"] });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.method).toBe("POST");
+    expect(result.results).toEqual([
+      {
+        path: "/",
+        previewLastModified: "Mon, 19 Oct 2026 10:00:00 GMT",
+        previewSourceLastModified: "Mon, 19 Oct 2026 09:59:00 GMT",
+        previewLastModifiedBy: "demo-author@example-domain",
+        publishLastModified: "Mon, 19 Oct 2026 10:01:00 GMT",
+        publishSourceLastModified: "Mon, 19 Oct 2026 09:59:00 GMT",
+        publishLastModifiedBy: "demo-author@example-domain",
+      },
+    ]);
+  });
+
+  // A path with no content is simply ABSENT from `resources`. That absence
+  // is the answer the caller asked for, so it is reported by name rather
+  // than dropped silently or dressed up as a per-path 404.
+  it("names a requested path that is absent from resources instead of dropping it", async () => {
+    const { http } = makeHttp({ [`POST ${BULK_POST_PATH}`]: { status: 200, body: COMPLETED_BULK_BODY } });
+
+    const result = await getStatusBulk(http, { org: "acme-demo-org", site: "acme-demo-site-eu", paths: ["/", "/drafts/test"] });
+
+    expect(result.missingPaths).toEqual(["/drafts/test"]);
+  });
+
+  it("copies the job and each resource field by field — no undeclared key reaches the result", async () => {
+    const { http } = makeHttp({ [`POST ${BULK_POST_PATH}`]: { status: 200, body: COMPLETED_BULK_BODY } });
+
+    const result = await getStatusBulk(http, { org: "acme-demo-org", site: "acme-demo-site-eu", paths: ["/"] });
+
+    expect(Object.keys(result.job).sort()).toEqual(["name", "state", "topic"]);
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain("invocationId");
+    expect(serialized).not.toContain("pathsOnly");
+  });
+
+  it("leaves results absent and keeps the self link when the job has not completed", async () => {
+    const running = {
+      job: { topic: "status", name: "job-running", state: "running", data: { phase: "running" } },
+      links: { self: "https://admin.hlx.page/job/acme-demo-org/acme-demo-site-eu/main/status/job-running" },
+    };
+    const { http } = makeHttp({ [`POST ${BULK_POST_PATH}`]: { status: 200, body: running } });
+
+    const result = await getStatusBulk(http, { org: "acme-demo-org", site: "acme-demo-site-eu", paths: ["/"] });
+
+    expect(result.results).toBeUndefined();
+    expect(result.missingPaths).toBeUndefined();
+    expect(result.links.self).toBe(running.links.self);
+  });
+});
+
+describe("readBulkStatusResults", () => {
+  it("returns undefined for a job that carries no completed phase, so the caller still polls", () => {
+    expect(readBulkStatusResults({ state: "running", data: { phase: "running", resources: [] } }, ["/"])).toBeUndefined();
+    expect(readBulkStatusResults({ state: "stopped" }, ["/"])).toBeUndefined();
+  });
+
+  it("reads a completed job handed to it after polling, the same way the POST body is read", () => {
+    const parsed = readBulkStatusResults(COMPLETED_BULK_BODY.job, ["/", "/drafts/test"]);
+    expect(parsed?.results.map((r) => r.path)).toEqual(["/"]);
+    expect(parsed?.missingPaths).toEqual(["/drafts/test"]);
   });
 });

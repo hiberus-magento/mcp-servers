@@ -2,8 +2,9 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
 // The `hiberus-eds` CLI adapter (design.md, Decision 6; eds-cli spec).
-// `runCli` handles exactly the `auth token set` / `auth mint` / `auth
-// status` subcommands; every operation on the CLI-only exclusion list
+// `runCli` handles exactly the `auth token set` / `auth mint` / `auth keys
+// list` / `auth status` subcommands; every operation on the CLI-only
+// exclusion list
 // (`site apply`, `key create`, `code show`, etc. — eds-cli spec, "CLI-Only
 // Operations Excluded from MCP") has NO implementation in this change and
 // falls through to `runCli`'s "Unknown command" response — implementing
@@ -19,7 +20,7 @@ import { parseCredentialCliArgs, persistCredential, readTokenFromStdin, redact }
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { createEdsClient, type EdsClient } from "./client/index.js";
+import { createEdsClient, type ApiKeyRecord, type EdsClient } from "./client/index.js";
 import { EDS_DOMAIN, createEdsTokenProvider, resolveEdsCredentialDirect } from "./credential-provider.js";
 
 export interface OptionSpec {
@@ -29,7 +30,7 @@ export interface OptionSpec {
 
 /** No option here may ever carry a credential value — proven by cli.test.ts. */
 export const CLI_OPTIONS: readonly OptionSpec[] = [
-  { name: "--site", description: "Target site for auth mint/status." },
+  { name: "--site", description: "Target site for auth status." },
   { name: "--roles", description: "Comma-separated roles for the minted key (auth mint)." },
   { name: "--persist", description: "Persist a minted key immediately — overwrites the stored key (auth mint)." },
 ];
@@ -137,26 +138,49 @@ function parseFlags(args: readonly string[]): Record<string, string> {
   return flags;
 }
 
+/** `id`/`roles` always; the rest only when the API returned them. */
+function describeKey(key: ApiKeyRecord): readonly string[] {
+  const optional: [keyof ApiKeyRecord, string | undefined][] = [
+    ["description", key.description],
+    ["subject", key.subject],
+    ["expiration", key.expiration],
+    ["created", key.created],
+  ];
+  return [`id: ${key.id}`, `roles: ${key.roles.join(", ")}`, ...optional.flatMap(([name, value]) => (value === undefined ? [] : [`${name}: ${value}`]))];
+}
+
 async function runAuthMint(args: readonly string[], deps: CliDeps): Promise<CliRunResult> {
   const flags = parseFlags(args);
-  const site = flags.site ?? deps.site;
-  if (site === undefined) {
-    return { exitCode: 1, stderr: "auth mint requires --site <site>." };
+  // EDS API keys are an ORG-level resource (`/config/{org}/apiKeys.json`);
+  // the site-level path answers 404. Accepting `--site` here and ignoring
+  // it would leave the operator believing they minted a site-scoped key.
+  if (flags.site !== undefined) {
+    return { exitCode: 1, stderr: "auth mint takes no --site: EDS API keys are minted for the whole org (EDS_ORG), not per site." };
   }
   const rolesResult = parseRoles(flags.roles ?? "");
   if (!rolesResult.ok) {
     return { exitCode: 1, stderr: rolesResult.message };
   }
 
-  const minted = await deps.client.auth.mintApiKey({ org: deps.org, site, roles: rolesResult.roles });
+  const minted = await deps.client.auth.mintApiKey({ org: deps.org, roles: rolesResult.roles });
+
+  // Only the key LIST was ever observed live, and it carries no key value,
+  // so the create response's value field is not proven. If nothing
+  // recognisable came back, say so — printing an absent value would hand
+  // the operator the string "undefined" as their credential.
+  if (minted.value === undefined) {
+    return {
+      exitCode: 1,
+      stderr: [
+        "The API returned no key value, so there is nothing to store. The key itself may still have been created.",
+        ...describeKey(minted),
+        "Check `hiberus-eds auth keys list` before minting again.",
+      ].join("\n"),
+    };
+  }
 
   const stdout = `${minted.value}\n`;
-  const bannerLines = [
-    "This value is shown once and cannot be retrieved again. Store it now.",
-    `id: ${minted.id}`,
-    `roles: ${minted.roles.join(", ")}`,
-    `expiresAt: ${minted.expiresAt}`,
-  ];
+  const bannerLines = ["This value is shown once and cannot be retrieved again. Store it now.", ...describeKey(minted)];
 
   if (flags.persist === "true") {
     const path = deps.persist(minted.value);
@@ -166,6 +190,20 @@ async function runAuthMint(args: readonly string[], deps: CliDeps): Promise<CliR
   }
 
   return { exitCode: 0, stdout, stderr: bannerLines.join("\n") };
+}
+
+/**
+ * Lists the org's keys WITHOUT key material — an operator who cannot see
+ * which keys exist cannot manage them. `listApiKeys` drops the secret by
+ * construction; `redact` here is a second, independent net.
+ */
+async function runAuthKeysList(deps: CliDeps): Promise<CliRunResult> {
+  const keys = await deps.client.auth.listApiKeys({ org: deps.org });
+  if (keys.length === 0) {
+    return { exitCode: 0, stdout: `No API keys configured for ${deps.org}.\n` };
+  }
+  const lines = keys.map((key) => describeKey(key).join("  "));
+  return { exitCode: 0, stdout: redact(`${lines.join("\n")}\n`) };
 }
 
 async function runAuthStatus(deps: CliDeps): Promise<CliRunResult> {
@@ -207,6 +245,9 @@ export async function runCli(argv: readonly string[], deps: CliDeps): Promise<Cl
   }
   if (group === "auth" && sub === "mint") {
     return runAuthMint(argv.slice(2), deps);
+  }
+  if (group === "auth" && sub === "keys" && action === "list") {
+    return runAuthKeysList(deps);
   }
   if (group === "auth" && sub === "status") {
     return runAuthStatus(deps);

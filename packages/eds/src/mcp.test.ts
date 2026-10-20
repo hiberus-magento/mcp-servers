@@ -227,3 +227,59 @@ describe("mcp.ts installs the stdout guard (tasks.md 7.16)", () => {
     expect(source).toContain("new StdioServerTransport(process.stdin, stdout)");
   });
 });
+
+// RED-first: `eds_get_status_bulk` submitted the query and then polled a
+// job the Admin API had already finished and discarded — observed live,
+// that poll answers 404. The results are inline in the POST response.
+describe("eds_get_status_bulk reads the finished job's results inline (observed live)", () => {
+  const BULK_POST_PATH = "/status/acme-demo-org/acme-demo-site-eu/main/*";
+  const COMPLETED_BULK_BODY = {
+    job: {
+      topic: "status",
+      user: "demo-author@example-domain",
+      name: "job-2026-10-20t00-00-00-000z",
+      state: "stopped",
+      invocationId: "00000000-0000-4000-8000-000000000000",
+      data: {
+        paths: [{ path: "/" }, { path: "/drafts/test" }],
+        pathsOnly: false,
+        select: ["preview", "live"],
+        phase: "completed",
+        resources: [{ path: "/", previewLastModified: "Mon, 19 Oct 2026 10:00:00 GMT" }],
+      },
+    },
+    links: { self: "https://admin.hlx.page/job/acme-demo-org/acme-demo-site-eu/main/status/job-2026-10-20t00-00-00-000z" },
+  };
+
+  it("returns the per-path results and the absent path, issuing no job GET at all", async () => {
+    // Only the POST is routed: the fetch double throws on any other call,
+    // so a follow-up poll fails this test rather than passing silently.
+    const { fetch, calls } = createFetchDouble({ [`POST ${BULK_POST_PATH}`]: { status: 200, body: COMPLETED_BULK_BODY } } as never);
+    const client = createEdsClient({
+      fetch,
+      now: () => Date.now(),
+      sleep: async () => undefined,
+      tokenProvider: {
+        domain: "eds",
+        getToken: async () => ({ kind: "static" as const, value: "k" }),
+        invalidate: () => undefined,
+        describeRemedy: () => ({ domain: "eds", cliCommand: "hiberus-eds auth token set", envVar: "EDS_TOKEN", configPath: "/dev/null", reason: "not found" }),
+      },
+      baseUrl: "https://admin.hlx.page",
+      org: "acme-demo-org",
+    });
+    const tools = createEdsTools({ getRuntime: () => ({ client, org: "acme-demo-org" }) });
+    const tool = tools.find((t) => t.name === "eds_get_status_bulk");
+    if (tool === undefined) {
+      throw new Error("eds_get_status_bulk not found");
+    }
+
+    const result = await tool.invoke({ site: "acme-demo-site-eu", paths: ["/", "/drafts/test"] }, {});
+
+    expect(result.isError).not.toBe(true);
+    expect(calls.map((call) => call.method)).toEqual(["POST"]);
+    const payload = JSON.parse(result.content[0]?.text ?? "{}") as { results?: { path: string }[]; missingPaths?: string[] };
+    expect(payload.results?.map((entry) => entry.path)).toEqual(["/"]);
+    expect(payload.missingPaths).toEqual(["/drafts/test"]);
+  });
+});

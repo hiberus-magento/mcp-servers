@@ -8,7 +8,7 @@
 // class, and every result/domain type a caller needs to use the client and
 // interpret its results — nothing from `retry.ts`, `rate-limiter.ts`, or
 // `paths.ts` (internal wiring, not part of the public contract).
-import { authStatus, mintApiKey, type AuthStatusOptions, type MintApiKeyOptions } from "./auth.js";
+import { authStatus, listApiKeys, mintApiKey, type AuthStatusOptions, type ListApiKeysOptions, type MintApiKeyOptions } from "./auth.js";
 import { fetchPage, type FetchPageOptions } from "./cursor.js";
 import { createHttpClient, type EdsClientDeps, type HttpClient } from "./http.js";
 import { fetchJobEnvelope, getJobStatus, waitForJob, type GetJobStatusOptions, type WaitForJobOptions } from "./jobs.js";
@@ -55,8 +55,16 @@ export type { ReindexOptions, ReindexRequest, ReindexResult } from "./operations
 export type { JobRef, SetLiveStateOptions, SetLiveStateResult } from "./operations/live.js";
 export type { PutSiteConfigResult, SiteConfigParams, SiteConfigResult } from "./operations/site-config.js";
 export type { AddToSnapshotOptions, RemoveFromSnapshotOptions, ReviewSnapshotOptions, SnapshotRef, SnapshotScope } from "./operations/snapshots.js";
-export type { GetStatusBulkOptions, GetStatusBulkResult, GetStatusOptions, StatusPartitions } from "./operations/status.js";
-export type { AuthProbeResult, AuthStatusOptions, AuthStatusResult, MintApiKeyOptions, MintedApiKey, ProbeVerdict } from "./auth.js";
+export { readBulkStatusResults } from "./operations/status.js";
+export type {
+  BulkStatusResource,
+  BulkStatusResults,
+  GetStatusBulkOptions,
+  GetStatusBulkResult,
+  GetStatusOptions,
+  StatusPartitions,
+} from "./operations/status.js";
+export type { ApiKeyRecord, AuthProbeResult, AuthStatusOptions, AuthStatusResult, ListApiKeysOptions, MintApiKeyOptions, MintedApiKey, ProbeVerdict } from "./auth.js";
 
 export interface EdsClient {
   readonly http: HttpClient;
@@ -70,6 +78,7 @@ export interface EdsClient {
   };
   readonly auth: {
     readonly mintApiKey: (options: MintApiKeyOptions) => ReturnType<typeof mintApiKey>;
+    readonly listApiKeys: (options: ListApiKeysOptions) => ReturnType<typeof listApiKeys>;
     readonly authStatus: (options: AuthStatusOptions) => ReturnType<typeof authStatus>;
   };
   readonly operations: {
@@ -116,6 +125,7 @@ export function createEdsClient(deps: EdsClientDeps): EdsClient {
     },
     auth: {
       mintApiKey: (options) => mintApiKey(http, options),
+      listApiKeys: (options) => listApiKeys(http, options),
       authStatus: (options) => authStatus(http, options),
     },
     operations: {
