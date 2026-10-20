@@ -24,13 +24,63 @@ export abstract class AcoError extends Error {
 }
 
 export interface GraphQlErrorLikeOptions {
+  /** The message of the entry that CHOSE this class — the one `classify()` matched on. */
   readonly message?: string;
   readonly extensions?: Readonly<Record<string, unknown>>;
   readonly operationName: string;
+  /**
+   * Every message the response's `errors[]` carried, in wire order.
+   *
+   * CHANGED DELIBERATELY: these errors used to render `errors[0]` and
+   * nothing else. A multi-error validation failure therefore arrived as
+   * `ACO GraphQL operation "SearchCatalog" failed: Validation error(s)` —
+   * the one entry that names nothing — while the entries naming the
+   * offending argument were dropped on the floor. The server had said which
+   * argument all along; finding that out cost a bisection.
+   */
+  readonly messages?: readonly string[];
 }
 
-function describeFailure(operationName: string, message: string | undefined): string {
-  return message !== undefined ? `: ${message}` : ".";
+// Bounds on the RENDERED string only. An error message ends up in logs, and
+// a server that rejects every argument of a large query can return dozens of
+// entries. `AcoError.messages` keeps all of them regardless — truncating the
+// data as well would recreate the defect these bounds sit next to.
+const MAX_RENDERED_MESSAGES = 5;
+const MAX_RENDERED_MESSAGE_LENGTH = 300;
+
+function truncate(message: string): string {
+  return message.length <= MAX_RENDERED_MESSAGE_LENGTH ? message : `${message.slice(0, MAX_RENDERED_MESSAGE_LENGTH)}…`;
+}
+
+/**
+ * The classified entry's own message first — it is the one that selected
+ * this class and its remedy — then every OTHER message from the same
+ * response, in wire order. An entry with no message contributes nothing
+ * rather than an empty slot.
+ */
+function orderedMessages(options: GraphQlErrorLikeOptions): readonly string[] {
+  const rest = [...(options.messages ?? [])];
+  if (options.message === undefined) {
+    return rest;
+  }
+  const classified = rest.indexOf(options.message);
+  if (classified >= 0) {
+    rest.splice(classified, 1);
+  }
+  return [options.message, ...rest];
+}
+
+function describeFailure(options: GraphQlErrorLikeOptions): string {
+  const ordered = orderedMessages(options);
+  if (ordered.length === 0) {
+    return ".";
+  }
+  if (ordered.length === 1) {
+    return `: ${truncate(ordered[0] ?? "")}`;
+  }
+  const shown = ordered.slice(0, MAX_RENDERED_MESSAGES).map((entry, index) => `[${index + 1}] ${truncate(entry)}`);
+  const omitted = ordered.length - shown.length;
+  return `: ${ordered.length} errors — ${shown.join(" ")}${omitted > 0 ? ` (+${omitted} more)` : ""}`;
 }
 
 /**
@@ -47,12 +97,15 @@ export class CatalogViewAccessError extends AcoError {
     "then supply it through the client's catalogViewAccessToken supplier.";
   readonly operationName: string;
   readonly extensions: Readonly<Record<string, unknown>> | undefined;
+  /** Every message the response carried, classified entry first. */
+  readonly messages: readonly string[];
 
   constructor(options: GraphQlErrorLikeOptions) {
-    super(`ACO catalog-view access denied for operation "${options.operationName}"${describeFailure(options.operationName, options.message)}`);
+    super(`ACO catalog-view access denied for operation "${options.operationName}"${describeFailure(options)}`);
     this.name = "CatalogViewAccessError";
     this.operationName = options.operationName;
     this.extensions = options.extensions;
+    this.messages = orderedMessages(options);
   }
 }
 
@@ -72,12 +125,15 @@ export class AdminScopeError extends AcoError {
     "this case). Two exits: re-attempt `hiberus-aco auth mint`, or paste a fresh Studio session Bearer with `hiberus-aco auth token set`.";
   readonly operationName: string;
   readonly extensions: Readonly<Record<string, unknown>> | undefined;
+  /** Every message the response carried, classified entry first. */
+  readonly messages: readonly string[];
 
   constructor(options: GraphQlErrorLikeOptions) {
-    super(`ACO admin scope error for operation "${options.operationName}"${describeFailure(options.operationName, options.message)}`);
+    super(`ACO admin scope error for operation "${options.operationName}"${describeFailure(options)}`);
     this.name = "AdminScopeError";
     this.operationName = options.operationName;
     this.extensions = options.extensions;
+    this.messages = orderedMessages(options);
   }
 }
 
@@ -97,12 +153,15 @@ export class AcoThrottledError extends AcoError {
     "signal for this endpoint). Back off and retry; the client's pacer and retry policy do this automatically.";
   readonly operationName: string;
   readonly extensions: Readonly<Record<string, unknown>> | undefined;
+  /** Every message the response carried, classified entry first. */
+  readonly messages: readonly string[];
 
   constructor(options: GraphQlErrorLikeOptions) {
-    super(`ACO throttled on operation "${options.operationName}"${describeFailure(options.operationName, options.message)}`);
+    super(`ACO throttled on operation "${options.operationName}"${describeFailure(options)}`);
     this.name = "AcoThrottledError";
     this.operationName = options.operationName;
     this.extensions = options.extensions;
+    this.messages = orderedMessages(options);
   }
 }
 
@@ -130,13 +189,16 @@ export class AcoOperationError extends AcoError {
   readonly operationName: string;
   readonly extensions: Readonly<Record<string, unknown>> | undefined;
   readonly hadPartialData: boolean;
+  /** Every message the response carried, classified entry first. */
+  readonly messages: readonly string[];
 
   constructor(options: AcoOperationErrorOptions) {
-    super(`ACO GraphQL operation "${options.operationName}" failed${describeFailure(options.operationName, options.message)}`);
+    super(`ACO GraphQL operation "${options.operationName}" failed${describeFailure(options)}`);
     this.name = "AcoOperationError";
     this.operationName = options.operationName;
     this.extensions = options.extensions;
     this.hadPartialData = options.hadPartialData;
+    this.messages = orderedMessages(options);
     this.remedy = options.hadPartialData
       ? "Adobe reported a failure alongside a partial response for this operation. The partial payload was discarded rather " +
         "than returned half-empty; investigate with `hiberus-aco api query` if you need to see what came back."

@@ -68,10 +68,16 @@ function isExactAccessKeyInvalid(entry: GraphQlErrorEntry): boolean {
   return entry.extensions?.["x-commerce-exception"] === "access-key-invalid";
 }
 
-function toErrorOptions(entry: GraphQlErrorEntry, op: OperationRef): GraphQlErrorLikeOptions {
-  const options: GraphQlErrorLikeOptions = { operationName: op.name };
+/**
+ * `messages` is the WHOLE response's `errors[]`, not this entry's — a
+ * response that rejects three arguments names all three, and only one of
+ * them chooses the error class. Carrying the rest is what keeps the other
+ * two out of the bin (`errors.ts`'s `GraphQlErrorLikeOptions.messages`).
+ */
+function toErrorOptions(entry: GraphQlErrorEntry, op: OperationRef, messages: readonly string[]): GraphQlErrorLikeOptions {
   return {
-    ...options,
+    operationName: op.name,
+    messages,
     ...(entry.message !== undefined ? { message: entry.message } : {}),
     ...(entry.extensions !== undefined ? { extensions: entry.extensions } : {}),
   };
@@ -90,25 +96,26 @@ export function classify<T>(envelope: GraphQlEnvelope, op: OperationRef): Classi
   const errors = envelope.errors;
   if (errors !== undefined && errors.length > 0) {
     const hadPartialData = envelope.data !== undefined && envelope.data !== null;
+    const messages = errors.map((entry) => entry.message).filter((message): message is string => message !== undefined);
 
     for (const entry of errors) {
       if (isExactAccessKeyInvalid(entry)) {
-        throw new CatalogViewAccessError(toErrorOptions(entry, op));
+        throw new CatalogViewAccessError(toErrorOptions(entry, op, messages));
       }
     }
     for (const entry of errors) {
       if (isThrottleShaped(entry)) {
-        throw new AcoThrottledError(toErrorOptions(entry, op));
+        throw new AcoThrottledError(toErrorOptions(entry, op, messages));
       }
     }
     for (const entry of errors) {
       if (isScopeShaped(entry)) {
-        throw new AdminScopeError(toErrorOptions(entry, op));
+        throw new AdminScopeError(toErrorOptions(entry, op, messages));
       }
     }
 
     const first = errors[0];
-    const fallthroughOptions: GraphQlErrorLikeOptions = first !== undefined ? toErrorOptions(first, op) : { operationName: op.name };
+    const fallthroughOptions: GraphQlErrorLikeOptions = first !== undefined ? toErrorOptions(first, op, messages) : { operationName: op.name, messages };
     throw new AcoOperationError({ ...fallthroughOptions, hadPartialData });
   }
 

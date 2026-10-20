@@ -346,32 +346,37 @@ async function runViewDelete(flags: Record<string, string>, deps: CliDeps): Prom
     if (target === undefined) {
       return { exitCode: 1, stderr: `No catalog view matching "${view}" was found.` };
     }
-    await deps.client.catalogViews.deleteChannel({ channelId: target.viewId });
-    return { exitCode: 0, stdout: `Deleted catalog view "${view}" ().\n` };
+    const { deletedViewId } = await deps.client.catalogViews.deleteCatalogView({ viewId: target.viewId });
+    return { exitCode: 0, stdout: `Deleted catalog view "${view}" (${deletedViewId}).\n` };
   } catch (error) {
     return { exitCode: 1, stderr: renderError(error) };
   }
 }
 
-const DRAFT_VIEW_PATTERN = /_draft$/i;
-
 /**
- * Bulk-deletes ALL untracked `_draft` views in one pass (exploration.md).
- * The blast radius scales with tenant state, not with a bounded input array
- * — structurally different from a `nonEmptyPaths`-style schema gate, and
+ * Bulk-deletes ALL draft views in one pass (exploration.md). The blast
+ * radius scales with tenant state, not with a bounded input array —
+ * structurally different from a `nonEmptyPaths`-style schema gate, and
  * exactly why this stays a CLI-only, `--yes`-gated bulk operation, never an
  * MCP tool.
+ *
+ * CHANGED DELIBERATELY: a draft used to be a view whose NAME matched
+ * `/_draft$/i`. `catalogViews` reports a real `draft` flag, and this
+ * command DELETES what it calls a draft — deciding that from a name while
+ * the API states it is the defect class this package keeps finding. The
+ * test is `=== true`, not `!== false`: a view the server did not report
+ * `draft` for is not deleted.
  */
 async function runViewPrune(flags: Record<string, string>, deps: CliDeps): Promise<CliRunResult> {
   const write = flags["yes"] === "true";
   try {
     const { views } = await deps.client.catalogViews.listCatalogViews();
-    const drafts = views.filter((v) => v.name !== undefined && DRAFT_VIEW_PATTERN.test(v.name));
+    const drafts = views.filter((v) => v.draft === true);
     if (!write) {
       return { exitCode: 0, stdout: `Dry run — would prune ${drafts.length} draft view(s). Pass --yes to apply.\n` };
     }
     for (const draft of drafts) {
-      await deps.client.catalogViews.deleteChannel({ channelId: draft.viewId });
+      await deps.client.catalogViews.deleteCatalogView({ viewId: draft.viewId });
     }
     return { exitCode: 0, stdout: `Pruned ${drafts.length} draft view(s).\n` };
   } catch (error) {

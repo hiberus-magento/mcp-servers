@@ -1,91 +1,224 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
-// The six admin mutations (exploration.md): `createChannel`/`updateChannel`/
-// `deleteChannel` and `createPolicy`/`updatePolicy`/`deletePolicy`. This is
-// the ONLY module under `client/` allowed to contain the token `mutation `
-// — a source-scan test in `mutations.test.ts` enforces it, so a seventh
-// mutation anywhere else in the tree is a named, reviewable diff. Every
-// mutation declares `idempotent: false` (design.md, Decision 4): a
+// The six admin mutations: `createCatalogView`/`updateCatalogView`/
+// `deleteCatalogView` and `createPolicy`/`updatePolicy`/`deletePolicy`. This
+// is the ONLY module under `client/` allowed to contain the token
+// `mutation ` — a source-scan test in `mutations.test.ts` enforces it, so a
+// seventh mutation anywhere else in the tree is a named, reviewable diff.
+// Every mutation declares `idempotent: false` (design.md, Decision 4): a
 // misclassified throttle can never replay a write, and `client/index.ts`'s
 // factory reads this field to drive `retry.ts`.
 //
-// `createChannel`'s own response does not accept `defaultPriceBookId` as an
-// input in the same mutation (exploration.md, `provision`'s mapped steps) —
-// creating a fully-configured view is deliberately TWO calls:
-// `createChannel` then `updateChannel`, never one.
+// CHANGED DELIBERATELY: the first three were `createChannel`/
+// `updateChannel`/`deleteChannel`, taking loose `channelId`/`locale`/
+// `policyIds` arguments. Those field names do not exist — the same upstream
+// rename that moved `Query.channels` to `Query.catalogViews`
+// (`catalog-views.ts`) moved the write side with it. The three documents
+// below are the ACO Admin UI's own requests, captured verbatim from
+// successful calls, down to the argument names, the request types and the
+// selection sets. Only the operation NAMES are ours (`CreateCatalogView`
+// rather than the UI's `CREATE_CATALOG_VIEW`), matching every other
+// document in this package; an operation name is client-chosen and never
+// reaches the schema.
+//
+// Three properties of those captures are load-bearing:
+//
+//   - `CreateCatalogViewRequest` has NO `defaultPriceBookId`. Creating a
+//     fully-configured view is deliberately TWO calls — create, then update
+//     — never one.
+//   - `UpdateCatalogViewRequest` REPLACES the view it is given, exactly as
+//     `UpdatePolicyRequest` replaces a policy. Every member it declares is
+//     required here for that reason: a caller that cannot supply one is a
+//     caller about to destroy it, and `provision.ts` refuses rather than
+//     defaults. The UI sends `defaultPriceBookId: ""` for "none" and the
+//     response comes back `null`.
+//   - `deleteCatalogView` returns a bare `String` — the deleted id — not an
+//     object, so its document carries no selection set.
+import { AcoSchemaMismatchError } from "../errors.js";
 import type { AdminTransport } from "../http.js";
 
-export const ADMIN_MUTATION_NAMES = ["createChannel", "updateChannel", "deleteChannel", "createPolicy", "updatePolicy", "deletePolicy"] as const;
+export const ADMIN_MUTATION_NAMES = ["createCatalogView", "updateCatalogView", "deleteCatalogView", "createPolicy", "updatePolicy", "deletePolicy"] as const;
 
 export type AdminMutationName = (typeof ADMIN_MUTATION_NAMES)[number];
 
-export interface CreateChannelInput {
-  readonly name: string;
+/** A view's own source. `locale` is its only confirmed member, as on the read side. */
+export interface CatalogViewSourceInput {
   readonly locale: string;
 }
 
-export interface CreateChannelResult {
-  readonly channelId: string;
+export interface CatalogViewLayerSourceInput {
+  readonly locale: string;
+  readonly layer: string;
 }
 
-const CREATE_CHANNEL_DOCUMENT = `mutation CreateChannel($name: String!, $locale: String!) {
-  createChannel(name: $name, locale: $locale) {
-    channelId
+export interface CatalogViewLayerInput {
+  readonly order: number;
+  readonly source: CatalogViewLayerSourceInput;
+}
+
+/** The members both request types share, in the order the captured requests send them. */
+export interface CatalogViewMutationFields {
+  readonly name: string;
+  readonly sources: readonly CatalogViewSourceInput[];
+  readonly policyIds: readonly string[];
+  readonly restrictedAccessKeyIds: readonly string[];
+  readonly protectionEnabled: boolean;
+  readonly allowedPriceBookIds: readonly string[];
+  readonly draft: boolean;
+  readonly layers: readonly CatalogViewLayerInput[];
+}
+
+/** `CreateCatalogViewRequest` — the shared members and nothing else. */
+export type CreateCatalogViewInput = CatalogViewMutationFields;
+
+export interface CreateCatalogViewResult {
+  readonly viewId: string;
+}
+
+/** `UpdateCatalogViewRequest` — the shared members plus `viewId` and `defaultPriceBookId`. */
+export interface UpdateCatalogViewInput extends CatalogViewMutationFields {
+  readonly viewId: string;
+  /** `""` means "no default price book" — that is what the Admin UI sends. */
+  readonly defaultPriceBookId: string;
+}
+
+export interface DeleteCatalogViewInput {
+  readonly viewId: string;
+}
+
+export interface DeleteCatalogViewResult {
+  /** The id the server reports it deleted. `deleteCatalogView` resolves to a bare `String`. */
+  readonly deletedViewId: string;
+}
+
+// The selection set is the captured one, verbatim, including the
+// response-only `createdAt`/`updatedAt`. Nothing here reads most of it —
+// `updatePolicy` selects a whole policy and parses nothing for the same
+// reason: the request that is known to work is the request we send.
+//
+// It is written out once per document rather than interpolated from a
+// shared constant: the document collector in
+// `testing/operation-documents.ts` reads these template literals out of the
+// SOURCE, so an interpolation would hand `document-validity.test.ts` a
+// `${...}` to parse and the scan would lose both documents. The two copies
+// are pinned against each other by `mutations.test.ts`.
+const CREATE_CATALOG_VIEW_DOCUMENT = `mutation CreateCatalogView($viewRequest: CreateCatalogViewRequest!) {
+  createCatalogView(viewRequest: $viewRequest) {
+    viewId
+    name
+    sources {
+      locale
+    }
+    policyIds
+    restrictedAccessKeyIds
+    protectionEnabled
+    defaultPriceBookId
+    allowedPriceBookIds
+    createdAt
+    updatedAt
+    draft
+    layers {
+      order
+      source {
+        locale
+        layer
+      }
+    }
   }
 }`;
 
-export async function createChannel(transport: AdminTransport, input: CreateChannelInput): Promise<CreateChannelResult> {
+/**
+ * Built member by member, never spread — the same rule `updatePolicy`
+ * carries. A spread posts whatever the caller happens to be holding,
+ * including a `defaultPriceBookId` this request type does not declare, and
+ * one undeclared member fails the whole mutation.
+ */
+function toViewRequest(input: CatalogViewMutationFields): Record<string, unknown> {
+  return {
+    name: input.name,
+    sources: input.sources.map((source) => ({ locale: source.locale })),
+    policyIds: [...input.policyIds],
+    restrictedAccessKeyIds: [...input.restrictedAccessKeyIds],
+    protectionEnabled: input.protectionEnabled,
+    allowedPriceBookIds: [...input.allowedPriceBookIds],
+    draft: input.draft,
+    layers: input.layers.map((layer) => ({ order: layer.order, source: { locale: layer.source.locale, layer: layer.source.layer } })),
+  };
+}
+
+export async function createCatalogView(transport: AdminTransport, input: CreateCatalogViewInput): Promise<CreateCatalogViewResult> {
   return transport.execute({
     track: "admin",
-    document: CREATE_CHANNEL_DOCUMENT,
-    variables: { name: input.name, locale: input.locale },
+    document: CREATE_CATALOG_VIEW_DOCUMENT,
+    variables: { viewRequest: toViewRequest(input) },
     idempotent: false,
     parse: (data) => {
-      const record = data as { readonly createChannel?: { readonly channelId?: string } };
-      return { channelId: record.createChannel?.channelId ?? "" };
+      const record = data as { readonly createCatalogView?: { readonly viewId?: unknown } };
+      const viewId = record.createCatalogView?.viewId;
+      if (typeof viewId !== "string") {
+        // Keyed: the mandatory follow-up update is addressed by it, and a
+        // `""` placeholder would send that update at nothing.
+        throw new AcoSchemaMismatchError({ operationName: "CreateCatalogView", fieldPath: "createCatalogView.viewId" });
+      }
+      return { viewId };
     },
   });
 }
 
-export interface UpdateChannelInput {
-  readonly channelId: string;
-  readonly defaultPriceBookId?: string;
-  readonly policyIds?: readonly string[];
-}
-
-const UPDATE_CHANNEL_DOCUMENT = `mutation UpdateChannel($channelId: ID!, $defaultPriceBookId: ID, $policyIds: [ID!]) {
-  updateChannel(channelId: $channelId, defaultPriceBookId: $defaultPriceBookId, policyIds: $policyIds) {
-    channelId
+const UPDATE_CATALOG_VIEW_DOCUMENT = `mutation UpdateCatalogView($viewRequest: UpdateCatalogViewRequest!) {
+  updateCatalogView(viewRequest: $viewRequest) {
+    viewId
+    name
+    sources {
+      locale
+    }
+    policyIds
+    restrictedAccessKeyIds
+    protectionEnabled
+    defaultPriceBookId
+    allowedPriceBookIds
+    createdAt
+    updatedAt
+    draft
+    layers {
+      order
+      source {
+        locale
+        layer
+      }
+    }
   }
 }`;
 
-export async function updateChannel(transport: AdminTransport, input: UpdateChannelInput): Promise<void> {
+export async function updateCatalogView(transport: AdminTransport, input: UpdateCatalogViewInput): Promise<void> {
   await transport.execute({
     track: "admin",
-    document: UPDATE_CHANNEL_DOCUMENT,
-    variables: { channelId: input.channelId, defaultPriceBookId: input.defaultPriceBookId, policyIds: input.policyIds },
+    document: UPDATE_CATALOG_VIEW_DOCUMENT,
+    variables: { viewRequest: { viewId: input.viewId, ...toViewRequest(input), defaultPriceBookId: input.defaultPriceBookId } },
     idempotent: false,
     parse: () => undefined,
   });
 }
 
-export interface DeleteChannelInput {
-  readonly channelId: string;
-}
-
-const DELETE_CHANNEL_DOCUMENT = `mutation DeleteChannel($channelId: ID!) {
-  deleteChannel(channelId: $channelId) {
-    channelId
-  }
+// No selection set: `deleteCatalogView` resolves to `String`, and a leaf
+// field with a selection set is invalid against every GraphQL server.
+const DELETE_CATALOG_VIEW_DOCUMENT = `mutation DeleteCatalogView($viewId: String!) {
+  deleteCatalogView(viewId: $viewId)
 }`;
 
-export async function deleteChannel(transport: AdminTransport, input: DeleteChannelInput): Promise<void> {
-  await transport.execute({
+export async function deleteCatalogView(transport: AdminTransport, input: DeleteCatalogViewInput): Promise<DeleteCatalogViewResult> {
+  return transport.execute({
     track: "admin",
-    document: DELETE_CHANNEL_DOCUMENT,
-    variables: { channelId: input.channelId },
+    document: DELETE_CATALOG_VIEW_DOCUMENT,
+    variables: { viewId: input.viewId },
     idempotent: false,
-    parse: () => undefined,
+    parse: (data) => {
+      const record = data as { readonly deleteCatalogView?: unknown };
+      if (typeof record.deleteCatalogView !== "string") {
+        throw new AcoSchemaMismatchError({ operationName: "DeleteCatalogView", fieldPath: "deleteCatalogView" });
+      }
+      return { deletedViewId: record.deleteCatalogView };
+    },
   });
 }
 

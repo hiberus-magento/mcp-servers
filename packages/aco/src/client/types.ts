@@ -125,6 +125,13 @@ export interface CatalogViewResult {
   readonly allowedPriceBookIds?: readonly string[];
   /** Identifiers of the access keys a protected view is restricted to — ids, never key material. */
   readonly restrictedAccessKeyIds?: readonly string[];
+  /**
+   * The API's own draft flag, and the ONLY thing that makes a view a draft.
+   * It is optional like every other non-keyed field, so an absent `draft`
+   * is `undefined` — not `false`. Callers must treat "unknown" as its own
+   * answer: `cli.ts`'s `view prune` deletes only on `=== true`.
+   */
+  readonly draft?: boolean;
   readonly layers?: readonly CatalogViewLayer[];
 }
 
@@ -161,6 +168,7 @@ export function parseListCatalogViewsResult(data: ClassifiedData<unknown>, opera
       ...withOptional("protectionEnabled", optionalBoolean(viewRecord, "protectionEnabled")),
       ...withOptional("allowedPriceBookIds", optionalStringArray(viewRecord, "allowedPriceBookIds")),
       ...withOptional("restrictedAccessKeyIds", optionalStringArray(viewRecord, "restrictedAccessKeyIds")),
+      ...withOptional("draft", optionalBoolean(viewRecord, "draft")),
       ...withOptional("layers", layers),
     };
   });

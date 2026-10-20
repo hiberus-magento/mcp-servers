@@ -113,8 +113,6 @@ export interface AcoToolsConfig {
   readonly getRuntime: () => AcoRuntime;
 }
 
-const DRAFT_VIEW_PATTERN = /_draft$/i;
-
 /**
  * `aco_toggle_policy_filter`'s result. `previous` is absent when no write
  * was attempted at all (`reason` says why); `changed: false` with a
@@ -177,7 +175,7 @@ export function createAcoTools(config: AcoToolsConfig): readonly AcoMcpTool[] {
 
   const acoListCatalogViews = defineTool({
     name: "aco_list_catalog_views",
-    description: `Use this to discover the catalog views (viewId, locales, default price book, policies) available in this tenant — most other tools need a viewId as input, and this is how an agent finds one. Draft views are excluded by default; set includeDrafts to see them. ${TIER_B_RECOVERY_SENTENCE}`,
+    description: `Use this to discover the catalog views (viewId, locales, default price book, policies) available in this tenant — most other tools need a viewId as input, and this is how an agent finds one. Views the API flags as drafts are excluded by default; set includeDrafts to see them. ${TIER_B_RECOVERY_SENTENCE}`,
     inputSchema: acoListCatalogViewsInput,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
     handler: async (args) => {
@@ -189,8 +187,13 @@ export function createAcoTools(config: AcoToolsConfig): readonly AcoMcpTool[] {
         // more than an agent needs to pick a view (`allowedPriceBookIds`,
         // `restrictedAccessKeyIds`, `layers`), and a spread would widen this
         // tool's output every time the wire narrowing grows a field.
+        // CHANGED DELIBERATELY: this filtered on a `/_draft$/i` match
+        // against the view's NAME. `catalogViews` carries a real `draft`
+        // flag and the two disagree in both directions. A view the server
+        // did not report `draft` for is SHOWN: this is a read, and the
+        // failure that costs an agent something is a view it never sees.
         const views = result.views
-          .filter((view) => includeDrafts || view.name === undefined || !DRAFT_VIEW_PATTERN.test(view.name))
+          .filter((view) => includeDrafts || view.draft !== true)
           .map((view) => ({
             viewId: view.viewId,
             ...present("name", view.name),

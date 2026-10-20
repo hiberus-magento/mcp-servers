@@ -8,6 +8,7 @@
       "protectionEnabled": false,
       "allowedPriceBookIds": ["acpb-demo-eur", "acpb-demo-gbp"],
       "restrictedAccessKeyIds": ["ak-demo-1"],
+      "draft": false,
       "sources": [{ "locale": "en_US" }],
       "layers": [{ "order": 0, "source": { "locale": "en_US", "layer": "base" } }]
     }

@@ -177,14 +177,15 @@ describe("provision — dry-run default and idempotency", () => {
           policiesState = [...policiesState, { policyId: "pol-demo-1", name: "outdoor-gear-discount" }];
           return graphQlOk({ createPolicy: { policyId: "pol-demo-1" } });
         },
-        "POST /admin/graphql ListCatalogViews": () => graphQlOk({ catalogViews: viewsState.map((v) => ({ viewId: v.viewId, name: v.name, sources: [], policyIds: v.policyIds })) }),
-        "POST /admin/graphql CreateChannel": () => {
+        "POST /admin/graphql ListCatalogViews": () =>
+          graphQlOk({ catalogViews: viewsState.map((v) => ({ viewId: v.viewId, name: v.name, sources: [{ locale: "en_US" }], policyIds: v.policyIds })) }),
+        "POST /admin/graphql CreateCatalogView": () => {
           viewsState = [...viewsState, { viewId: "acv-demo-1", name: "outdoor-gear-view", policyIds: [] }];
-          return graphQlOk({ createChannel: { channelId: "acv-demo-1" } });
+          return graphQlOk({ createCatalogView: { viewId: "acv-demo-1" } });
         },
-        "POST /admin/graphql UpdateChannel": () => {
+        "POST /admin/graphql UpdateCatalogView": () => {
           viewsState = viewsState.map((v) => (v.viewId === "acv-demo-1" ? { ...v, policyIds: ["pol-demo-1"] } : v));
-          return graphQlOk({ updateChannel: { channelId: "acv-demo-1" } });
+          return graphQlOk({ updateCatalogView: { viewId: "acv-demo-1" } });
         },
       },
       configDir,
@@ -359,5 +360,112 @@ describe("Untrusted upstream error text is redacted before reaching stderr", () 
     // Inert text (never interpolated into a command) — the literal characters
     // themselves are harmless and may still appear verbatim.
     expect(stderr).toContain(";");
+  });
+});
+
+/**
+ * RED-first. `view prune` DELETES every view it decides is a draft, and it
+ * decided with `/_draft$/i` over the view's NAME. The API has a real
+ * `draft: Boolean`; the two disagree in both directions, and the direction
+ * that costs a tenant something is a live view named `..._draft` being
+ * deleted. Every view below is named to contradict its own flag, so a
+ * name-matching implementation cannot pass.
+ */
+describe("view prune — what counts as a draft comes from the API, not the name", () => {
+  let configDir: string;
+
+  beforeEach(() => {
+    configDir = mkdtempSync(join(tmpdir(), "aco-cli-prune-"));
+  });
+
+  afterEach(() => {
+    rmSync(configDir, { recursive: true, force: true });
+  });
+
+  // Both of the first two are named `..._draft`; only one IS one. A
+  // name-matching prune would count two here and delete the wrong one.
+  const VIEWS = [
+    { viewId: "acv-demo-live", name: "outdoor_gear_eu_en_draft", draft: false, sources: [{ locale: "en_US" }] },
+    { viewId: "acv-demo-also-live", name: "home_decor_eu_en_draft", draft: false, sources: [{ locale: "en_US" }] },
+    { viewId: "acv-demo-draft", name: "outdoor_gear_eu_en", draft: true, sources: [{ locale: "en_US" }] },
+  ];
+
+  it("counts only the view the API flags as a draft, in the dry run", async () => {
+    const { deps, calls } = makeDeps({ "POST /admin/graphql ListCatalogViews": graphQlOk({ catalogViews: VIEWS }) }, configDir);
+
+    const result = await runCli(["view", "prune"], deps);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout ?? "").toContain("would prune 1 draft view(s)");
+    expect(calls.filter((call) => call.operationName === "DeleteCatalogView")).toHaveLength(0);
+  });
+
+  it("--yes deletes the flagged draft and leaves the live `_draft`-named view alone", async () => {
+    const { deps, calls } = makeDeps(
+      {
+        "POST /admin/graphql ListCatalogViews": graphQlOk({ catalogViews: VIEWS }),
+        "POST /admin/graphql DeleteCatalogView": graphQlOk({ deleteCatalogView: "acv-demo-draft" }),
+      },
+      configDir,
+    );
+
+    const result = await runCli(["view", "prune", "--yes"], deps);
+
+    expect(result.exitCode).toBe(0);
+    const deletes = calls.filter((call) => call.operationName === "DeleteCatalogView");
+    expect(deletes).toHaveLength(1);
+    const posted = JSON.parse(deletes[0]?.body ?? "{}") as { readonly variables?: Readonly<Record<string, unknown>> };
+    expect(posted.variables).toEqual({ viewId: "acv-demo-draft" });
+  });
+
+  it("does not delete a view whose `draft` the server did not report", async () => {
+    const { deps, calls } = makeDeps(
+      { "POST /admin/graphql ListCatalogViews": graphQlOk({ catalogViews: [{ viewId: "acv-demo-unknown", name: "outdoor_gear_eu_en_draft", sources: [{ locale: "en_US" }] }] }) },
+      configDir,
+    );
+
+    const result = await runCli(["view", "prune", "--yes"], deps);
+
+    expect(result.exitCode).toBe(0);
+    expect(calls.filter((call) => call.operationName === "DeleteCatalogView")).toHaveLength(0);
+  });
+});
+
+describe("view delete", () => {
+  let configDir: string;
+
+  beforeEach(() => {
+    configDir = mkdtempSync(join(tmpdir(), "aco-cli-view-delete-"));
+  });
+
+  afterEach(() => {
+    rmSync(configDir, { recursive: true, force: true });
+  });
+
+  it("posts the viewId the named view resolves to, and reports the id the server says it deleted", async () => {
+    const { deps, calls } = makeDeps(
+      {
+        "POST /admin/graphql ListCatalogViews": graphQlOk({ catalogViews: [{ viewId: "acv-demo-outdoor-gear-eu", name: "outdoor_gear_eu_en", sources: [{ locale: "en_US" }] }] }),
+        "POST /admin/graphql DeleteCatalogView": graphQlOk({ deleteCatalogView: "acv-demo-outdoor-gear-eu" }),
+      },
+      configDir,
+    );
+
+    const result = await runCli(["view", "delete", "--view", "outdoor_gear_eu_en", "--yes"], deps);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout ?? "").toContain("acv-demo-outdoor-gear-eu");
+    const deletes = calls.filter((call) => call.operationName === "DeleteCatalogView");
+    const posted = JSON.parse(deletes[0]?.body ?? "{}") as { readonly variables?: Readonly<Record<string, unknown>> };
+    expect(posted.variables).toEqual({ viewId: "acv-demo-outdoor-gear-eu" });
+  });
+
+  it("without --yes it issues no delete at all", async () => {
+    const { deps, calls } = makeDeps({}, configDir);
+
+    const result = await runCli(["view", "delete", "--view", "outdoor_gear_eu_en"], deps);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(calls).toHaveLength(0);
   });
 });

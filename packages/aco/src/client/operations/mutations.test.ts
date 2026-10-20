@@ -10,22 +10,52 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createFetchDouble, graphQlOk } from "../../testing/fetch-double.js";
+import { selectionOf } from "../../testing/operation-documents.js";
 import { createAdminTransport } from "../http.js";
-import { ADMIN_MUTATION_NAMES, createChannel, createPolicy, deleteChannel, deletePolicy, updateChannel, updatePolicy } from "./mutations.js";
+import {
+  ADMIN_MUTATION_NAMES,
+  createCatalogView,
+  createPolicy,
+  deleteCatalogView,
+  deletePolicy,
+  updateCatalogView,
+  updatePolicy,
+  type CreateCatalogViewInput,
+  type UpdateCatalogViewInput,
+} from "./mutations.js";
 
 const CLIENT_DIR = fileURLToPath(new URL("../../client/", import.meta.url));
 const MUTATION_TOKEN = "mutation ";
 
 // The six mutation-response fixtures (tasks.md 2.20) live in
-// `packages/aco/fixtures/mutations.json`, synthetic values only.
+// `packages/aco/fixtures/mutations.json`, synthetic values only. The three
+// catalog-view entries mirror the responses the ACO Admin UI's own
+// create/update/delete returned, including `defaultPriceBookId: null` and
+// `deleteCatalogView`'s bare String.
 const MUTATIONS_FIXTURE = JSON.parse(readFileSync(fileURLToPath(new URL("../../../fixtures/mutations.json", import.meta.url)), "utf8")) as {
-  readonly createChannel: { readonly createChannel: { readonly channelId: string } };
-  readonly updateChannel: { readonly updateChannel: { readonly channelId: string } };
-  readonly deleteChannel: { readonly deleteChannel: { readonly channelId: string } };
+  readonly createCatalogView: { readonly createCatalogView: { readonly viewId: string } };
+  readonly updateCatalogView: { readonly updateCatalogView: { readonly viewId: string } };
+  readonly deleteCatalogView: { readonly deleteCatalogView: string };
   readonly createPolicy: { readonly createPolicy: { readonly policyId: string } };
   readonly updatePolicy: { readonly updatePolicy: { readonly policyId: string } };
   readonly deletePolicy: { readonly deletePolicy: { readonly policyId: string } };
 };
+
+/** The selection set all three captured catalog-view requests ask for. */
+const CAPTURED_VIEW_SELECTION = [
+  "viewId",
+  "name",
+  "sources",
+  "policyIds",
+  "restrictedAccessKeyIds",
+  "protectionEnabled",
+  "defaultPriceBookId",
+  "allowedPriceBookIds",
+  "createdAt",
+  "updatedAt",
+  "draft",
+  "layers",
+];
 
 function listSourceFiles(dir: string): string[] {
   const files: string[] = [];
@@ -57,8 +87,17 @@ describe("client/ — `mutation ` token source scan", () => {
 });
 
 describe("ADMIN_MUTATION_NAMES", () => {
+  // CHANGED DELIBERATELY: was `createChannel`/`updateChannel`/`deleteChannel`.
+  // Those three field names no longer exist on the admin schema — the same
+  // rename that moved `Query.channels` to `Query.catalogViews` moved the
+  // write side with it, and the replacements below were captured from the
+  // ACO Admin UI's own successful requests.
   it("is a closed 6-member list", () => {
-    expect([...ADMIN_MUTATION_NAMES].sort()).toEqual(["createChannel", "createPolicy", "deleteChannel", "deletePolicy", "updateChannel", "updatePolicy"]);
+    expect([...ADMIN_MUTATION_NAMES].sort()).toEqual(["createCatalogView", "createPolicy", "deleteCatalogView", "deletePolicy", "updateCatalogView", "updatePolicy"]);
+  });
+
+  it("names no retired channel mutation", () => {
+    expect([...ADMIN_MUTATION_NAMES].filter((name) => /channel/i.test(name))).toEqual([]);
   });
 });
 
@@ -74,35 +113,139 @@ function stubTokenProvider() {
   };
 }
 
-describe("the six admin mutations", () => {
-  it("createChannel issues the named CreateChannel mutation", async () => {
-    const { fetch, calls } = createFetchDouble({ "POST /admin/graphql CreateChannel": graphQlOk(MUTATIONS_FIXTURE.createChannel) });
+function postedBody(body: string | undefined): { readonly query: string; readonly variables: Record<string, unknown> } {
+  const parsed = JSON.parse(body ?? "{}") as { readonly query?: string; readonly variables?: Record<string, unknown> };
+  return { query: parsed.query ?? "", variables: parsed.variables ?? {} };
+}
+
+/**
+ * The three catalog-view writes, asserted against the ACO Admin UI's own
+ * captured requests — document text AND variables, never only the parsed
+ * response. The fetch double routes on the operation NAME extracted from
+ * the body and never reads the rest, so a document that re-grew
+ * `createChannel` would satisfy a response-shaped assertion unchanged.
+ */
+describe("the three catalog-view mutations", () => {
+  const CREATE_INPUT: CreateCatalogViewInput = {
+    name: "outdoor_gear_eu_en",
+    sources: [{ locale: "en_US" }],
+    policyIds: [],
+    restrictedAccessKeyIds: [],
+    protectionEnabled: false,
+    allowedPriceBookIds: [],
+    draft: false,
+    layers: [],
+  };
+
+  const UPDATE_INPUT: UpdateCatalogViewInput = {
+    viewId: MUTATIONS_FIXTURE.updateCatalogView.updateCatalogView.viewId,
+    name: "outdoor_gear_eu_en",
+    sources: [{ locale: "en_US" }],
+    policyIds: [],
+    restrictedAccessKeyIds: [],
+    protectionEnabled: false,
+    defaultPriceBookId: "",
+    allowedPriceBookIds: [],
+    draft: true,
+    layers: [],
+  };
+
+  it("createCatalogView posts the captured document and exactly the members CreateCatalogViewRequest declares", async () => {
+    const { fetch, calls } = createFetchDouble({ "POST /admin/graphql CreateCatalogView": graphQlOk(MUTATIONS_FIXTURE.createCatalogView) });
     const transport = createAdminTransport({ fetch, now: FIXED_NOW, sleep: NOOP_SLEEP, baseUrl: "https://admin.aco.example/admin/graphql", tokenProvider: stubTokenProvider() });
 
-    const result = await createChannel(transport, { name: "outdoor_gear_eu_en", locale: "en_US" });
+    const result = await createCatalogView(transport, CREATE_INPUT);
 
-    expect(result.channelId).toBe(MUTATIONS_FIXTURE.createChannel.createChannel.channelId);
-    expect(calls[0]?.operationName).toBe("CreateChannel");
+    expect(calls[0]?.operationName).toBe("CreateCatalogView");
+    const posted = postedBody(calls[0]?.body);
+    expect(posted.query).toContain("$viewRequest: CreateCatalogViewRequest!");
+    expect(posted.query).not.toMatch(/\bcreateChannel\b/);
+    expect(selectionOf(posted.query, "createCatalogView").fields).toEqual(CAPTURED_VIEW_SELECTION);
+    expect(posted.variables).toEqual({ viewRequest: CREATE_INPUT });
+    expect(result.viewId).toBe(MUTATIONS_FIXTURE.createCatalogView.createCatalogView.viewId);
   });
 
-  it("updateChannel issues the named UpdateChannel mutation", async () => {
-    const { fetch, calls } = createFetchDouble({ "POST /admin/graphql UpdateChannel": graphQlOk(MUTATIONS_FIXTURE.updateChannel) });
+  /**
+   * `CreateCatalogViewRequest` has no `defaultPriceBookId` — which is why
+   * provisioning a fully-configured view is TWO calls. An input member the
+   * request type does not declare fails the whole mutation, so the
+   * projection must drop it rather than pass the caller's object along.
+   */
+  it("never sends defaultPriceBookId on the create, even when the caller holds one", async () => {
+    const { fetch, calls } = createFetchDouble({ "POST /admin/graphql CreateCatalogView": graphQlOk(MUTATIONS_FIXTURE.createCatalogView) });
     const transport = createAdminTransport({ fetch, now: FIXED_NOW, sleep: NOOP_SLEEP, baseUrl: "https://admin.aco.example/admin/graphql", tokenProvider: stubTokenProvider() });
 
-    await updateChannel(transport, { channelId: MUTATIONS_FIXTURE.updateChannel.updateChannel.channelId, defaultPriceBookId: "acpb-demo-eur" });
+    await createCatalogView(transport, { ...CREATE_INPUT, defaultPriceBookId: "acpb-demo-eur" } as never);
 
-    expect(calls[0]?.operationName).toBe("UpdateChannel");
+    const viewRequest = postedBody(calls[0]?.body).variables["viewRequest"] as Record<string, unknown>;
+    expect(Object.keys(viewRequest).sort()).toEqual(["allowedPriceBookIds", "draft", "layers", "name", "policyIds", "protectionEnabled", "restrictedAccessKeyIds", "sources"]);
   });
 
-  it("deleteChannel issues the named DeleteChannel mutation", async () => {
-    const { fetch, calls } = createFetchDouble({ "POST /admin/graphql DeleteChannel": graphQlOk(MUTATIONS_FIXTURE.deleteChannel) });
+  it("updateCatalogView posts the captured document and the WHOLE view in one $viewRequest", async () => {
+    const { fetch, calls } = createFetchDouble({ "POST /admin/graphql UpdateCatalogView": graphQlOk(MUTATIONS_FIXTURE.updateCatalogView) });
     const transport = createAdminTransport({ fetch, now: FIXED_NOW, sleep: NOOP_SLEEP, baseUrl: "https://admin.aco.example/admin/graphql", tokenProvider: stubTokenProvider() });
 
-    await deleteChannel(transport, { channelId: MUTATIONS_FIXTURE.deleteChannel.deleteChannel.channelId });
+    await updateCatalogView(transport, UPDATE_INPUT);
 
-    expect(calls[0]?.operationName).toBe("DeleteChannel");
+    expect(calls[0]?.operationName).toBe("UpdateCatalogView");
+    const posted = postedBody(calls[0]?.body);
+    expect(posted.query).toContain("$viewRequest: UpdateCatalogViewRequest!");
+    expect(posted.query).not.toMatch(/\bupdateChannel\b/);
+    expect(selectionOf(posted.query, "updateCatalogView").fields).toEqual(CAPTURED_VIEW_SELECTION);
+    expect(posted.variables).toEqual({ viewRequest: UPDATE_INPUT });
   });
 
+  /**
+   * `updateCatalogView` REPLACES the view it is given, exactly as
+   * `updatePolicy` replaces a policy. A spread would post whatever the
+   * caller happened to be holding — a `createdAt` read back off a previous
+   * response is the concrete case — and one undeclared member of
+   * `UpdateCatalogViewRequest` fails the whole write.
+   */
+  it("posts only the ten members UpdateCatalogViewRequest declares — never a response-only field", async () => {
+    const { fetch, calls } = createFetchDouble({ "POST /admin/graphql UpdateCatalogView": graphQlOk(MUTATIONS_FIXTURE.updateCatalogView) });
+    const transport = createAdminTransport({ fetch, now: FIXED_NOW, sleep: NOOP_SLEEP, baseUrl: "https://admin.aco.example/admin/graphql", tokenProvider: stubTokenProvider() });
+
+    await updateCatalogView(transport, { ...UPDATE_INPUT, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" } as never);
+
+    const viewRequest = postedBody(calls[0]?.body).variables["viewRequest"] as Record<string, unknown>;
+    expect(Object.keys(viewRequest).sort()).toEqual([
+      "allowedPriceBookIds",
+      "defaultPriceBookId",
+      "draft",
+      "layers",
+      "name",
+      "policyIds",
+      "protectionEnabled",
+      "restrictedAccessKeyIds",
+      "sources",
+      "viewId",
+    ]);
+  });
+
+  /**
+   * `deleteCatalogView` returns a bare `String` — the deleted id — not an
+   * object, so it has no selection set at all. A document that asked for
+   * one would be rejected by every GraphQL server, and a parser that read
+   * `.viewId` off a string would silently return `undefined` forever.
+   */
+  it("deleteCatalogView posts $viewId: String!, selects nothing, and reports the id the server returned", async () => {
+    const { fetch, calls } = createFetchDouble({ "POST /admin/graphql DeleteCatalogView": graphQlOk(MUTATIONS_FIXTURE.deleteCatalogView) });
+    const transport = createAdminTransport({ fetch, now: FIXED_NOW, sleep: NOOP_SLEEP, baseUrl: "https://admin.aco.example/admin/graphql", tokenProvider: stubTokenProvider() });
+
+    const result = await deleteCatalogView(transport, { viewId: MUTATIONS_FIXTURE.deleteCatalogView.deleteCatalogView });
+
+    expect(calls[0]?.operationName).toBe("DeleteCatalogView");
+    const posted = postedBody(calls[0]?.body);
+    expect(posted.query).toContain("$viewId: String!");
+    expect(posted.query).not.toMatch(/\bdeleteChannel\b/);
+    expect(selectionOf(posted.query, "deleteCatalogView").fields).toEqual([]);
+    expect(posted.variables).toEqual({ viewId: MUTATIONS_FIXTURE.deleteCatalogView.deleteCatalogView });
+    expect(result.deletedViewId).toBe(MUTATIONS_FIXTURE.deleteCatalogView.deleteCatalogView);
+  });
+});
+
+describe("the three policy mutations", () => {
   it("createPolicy issues the named CreatePolicy mutation", async () => {
     const { fetch, calls } = createFetchDouble({ "POST /admin/graphql CreatePolicy": graphQlOk(MUTATIONS_FIXTURE.createPolicy) });
     const transport = createAdminTransport({ fetch, now: FIXED_NOW, sleep: NOOP_SLEEP, baseUrl: "https://admin.aco.example/admin/graphql", tokenProvider: stubTokenProvider() });

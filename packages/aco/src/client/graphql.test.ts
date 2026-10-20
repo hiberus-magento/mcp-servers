@@ -111,3 +111,104 @@ describe("classify()", () => {
     expect(result).toEqual({ ok: true });
   });
 });
+
+/**
+ * RED-first. A GraphQL response may carry MANY `errors[]` entries, and
+ * `classify()` used to keep only `errors[0]`. Against the live service that
+ * reduced a multi-error validation failure to
+ * `ACO GraphQL operation "SearchCatalog" failed: Validation error(s)` — the
+ * one entry that names nothing — while the entries naming the offending
+ * ARGUMENT were discarded. Diagnosing it cost a bisection; the server had
+ * said which argument all along.
+ *
+ * The messages below are written to that failure's shape (a rejected
+ * `page_size`); they are not copied from a tenant response.
+ */
+describe("classify() — every message in errors[] survives, not just the first", () => {
+  const MULTI_ERROR = [
+    { message: "Validation error(s)" },
+    { message: "Validation error (WrongType@[productSearch]) : argument 'page_size' with value 'IntValue{value=0}' is not a valid 'Int'" },
+    { message: "Validation error (WrongType@[productSearch]) : argument 'page_size' must be greater than 0" },
+  ] as const;
+
+  it("names every message in the rendered error, including the ones after the first", () => {
+    try {
+      classify({ data: null, errors: MULTI_ERROR }, { name: "SearchCatalog" });
+      expect.unreachable("classify() should have thrown");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AcoOperationError);
+      for (const entry of MULTI_ERROR) {
+        expect((error as AcoOperationError).message).toContain(entry.message);
+      }
+    }
+  });
+
+  it("carries every message as data on the error, in wire order", () => {
+    try {
+      classify({ data: null, errors: MULTI_ERROR }, { name: "SearchCatalog" });
+      expect.unreachable("classify() should have thrown");
+    } catch (error) {
+      expect((error as AcoOperationError).messages).toEqual(MULTI_ERROR.map((entry) => entry.message));
+    }
+  });
+
+  it("surfaces the other messages alongside a CLASSIFIED entry too — a scope failure reported with two others keeps all three", () => {
+    try {
+      classify(
+        { errors: [{ message: "field `foo` is not defined" }, { message: "This operation is forbidden for the current scope" }, { message: "field `bar` is not defined" }] },
+        { name: "ListCatalogViews" },
+      );
+      expect.unreachable("classify() should have thrown");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AdminScopeError);
+      const scopeError = error as AdminScopeError;
+      // The classified entry leads — it is the one that chose this class and
+      // its remedy — and the rest follow in wire order.
+      expect(scopeError.messages[0]).toBe("This operation is forbidden for the current scope");
+      expect([...scopeError.messages].sort()).toEqual([
+        "This operation is forbidden for the current scope",
+        "field `bar` is not defined",
+        "field `foo` is not defined",
+      ]);
+      expect(scopeError.message).toContain("field `bar` is not defined");
+    }
+  });
+
+  /**
+   * Bounded, because an error message ends up in logs: the rendered string
+   * carries the first few and says how many it dropped, while `messages`
+   * keeps every one for a caller that wants them all.
+   */
+  it("bounds the rendered message and says how many it left out, without dropping them from `messages`", () => {
+    const many = Array.from({ length: 9 }, (_, index) => ({ message: `rejected argument number ${index}` }));
+    try {
+      classify({ errors: many }, { name: "SearchCatalog" });
+      expect.unreachable("classify() should have thrown");
+    } catch (error) {
+      const operationError = error as AcoOperationError;
+      expect(operationError.messages).toHaveLength(9);
+      expect(operationError.message).toContain("rejected argument number 0");
+      expect(operationError.message).not.toContain("rejected argument number 8");
+      expect(operationError.message).toContain("(+4 more)");
+    }
+  });
+
+  it("truncates a single enormous message rather than putting the whole thing in a log line", () => {
+    const huge = "x".repeat(5000);
+    try {
+      classify({ errors: [{ message: huge }] }, { name: "SearchCatalog" });
+      expect.unreachable("classify() should have thrown");
+    } catch (error) {
+      expect((error as AcoOperationError).message.length).toBeLessThan(600);
+    }
+  });
+
+  it("an errors[] entry with no message at all does not become an empty slot", () => {
+    try {
+      classify({ errors: [{ extensions: { classification: "internal-error" } }, { message: "the real reason" }] }, { name: "ListPolicies" });
+      expect.unreachable("classify() should have thrown");
+    } catch (error) {
+      expect((error as AcoOperationError).messages).toEqual(["the real reason"]);
+    }
+  });
+});

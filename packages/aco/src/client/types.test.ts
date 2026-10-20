@@ -44,6 +44,25 @@ describe("parseListCatalogViewsResult", () => {
     expect(result.views).toEqual([]);
   });
 
+  /**
+   * `draft` decides what `view prune` DELETES, so it has to come off the
+   * wire rather than off the view's name. A view whose name ends `_draft`
+   * but whose `draft` is `false` is not a draft, and nothing downstream may
+   * be able to conclude otherwise from this result.
+   */
+  it("carries the real `draft` field, independent of the name", () => {
+    const result = parseListCatalogViewsResult(
+      { catalogViews: [{ viewId: "acv-1", name: "outdoor_gear_eu_en_draft", draft: false }, { viewId: "acv-2", name: "outdoor_gear_eu_en", draft: true }] } as never,
+      "ListCatalogViews",
+    );
+    expect(result.views.map((view) => view.draft)).toEqual([false, true]);
+  });
+
+  it("resolves an absent `draft` to undefined rather than guessing false", () => {
+    const result = parseListCatalogViewsResult({ catalogViews: [{ viewId: "acv-1", name: "outdoor_gear_eu_en_draft" }] } as never, "ListCatalogViews");
+    expect(result.views[0]?.draft).toBeUndefined();
+  });
+
   it("throws AcoSchemaMismatchError naming the operation and field path when viewId is missing", () => {
     expect(() => parseListCatalogViewsResult({ catalogViews: [{ name: "View One" }] } as never, "ListCatalogViews")).toThrowError(AcoSchemaMismatchError);
     try {

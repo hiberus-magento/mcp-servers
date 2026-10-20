@@ -1,7 +1,37 @@
 {
-  "createChannel": { "createChannel": { "channelId": "chn-demo-1" } },
-  "updateChannel": { "updateChannel": { "channelId": "chn-demo-1" } },
-  "deleteChannel": { "deleteChannel": { "channelId": "chn-demo-1" } },
+  "createCatalogView": {
+    "createCatalogView": {
+      "viewId": "acv-demo-1",
+      "name": "outdoor_gear_eu_en",
+      "sources": [{ "locale": "en_US" }],
+      "policyIds": [],
+      "restrictedAccessKeyIds": [],
+      "protectionEnabled": false,
+      "defaultPriceBookId": null,
+      "allowedPriceBookIds": [],
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "draft": false,
+      "layers": []
+    }
+  },
+  "updateCatalogView": {
+    "updateCatalogView": {
+      "viewId": "acv-demo-1",
+      "name": "outdoor_gear_eu_en",
+      "sources": [{ "locale": "en_US" }],
+      "policyIds": [],
+      "restrictedAccessKeyIds": [],
+      "protectionEnabled": false,
+      "defaultPriceBookId": null,
+      "allowedPriceBookIds": [],
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "draft": true,
+      "layers": []
+    }
+  },
+  "deleteCatalogView": { "deleteCatalogView": "acv-demo-1" },
   "createPolicy": { "createPolicy": { "policyId": "pol-demo-1" } },
   "updatePolicy": { "updatePolicy": { "policyId": "pol-demo-1" } },
   "deletePolicy": { "deletePolicy": { "policyId": "pol-demo-1" } }

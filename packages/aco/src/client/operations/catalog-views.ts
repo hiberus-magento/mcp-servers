@@ -23,13 +23,19 @@
 //
 // The old vocabulary is deliberately gone from this module rather than kept
 // as an alias — leaving it is how the next reader re-learns the wrong model.
-// The `createChannel`/`updateChannel`/`deleteChannel` writes in
-// `mutations.ts` keep their original names because they were NOT verified
-// against the live service — executing one against a real tenant is
-// destructive — so renaming them here would assert a schema change nobody
-// has observed. (The wording avoids the `mutation` + space token that
-// `mutations.test.ts` scans `client/**` for; that scan is deliberately
-// crude, and the comment bends around it rather than the reverse.)
+// The write-side counterparts in `mutations.ts` moved with it and are now
+// `createCatalogView`/`updateCatalogView`/`deleteCatalogView`, captured from
+// the ACO Admin UI's own successful requests. (The wording here avoids the
+// `mutation` + space token that `mutations.test.ts` scans `client/**` for;
+// that scan is deliberately crude, and the comment bends around it rather
+// than the reverse.)
+//
+// `draft` is selected because it is the ONLY thing that makes a view a
+// draft. This package used to decide that with `/_draft$/i` over the view's
+// NAME, in `aco_list_catalog_views` and — far worse — in `view prune`,
+// which DELETES what it decides is a draft. The heuristic is wrong in both
+// directions, and `draft` was verified readable here against the live
+// service.
 import type { AdminTransport } from "../http.js";
 import { parseListCatalogViewsResult, type ListCatalogViewsResult } from "../types.js";
 
@@ -42,6 +48,7 @@ const LIST_CATALOG_VIEWS_DOCUMENT = `query ListCatalogViews {
     protectionEnabled
     allowedPriceBookIds
     restrictedAccessKeyIds
+    draft
     sources {
       locale
     }

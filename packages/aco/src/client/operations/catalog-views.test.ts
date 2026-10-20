@@ -11,6 +11,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createFetchDouble, graphQlOk } from "../../testing/fetch-double.js";
+import { selectionOf } from "../../testing/operation-documents.js";
 import { createAdminTransport } from "../http.js";
 import { listCatalogViews } from "./catalog-views.js";
 
@@ -23,6 +24,7 @@ const CATALOG_VIEWS_FIXTURE = JSON.parse(readFileSync(fileURLToPath(new URL("../
     readonly protectionEnabled: boolean;
     readonly allowedPriceBookIds: readonly string[];
     readonly restrictedAccessKeyIds: readonly string[];
+    readonly draft: boolean;
     readonly sources: readonly { readonly locale: string }[];
     readonly layers: readonly { readonly order: number; readonly source: { readonly locale: string; readonly layer: string } }[];
   }[];
@@ -69,10 +71,27 @@ describe("listCatalogViews", () => {
         protectionEnabled: expected.protectionEnabled,
         allowedPriceBookIds: expected.allowedPriceBookIds,
         restrictedAccessKeyIds: expected.restrictedAccessKeyIds,
+        draft: expected.draft,
         layers: expected.layers,
       },
     ]);
     expect(calls[0]?.operationName).toBe("ListCatalogViews");
+  });
+
+  /**
+   * `draft` is why `cli.ts`'s `view prune` deletes anything at all, so the
+   * document has to actually ask for it. It did not: the package decided
+   * what a draft was from a `/_draft$/i` match on the view's NAME, which is
+   * wrong in both directions — and the destructive command was the one
+   * acting on the guess.
+   */
+  it("selects the real `draft` field, the one `view prune` and `includeDrafts` decide on", async () => {
+    const { transport, calls } = buildTransport({ "POST /admin/graphql ListCatalogViews": graphQlOk(CATALOG_VIEWS_FIXTURE) });
+
+    await listCatalogViews(transport);
+
+    const posted = JSON.parse(calls[0]?.body ?? "{}") as { readonly query?: string };
+    expect(selectionOf(posted.query ?? "", "catalogViews").fields).toContain("draft");
   });
 
   /**

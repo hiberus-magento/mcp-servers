@@ -428,11 +428,19 @@ describe("aco_list_catalog_views — the id an agent feeds back into the other t
     expect(payload.views[0]?.["locales"]).toEqual(["en_US"]);
   });
 
-  it("still excludes _draft views by default and includes them on request", async () => {
+  /**
+   * CHANGED DELIBERATELY: this test used to prove the `_draft` NAME suffix
+   * was what excluded a view, which is the defect, not the contract. The
+   * API has a real `draft: Boolean`, and the two disagree in both
+   * directions: a live view may be named `..._draft`, and a genuine draft
+   * need not be. Every view below is named to contradict its own `draft`
+   * flag, so a filter that reads the name cannot pass.
+   */
+  it("decides on the real `draft` field, not the view's name — a `_draft`-named live view is NOT hidden", async () => {
     persistValidBearer(configDir);
     const views = [
-      { viewId: "acv-demo-live", name: "outdoor_gear_eu_en", sources: [{ locale: "en_US" }] },
-      { viewId: "acv-demo-draft", name: "outdoor_gear_eu_en_draft", sources: [{ locale: "en_US" }] },
+      { viewId: "acv-demo-live", name: "outdoor_gear_eu_en_draft", draft: false, sources: [{ locale: "en_US" }] },
+      { viewId: "acv-demo-draft", name: "outdoor_gear_eu_en", draft: true, sources: [{ locale: "en_US" }] },
     ];
     const { client } = buildClient({ "POST /admin/graphql ListCatalogViews": graphQlOk({ catalogViews: views }) }, configDir);
     const tools = createAcoTools({ getRuntime: () => ({ client }) });
@@ -443,6 +451,24 @@ describe("aco_list_catalog_views — the id an agent feeds back into the other t
 
     const shown = JSON.parse((await listViews.invoke({ includeDrafts: true }, {})).content[0]?.text ?? "{}") as { readonly views: readonly { readonly viewId: string }[] };
     expect(shown.views.map((v) => v.viewId)).toEqual(["acv-demo-live", "acv-demo-draft"]);
+  });
+
+  /**
+   * A view the server reported without `draft` at all is shown rather than
+   * hidden: this is a read, so the failure that costs the agent something
+   * is a view it never sees.
+   */
+  it("shows a view whose `draft` the server did not report", async () => {
+    persistValidBearer(configDir);
+    const { client } = buildClient(
+      { "POST /admin/graphql ListCatalogViews": graphQlOk({ catalogViews: [{ viewId: "acv-demo-unknown", name: "outdoor_gear_eu_en_draft", sources: [{ locale: "en_US" }] }] }) },
+      configDir,
+    );
+    const tools = createAcoTools({ getRuntime: () => ({ client }) });
+    const listViews = tools.find((t) => t.name === "aco_list_catalog_views")!;
+
+    const payload = JSON.parse((await listViews.invoke({}, {})).content[0]?.text ?? "{}") as { readonly views: readonly { readonly viewId: string }[] };
+    expect(payload.views.map((v) => v.viewId)).toEqual(["acv-demo-unknown"]);
   });
 
   it("names viewId, not channelId, in its description — an agent picks arguments by description", () => {

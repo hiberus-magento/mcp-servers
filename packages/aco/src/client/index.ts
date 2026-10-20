@@ -27,7 +27,7 @@ import { createAdminTransport, createMerchandisingTransport, type AdminTransport
 import type { CatalogViewAccessTokenSupplier } from "./headers.js";
 import { listCatalogViews } from "./operations/catalog-views.js";
 import { getFacetValues, type FacetValuesOptions } from "./operations/facets.js";
-import { createChannel, createPolicy, deleteChannel, deletePolicy, updateChannel, updatePolicy } from "./operations/mutations.js";
+import { createCatalogView, createPolicy, deleteCatalogView, deletePolicy, updateCatalogView, updatePolicy } from "./operations/mutations.js";
 import { listPriceBooks, type ListPriceBooksOptions } from "./operations/price-books.js";
 import { listPolicies } from "./operations/policies.js";
 import { listScopes } from "./operations/scopes.js";
@@ -55,11 +55,17 @@ export type {
   SearchCatalogResult,
 } from "./types.js";
 export type {
-  CreateChannelInput,
+  CatalogViewLayerInput,
+  CatalogViewLayerSourceInput,
+  CatalogViewMutationFields,
+  CatalogViewSourceInput,
+  CreateCatalogViewInput,
+  CreateCatalogViewResult,
   CreatePolicyInput,
-  DeleteChannelInput,
+  DeleteCatalogViewInput,
+  DeleteCatalogViewResult,
   DeletePolicyInput,
-  UpdateChannelInput,
+  UpdateCatalogViewInput,
   UpdatePolicyActionInput,
   UpdatePolicyFilterInput,
   UpdatePolicyInput,
@@ -144,16 +150,15 @@ export interface AcoClient {
     readonly listScopes: () => Promise<ListScopesResult>;
   };
   /**
-   * `listCatalogViews` is the renamed admin query (`operations/catalog-views.ts`).
-   * The three mutations keep their original wire names: that rename was
-   * never verified against the live service, and naming them as though it
-   * had been is the same mistake this rename is fixing.
+   * The renamed admin query (`operations/catalog-views.ts`) and the three
+   * renamed writes that moved with it (`operations/mutations.ts`).
+   * `updateCatalogView` REPLACES the view it is given — see its input type.
    */
   readonly catalogViews: {
     readonly listCatalogViews: () => Promise<ListCatalogViewsResult>;
-    readonly createChannel: (input: Parameters<typeof createChannel>[1]) => ReturnType<typeof createChannel>;
-    readonly updateChannel: (input: Parameters<typeof updateChannel>[1]) => ReturnType<typeof updateChannel>;
-    readonly deleteChannel: (input: Parameters<typeof deleteChannel>[1]) => ReturnType<typeof deleteChannel>;
+    readonly createCatalogView: (input: Parameters<typeof createCatalogView>[1]) => ReturnType<typeof createCatalogView>;
+    readonly updateCatalogView: (input: Parameters<typeof updateCatalogView>[1]) => ReturnType<typeof updateCatalogView>;
+    readonly deleteCatalogView: (input: Parameters<typeof deleteCatalogView>[1]) => ReturnType<typeof deleteCatalogView>;
   };
   readonly policies: {
     readonly listPolicies: () => Promise<ListPoliciesResult>;
@@ -220,9 +225,9 @@ export function createAcoClient(deps: AcoClientDeps): AcoClient {
     },
     catalogViews: {
       listCatalogViews: () => listCatalogViews(admin),
-      createChannel: (input) => createChannel(admin, input),
-      updateChannel: (input) => updateChannel(admin, input),
-      deleteChannel: (input) => deleteChannel(admin, input),
+      createCatalogView: (input) => createCatalogView(admin, input),
+      updateCatalogView: (input) => updateCatalogView(admin, input),
+      deleteCatalogView: (input) => deleteCatalogView(admin, input),
     },
     policies: {
       listPolicies: () => listPolicies(admin),
@@ -258,8 +263,8 @@ export function createAcoClient(deps: AcoClientDeps): AcoClient {
             listPolicies: () => listPolicies(admin),
             createPolicy: (input) => createPolicy(admin, input),
             listCatalogViews: () => listCatalogViews(admin),
-            createChannel: (input) => createChannel(admin, input),
-            updateChannel: (input) => updateChannel(admin, input),
+            createCatalogView: (input) => createCatalogView(admin, input),
+            updateCatalogView: (input) => updateCatalogView(admin, input),
           },
           options,
         ),
