@@ -183,33 +183,102 @@ hand-off.)
   proving one shared row rather than two independently-parsed copies
 
 
-### Requirement: Cold-Start Time Budget
+### Requirement: Cold-Start Startup-Cost Budget
 
-The conformance suite MUST assert that a server's cold-start time —
-measured from `spawn()` of the built entrypoint to the `initialize`
-response the suite's setup already performs — does not exceed a
-documented, CI-blocking threshold. The threshold value MUST be recorded in
-this spec together with the methodology that produced it: at least 15 cold
-spawns (no warm pool) measured on the actual CI runner (not a local
-development machine), with p95 computed from those measurements and a
-documented safety margin applied on top of it. The threshold MUST be
-re-derived, not silently adjusted, if the bundle's shape changes
-materially.
+The conformance suite MUST assert that a server's own startup cost — the
+CPU time the process spends loading and initialising the built entrypoint,
+measured with `process.cpuUsage()` across `await import()` of that bundle —
+does not exceed a documented, CI-blocking threshold.
 
-#### Scenario: Cold start within budget passes
+The measurement is CPU time, not wall-clock time, and this is load-bearing.
+Wall clock counts the time a process spends descheduled, so on a shared CI
+runner it measures the runner's contention rather than the bundle. Measured
+on 2026-10-20 across all three server bundles: under CPU oversubscription
+the wall-clock figure moved more than 20x (25-27 ms idle to 379-592 ms
+contended) while the CPU figure moved 1.3x (28-30 ms to 31-39 ms), with
+nothing about the bundles changed. A ratio against a cheap baseline does
+not rescue wall clock either: the two sides are not duration-matched, so
+the heavier side accumulates more preemption and the ratio inflates under
+load rather than cancelling.
 
-- GIVEN a built server entrypoint whose measured cold-start time is under
-  the documented threshold
-- WHEN the suite spawns it and times to the `initialize` response
-- THEN the cold-start assertion passes
+The statistic MUST be the MINIMUM of at least 7 samples, not the median or
+p95. Every source of interference can only make a sample slower, so the
+minimum is the least contaminated one — and it removes the need for a
+warm-up discard, because a cold first sample never wins.
 
-#### Scenario: Cold start exceeding budget fails
+The threshold value MUST be recorded in this spec together with the
+methodology that produced it: the sample count, the statistic, the worst
+measured figure it was derived from, and the safety multiplier applied. It
+MUST be re-derived, not silently adjusted, if the bundle's shape changes
+materially or if the runner's per-core speed changes by more than the
+headroom the recorded derivation leaves.
 
-- GIVEN a built server entrypoint whose measured cold-start time exceeds
-  the documented threshold
-- WHEN the suite spawns it and times to the `initialize` response
-- THEN the cold-start assertion fails and reports the measured time
-  against the threshold
+DISCLOSED LIMITATION, deliberately accepted: a CPU-time budget does not
+fire for a server that is slow for a reason costing no CPU — a sleep, or a
+network call at startup. A wall-clock measurement of the same subject is
+retained as a non-blocking diagnostic, and the gap is pinned by a test
+asserting that the CPU gate does NOT fire for a sleep-based subject, so the
+limitation cannot quietly become untrue. Such a server is still caught by
+the suite's own setup, which awaits a real `initialize` response.
+
+This requirement supersedes the previous wall-clock formulation, which
+timed from `spawn()` to the `initialize` response against a threshold
+derived from at least 15 cold spawns on the CI runner. That formulation was
+abandoned for two reasons recorded here rather than silently: its "measured
+on the actual CI runner" clause was never satisfied — the committed figure
+came from a development machine, as its own disclosed limitation said — and
+its rounding inflated an 82 ms measurement to a 250 ms threshold, leaving
+5.9x of headroom, so it flaked under contention while being too loose to
+catch a real regression. The replacement leaves 1.94x over its worst
+contended measurement: it is more sensitive than what it replaces, not
+less.
+
+#### Recorded threshold and its derivation
+
+- **Threshold:** `STARTUP_CPU_BUDGET_MS = 75`
+  (`packages/mcp-testing/src/conformance/cold-start.ts`).
+- **Statistic:** minimum of 7 samples of `process.cpuUsage()` across
+  `await import()` of the built entrypoint.
+- **Measured 2026-10-20**, across all three server bundles on a 12-core
+  development machine: 28.2-29.9 ms idle, 30.8-38.6 ms under CPU
+  oversubscription at load averages of 230-400.
+- **Derivation:** the repository's existing formula applied to the worst
+  figure the statistic ever produced — `ceil(38.6 * 1.75) = 68`, rounded up
+  to the next 25 ms, giving 75. That leaves 2.6x over the idle measurement
+  and 1.94x over the worst contended one.
+- **Re-derive when:** the bundle's shape changes materially, or the runner's
+  per-core speed is more than ~2.5x slower than the measuring machine, which
+  is where an unchanged bundle would cross 75 ms.
+- **Known gap in the derivation:** these figures come from a development
+  machine, not the CI runner. CPU time is immune to contention but not to
+  core speed, so the multiplier above is the margin that carries this across
+  machines. The same gap existed in the superseded wall-clock figure and is
+  inherited, not introduced.
+
+#### Scenario: Startup cost within budget passes
+
+- GIVEN a built server entrypoint whose minimum sampled startup CPU time is
+  at or under the documented threshold
+- WHEN the suite imports it and samples `process.cpuUsage()` across the
+  import
+- THEN the startup-cost assertion passes
+
+#### Scenario: Startup cost exceeding budget fails
+
+- GIVEN a built server entrypoint whose minimum sampled startup CPU time
+  exceeds the documented threshold
+- WHEN the suite imports it and samples `process.cpuUsage()` across the
+  import
+- THEN the assertion fails and reports every sample's CPU and wall-clock
+  figure against the threshold
+
+#### Scenario: A subject burning CPU at import time is caught
+
+- GIVEN a module that performs real work at module top level, the shape a
+  startup regression takes
+- WHEN the suite measures it through the same harness
+- THEN the assertion fails, proving the gate discriminates rather than
+  merely passing
 
 #### Scenario: Threshold is recorded with its derivation methodology
 

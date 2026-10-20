@@ -34,7 +34,12 @@ async function lintFixture(relativeFixturePath: string) {
   return result;
 }
 
-describe("magento-cloud client-boundary eslint-fixtures", () => {
+// The explicit timeout bounds a HANG, not the linter's speed: what these
+// cases assert is that the rule fires, never how long ESLint takes to load
+// the root config and typescript-eslint. That load costs ~0.5 s idle and was
+// measured past vitest's 5 s default on a contended machine, which failed
+// the run on a limit that was asserting nothing about the boundary rule.
+describe("magento-cloud client-boundary eslint-fixtures", { timeout: 120_000 }, () => {
   it("flags a deep import into packages/magento-cloud/src/client/classify.ts with no-restricted-imports", async () => {
     const result = await lintFixture("./eslint-fixtures/deep-client-import.ts");
     const ruleIds = result.messages.map((message) => message.ruleId);

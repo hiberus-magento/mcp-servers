@@ -14,8 +14,21 @@
           "hiberus-eds"
         ],
         "env": [
-          "EDS_ORG",
-          "EDS_TOKEN"
+          {
+            "name": "EDS_ORG",
+            "required": true,
+            "description": "The Edge Delivery Services organisation every eds_* tool addresses. The server resolves it on the first tool call and refuses the call without it; tools/list still works."
+          },
+          {
+            "name": "EDS_TOKEN",
+            "required": false,
+            "description": "Admin API bearer. Every tool call needs one, but it may come from this variable OR from the credential file written by `hiberus-eds auth token set`, so neither source is required on its own."
+          },
+          {
+            "name": "EDS_SITE",
+            "required": false,
+            "description": "Default site for `hiberus-eds` CLI commands that take one. Read by the CLI only — the MCP server never reads it, and a site is passed per tool call instead."
+          }
         ]
       },
       "tools": [
@@ -80,8 +93,41 @@
           "hiberus-aco"
         ],
         "env": [
-          "ACO_CLIENT_ID",
-          "ACO_CLIENT_SECRET"
+          {
+            "name": "ACO_ADMIN_BASE_URL",
+            "required": true,
+            "description": "Base URL of this tenant's ACO admin API. Resolved on the first tool call; without it every aco_* tool fails with a configuration error, not a credential error."
+          },
+          {
+            "name": "ACO_MERCHANDISING_BASE_URL",
+            "required": true,
+            "description": "Base URL of this tenant's ACO Merchandising API. Required on exactly the same terms as ACO_ADMIN_BASE_URL — the server checks both together."
+          },
+          {
+            "name": "ACO_TOKEN",
+            "required": false,
+            "description": "An admin Bearer pasted from a Studio session. One of two ways to obtain a credential — the other is minting from ACO_CLIENT_ID/ACO_CLIENT_SECRET — and it may also come from the credential file written by `hiberus-aco auth token set`."
+          },
+          {
+            "name": "ACO_CLIENT_ID",
+            "required": false,
+            "description": "IMS client id. With ACO_CLIENT_SECRET it mints an admin Bearer, which is the alternative to supplying ACO_TOKEN; the credential-free catalog-search tools need neither."
+          },
+          {
+            "name": "ACO_CLIENT_SECRET",
+            "required": false,
+            "description": "IMS client secret. Only meaningful together with ACO_CLIENT_ID; the two are checked as a pair."
+          },
+          {
+            "name": "ACO_API_KEY",
+            "required": false,
+            "description": "Sent as the `x-api-key` header on admin requests when set, omitted when not. Whether a tenant needs it is unconfirmed (aco design.md, Open Questions)."
+          },
+          {
+            "name": "ACO_IMS_ORG_ID",
+            "required": false,
+            "description": "Sent as the `x-gw-ims-org-id` header on admin requests when set, omitted when not. Same unconfirmed status as ACO_API_KEY."
+          }
         ]
       },
       "tools": [
@@ -132,7 +178,11 @@
           "hiberus-magento-cloud"
         ],
         "env": [
-          "MAGENTO_CLOUD_CLI_TOKEN"
+          {
+            "name": "MAGENTO_CLOUD_CLI_TOKEN",
+            "required": false,
+            "description": "An API token passed through to the magento-cloud CLI. Optional: a missing token is caught and the CLI's own stored session is used instead, so the server requires no environment variable at all."
+          }
         ]
       },
       "tools": [

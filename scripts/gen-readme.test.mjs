@@ -40,25 +40,39 @@ describe("renderGeneratedSection", () => {
     expect(section).toContain("hiberus-magento/hiberus-dockergento");
   });
 
-  it("pins an exact version and uses ${VAR} secret references for a published server", () => {
-    const section = renderGeneratedSection({
-      servers: [
-        {
-          id: "example-domain",
-          package: "@hiberus-magento/example-domain",
-          bin: "example-domain",
-          version: "1.2.3",
-          domain: "example",
-          status: "published",
-          description: "Synthetic example.",
-          requires: { env: ["EXAMPLE_TOKEN"] },
-          tools: [{ name: "noop", readOnly: true, description: "Does nothing." }],
-        },
+  // CHANGED DELIBERATELY: `requires.env` entries carry `required`/`description`
+  // since the manifest stopped flattening required and optional into one list.
+  const publishedServer = {
+    id: "example-domain",
+    package: "@hiberus-magento/example-domain",
+    bin: "example-domain",
+    version: "1.2.3",
+    domain: "example",
+    status: "published",
+    description: "Synthetic example.",
+    requires: {
+      env: [
+        { name: "EXAMPLE_TOKEN", required: true, description: "Bearer for the example API." },
+        { name: "EXAMPLE_REGION", required: false, description: "Overrides the default region." },
       ],
-    });
+    },
+    tools: [{ name: "noop", readOnly: true, description: "Does nothing." }],
+  };
+
+  it("pins an exact version and uses ${VAR} secret references for a published server", () => {
+    const section = renderGeneratedSection({ servers: [publishedServer] });
     expect(section).toContain("@hiberus-magento/example-domain@1.2.3");
     expect(section).toContain("${EXAMPLE_TOKEN}");
     expect(section).not.toMatch(/EXAMPLE_TOKEN"\s*:\s*"(?!\$\{)/);
+  });
+
+  it("keeps an optional variable out of the consumer snippet but documents it", () => {
+    const section = renderGeneratedSection({ servers: [publishedServer] });
+    // An unset `${EXAMPLE_REGION}` is commonly forwarded literally by an MCP
+    // client, so it must not appear in the snippet at all.
+    expect(section).not.toContain("${EXAMPLE_REGION}");
+    expect(section).toContain("`EXAMPLE_REGION` (optional) — Overrides the default region.");
+    expect(section).toContain("`EXAMPLE_TOKEN` (required) — Bearer for the example API.");
   });
 });
 

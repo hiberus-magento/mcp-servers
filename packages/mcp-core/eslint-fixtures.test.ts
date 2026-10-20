@@ -29,7 +29,12 @@ async function lintFixture(relativeFixturePath: string) {
   return result;
 }
 
-describe("SDK-boundary eslint-fixtures", () => {
+// The explicit timeouts in this file bound a HANG, not the linter's speed:
+// what these cases assert is that the rule fires, never how long ESLint
+// takes to load the root config and typescript-eslint. That load costs
+// ~0.5 s idle and was measured past vitest's 5 s default on a contended
+// machine, which failed the run on a limit asserting nothing about the rule.
+describe("SDK-boundary eslint-fixtures", { timeout: 120_000 }, () => {
   it("flags a server/index.js deep import outside packages/mcp-core/src with no-restricted-imports", async () => {
     const result = await lintFixture("./eslint-fixtures/sdk-deep-import-violation.ts");
     const ruleIds = result.messages.map((message) => message.ruleId);
@@ -44,7 +49,7 @@ describe("SDK-boundary eslint-fixtures", () => {
   });
 });
 
-describe("exec-boundary eslint-fixtures", () => {
+describe("exec-boundary eslint-fixtures", { timeout: 120_000 }, () => {
   it("flags a node:child_process exec import with no-restricted-imports", async () => {
     const result = await lintFixture("./eslint-fixtures/exec-import-violation.ts");
     const ruleIds = result.messages.map((message) => message.ruleId);
@@ -58,7 +63,7 @@ describe("exec-boundary eslint-fixtures", () => {
   });
 });
 
-describe("client-boundary eslint-fixtures", () => {
+describe("client-boundary eslint-fixtures", { timeout: 120_000 }, () => {
   it("flags a deep import into another package's client/ directory with no-restricted-imports", async () => {
     const result = await lintFixture("./eslint-fixtures/deep-client-import-violation.ts");
     const ruleIds = result.messages.map((message) => message.ruleId);
@@ -73,7 +78,7 @@ describe("client-boundary eslint-fixtures", () => {
   });
 });
 
-describe("license-header eslint-fixtures", () => {
+describe("license-header eslint-fixtures", { timeout: 120_000 }, () => {
   it("flags a source file missing the Apache-2.0 header with license-header/require-header", async () => {
     const result = await lintFixture("./eslint-fixtures/missing-license-header.ts");
     const ruleIds = result.messages.map((message) => message.ruleId);

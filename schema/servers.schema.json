@@ -63,13 +63,34 @@
             },
             "env": {
               "type": "array",
-              "items": { "type": "string" }
+              "description": "Every environment variable the server's own sources read, required and optional alike. Checked against those sources by scripts/manifest-env.test.mjs.",
+              "items": { "$ref": "#/$defs/envVar" }
             }
           }
         },
         "tools": {
           "type": "array",
           "items": { "$ref": "#/$defs/tool" }
+        }
+      }
+    },
+    "envVar": {
+      "type": "object",
+      "required": ["name", "required", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "required": {
+          "type": "boolean",
+          "description": "true only when the server refuses to do its work without this variable. false when it merely enables or overrides behaviour, OR when it is one of several alternatives — this schema cannot express \"one of these\", so an alternation is stated in `description` and every member is `required: false`."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What the variable does and what happens when it is absent. For an alternative, name the other way to satisfy the same need."
         }
       }
     },

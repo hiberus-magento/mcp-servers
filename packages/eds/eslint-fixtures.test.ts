@@ -29,7 +29,12 @@ async function lintFixture(relativeFixturePath: string) {
   return result;
 }
 
-describe("eds client-boundary eslint-fixtures", () => {
+// The explicit timeouts in this file bound a HANG, not the linter's speed:
+// what these cases assert is that the rule fires, never how long ESLint
+// takes to load the root config and typescript-eslint. That load costs
+// ~0.5 s idle and was measured past vitest's 5 s default on a contended
+// machine, which failed the run on a limit asserting nothing about the rule.
+describe("eds client-boundary eslint-fixtures", { timeout: 120_000 }, () => {
   it("flags a deep import into packages/eds/src/client/http.ts with no-restricted-imports", async () => {
     const result = await lintFixture("./eslint-fixtures/deep-client-import.ts");
     const ruleIds = result.messages.map((message) => message.ruleId);
@@ -44,7 +49,7 @@ describe("eds client-boundary eslint-fixtures", () => {
   });
 });
 
-describe("eds cli.ts stdout exemption is scoped, not a repo-wide leak", () => {
+describe("eds cli.ts stdout exemption is scoped, not a repo-wide leak", { timeout: 120_000 }, () => {
   it("flags a direct process.stdout write in an ordinary source file", async () => {
     const result = await lintFixture("./eslint-fixtures/stdout-write-violation.ts");
     const ruleIds = result.messages.map((message) => message.ruleId);

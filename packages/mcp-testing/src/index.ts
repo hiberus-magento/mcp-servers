@@ -16,10 +16,16 @@ export {
 } from "./conformance/conformance.js";
 export {
   COLD_START_BUDGET_MS,
+  STARTUP_CPU_BUDGET_MS,
   checkColdStart,
+  checkStartupCpu,
   measureMedianColdStart,
   measureOneColdStart,
+  measureOneStartupCpu,
+  measureStartupCpu,
   type ColdStartViolation,
+  type StartupCpuSample,
+  type StartupCpuViolation,
 } from "./conformance/cold-start.js";
 export { JsonRpcClient, type JsonRpcClientOptions, type RawStdoutLine } from "./jsonrpc-client.js";
 export {

@@ -43,6 +43,12 @@ Tools:
 - `eds_manage_snapshot` — Use this to add paths to a snapshot, remove them, publish it, submit a review decision, or delete it.
 - `eds_get_job_status` (read-only) — Use this to check on a specific job by its site/ref/topic/name address, e.g. one returned earlier by eds_set_live_state or eds_reindex.
 
+Environment:
+
+- `EDS_ORG` (required) — The Edge Delivery Services organisation every eds_* tool addresses. The server resolves it on the first tool call and refuses the call without it; tools/list still works.
+- `EDS_TOKEN` (optional) — Admin API bearer. Every tool call needs one, but it may come from this variable OR from the credential file written by `hiberus-eds auth token set`, so neither source is required on its own.
+- `EDS_SITE` (optional) — Default site for `hiberus-eds` CLI commands that take one. Read by the CLI only — the MCP server never reads it, and a site is passed per tool call instead.
+
 Configure in an MCP client. Pin the exact version; pass secrets as environment variable references, never literal values:
 
 ```json
@@ -55,8 +61,7 @@ Configure in an MCP client. Pin the exact version; pass secrets as environment v
         "@hiberus-magento/eds@0.0.0"
       ],
       "env": {
-        "EDS_ORG": "${EDS_ORG}",
-        "EDS_TOKEN": "${EDS_TOKEN}"
+        "EDS_ORG": "${EDS_ORG}"
       }
     }
   }
@@ -82,6 +87,16 @@ Tools:
 - `aco_list_policies` (read-only) — Use this to list every policy configured in this tenant with its actions and filters, before deciding which filter to enable or disable. Requires an ACO admin credential.
 - `aco_toggle_policy_filter` — Use this to enable or disable one filter inside one named policy, addressed by the attribute it carries. There is no policy-level enable/disable in this API and no "apply to all" mode. Requires an ACO admin credential.
 
+Environment:
+
+- `ACO_ADMIN_BASE_URL` (required) — Base URL of this tenant's ACO admin API. Resolved on the first tool call; without it every aco_* tool fails with a configuration error, not a credential error.
+- `ACO_MERCHANDISING_BASE_URL` (required) — Base URL of this tenant's ACO Merchandising API. Required on exactly the same terms as ACO_ADMIN_BASE_URL — the server checks both together.
+- `ACO_TOKEN` (optional) — An admin Bearer pasted from a Studio session. One of two ways to obtain a credential — the other is minting from ACO_CLIENT_ID/ACO_CLIENT_SECRET — and it may also come from the credential file written by `hiberus-aco auth token set`.
+- `ACO_CLIENT_ID` (optional) — IMS client id. With ACO_CLIENT_SECRET it mints an admin Bearer, which is the alternative to supplying ACO_TOKEN; the credential-free catalog-search tools need neither.
+- `ACO_CLIENT_SECRET` (optional) — IMS client secret. Only meaningful together with ACO_CLIENT_ID; the two are checked as a pair.
+- `ACO_API_KEY` (optional) — Sent as the `x-api-key` header on admin requests when set, omitted when not. Whether a tenant needs it is unconfirmed (aco design.md, Open Questions).
+- `ACO_IMS_ORG_ID` (optional) — Sent as the `x-gw-ims-org-id` header on admin requests when set, omitted when not. Same unconfirmed status as ACO_API_KEY.
+
 Configure in an MCP client. Pin the exact version; pass secrets as environment variable references, never literal values:
 
 ```json
@@ -94,8 +109,8 @@ Configure in an MCP client. Pin the exact version; pass secrets as environment v
         "@hiberus-magento/aco@0.0.0"
       ],
       "env": {
-        "ACO_CLIENT_ID": "${ACO_CLIENT_ID}",
-        "ACO_CLIENT_SECRET": "${ACO_CLIENT_SECRET}"
+        "ACO_ADMIN_BASE_URL": "${ACO_ADMIN_BASE_URL}",
+        "ACO_MERCHANDISING_BASE_URL": "${ACO_MERCHANDISING_BASE_URL}"
       }
     }
   }
@@ -124,6 +139,10 @@ Tools:
 - `magentocloud_get_activity_log` (read-only) — Use this to read one activity's full deployment/build log by activityId, as plain text.
 - `magentocloud_query_database` (read-only) — Use this for a bounded, read-only diagnostic query against an environment's database — a size check, or a single guarded SELECT/SHOW/DESCRIBE/EXPLAIN statement.
 
+Environment:
+
+- `MAGENTO_CLOUD_CLI_TOKEN` (optional) — An API token passed through to the magento-cloud CLI. Optional: a missing token is caught and the CLI's own stored session is used instead, so the server requires no environment variable at all.
+
 Configure in an MCP client. Pin the exact version; pass secrets as environment variable references, never literal values:
 
 ```json
@@ -134,10 +153,7 @@ Configure in an MCP client. Pin the exact version; pass secrets as environment v
       "args": [
         "-y",
         "@hiberus-magento/magento-cloud@0.0.0"
-      ],
-      "env": {
-        "MAGENTO_CLOUD_CLI_TOKEN": "${MAGENTO_CLOUD_CLI_TOKEN}"
-      }
+      ]
     }
   }
 }

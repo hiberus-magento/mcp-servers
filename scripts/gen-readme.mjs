@@ -33,8 +33,15 @@ const RELATED_REPOSITORIES = [
   "- [`hiberus-magento/hiberus-dockergento`](https://github.com/hiberus-magento/hiberus-dockergento) — the development environment that installs and wires this repository and `ai-tools` together.",
 ].join("\n");
 
+// Only `required: true` variables belong in the consumer snippet: an MCP
+// client that is handed `"ACO_API_KEY": "${ACO_API_KEY}"` for a variable the
+// operator has not set will commonly forward the literal `${ACO_API_KEY}`,
+// which is worse than omitting the key. The optional ones are listed in
+// prose below the snippet instead, where "optional" can actually be said.
 function renderConsumerConfigSnippet(server) {
-  const env = Object.fromEntries((server.requires?.env ?? []).map((name) => [name, `\${${name}}`]));
+  const env = Object.fromEntries(
+    (server.requires?.env ?? []).filter((entry) => entry.required).map((entry) => [entry.name, `\${${entry.name}}`]),
+  );
   const snippet = {
     mcpServers: {
       [server.bin]: {
@@ -45,6 +52,19 @@ function renderConsumerConfigSnippet(server) {
     },
   };
   return ["```json", JSON.stringify(snippet, null, 2), "```"].join("\n");
+}
+
+function renderEnvironmentSection(server) {
+  const entries = server.requires?.env ?? [];
+  if (entries.length === 0) {
+    return [];
+  }
+  return [
+    "",
+    "Environment:",
+    "",
+    ...entries.map((entry) => `- \`${entry.name}\` (${entry.required ? "required" : "optional"}) — ${entry.description}`),
+  ];
 }
 
 function renderServerEntry(server) {
@@ -63,6 +83,7 @@ function renderServerEntry(server) {
     "Tools:",
     "",
     toolLines,
+    ...renderEnvironmentSection(server),
   ];
   if (server.status !== "internal") {
     lines.push(

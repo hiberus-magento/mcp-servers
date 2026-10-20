@@ -30,7 +30,12 @@ async function lintFixture(relativeFixturePath: string) {
   return result;
 }
 
-describe("fd-1 hazard boundary eslint-fixtures", () => {
+// The explicit timeout bounds a HANG, not the linter's speed: what these
+// cases assert is that the rule fires, never how long ESLint takes to load
+// the root config and typescript-eslint. That load costs ~0.5 s idle and was
+// measured past vitest's 5 s default on a contended machine, which failed
+// the run on a limit that was asserting nothing about the boundary rule.
+describe("fd-1 hazard boundary eslint-fixtures", { timeout: 120_000 }, () => {
   it("flags stdio: \"inherit\" with no-restricted-syntax", async () => {
     const result = await lintFixture("./eslint-fixtures/stdio-inherit-violation.ts");
     const ruleIds = result.messages.map((message) => message.ruleId);
