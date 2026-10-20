@@ -6,6 +6,7 @@
 // Reporting").
 import { describe, expect, it } from "vitest";
 import { createFetchDouble } from "../../testing/fetch-double.js";
+import { AdminApiAuthError, AdminApiStatusError } from "../errors.js";
 import { createHttpClient } from "../http.js";
 import { setLiveState } from "./live.js";
 
@@ -46,5 +47,48 @@ describe("setLiveState", () => {
 
     expect(result.ignoredPaths).toContain("/.helix/config");
     expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ paths: ["/index.html", "/.helix/config"], state: "published" });
+  });
+
+  // RED-first: observed live, publishing a path with nothing in preview
+  // answered a non-ok status with a zero-byte body and the operator was
+  // told `Unexpected end of JSON input`. A failed publish must report the
+  // status and the path it was writing.
+  it("reports the status and the path when the publish fails with a zero-byte body", async () => {
+    const path = "/live/acme-demo-org/acme-demo-site-eu/main/*";
+    const { http } = makeHttp({ [`POST ${path}`]: { status: 400 } });
+
+    const error = await setLiveState(http, {
+      org: "acme-demo-org",
+      site: "acme-demo-site-eu",
+      paths: ["/missing-from-preview"],
+      state: "published",
+    }).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(AdminApiStatusError);
+    expect((error as AdminApiStatusError).status).toBe(400);
+    expect((error as AdminApiStatusError).message).toContain("POST");
+    expect((error as AdminApiStatusError).message).toContain(path);
+    expect((error as AdminApiStatusError).message).not.toContain("JSON input");
+  });
+
+  it("names the credential when the publish is rejected for permissions", async () => {
+    const path = "/live/acme-demo-org/acme-demo-site-eu/main/*";
+    const { http } = makeHttp({ [`POST ${path}`]: { status: 403 } });
+
+    const error = await setLiveState(http, {
+      org: "acme-demo-org",
+      site: "acme-demo-site-eu",
+      paths: ["/index.html"],
+      state: "published",
+    }).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(AdminApiAuthError);
+    expect((error as AdminApiAuthError).message).toContain("EDS_TOKEN");
   });
 });

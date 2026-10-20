@@ -64,8 +64,14 @@ async function probe(http: HttpClient, path: string): Promise<AuthProbeResult> {
     const response = await http.send({ method: "GET", path });
     return { path, status: response.status, verdict: verdictFor(response.status) };
   } catch (error) {
-    const status = error instanceof EdsError && error.status !== undefined ? error.status : 0;
-    return { path, status, verdict: "unknown" };
+    // Reporting a non-ok status in plain English is this function's whole
+    // job, and since `send()` now throws on 401/403/404 the verdict has to
+    // come from the thrown error's status, not only from a returned
+    // response — otherwise every rejected key reads as "unknown".
+    if (error instanceof EdsError && error.status !== undefined) {
+      return { path, status: error.status, verdict: verdictFor(error.status) };
+    }
+    return { path, status: 0, verdict: "unknown" };
   }
 }
 

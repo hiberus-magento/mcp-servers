@@ -64,4 +64,20 @@ describe("authStatus", () => {
 
     expect(result.probes).toHaveLength(2);
   });
+
+  // `authStatus` is the one caller whose whole job is to report a non-ok
+  // status in plain English. It must keep its verdicts now that 401/403/404
+  // are thrown as named errors rather than returned as a `Response`.
+  it("still reports 401, 403 and 404 verdicts per probe, not a blanket 'unknown'", async () => {
+    const { http } = makeHttp({
+      "GET /config/acme-demo-org.json": { status: 401 },
+      "GET /config/acme-demo-org/sites.json": { status: 403 },
+      "GET /status/acme-demo-org/acme-demo-site-eu/main/": { status: 404 },
+    });
+
+    const result = await authStatus(http, { org: "acme-demo-org", site: "acme-demo-site-eu" });
+
+    expect(result.probes.map((p) => p.status)).toEqual([401, 403, 404]);
+    expect(result.probes.map((p) => p.verdict)).toEqual(["key rejected (401)", "key lacks the required role (403)", "org or site not found (404)"]);
+  });
 });

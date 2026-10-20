@@ -33,6 +33,8 @@ import {
 import { getStatus, getStatusBulk, type GetStatusBulkOptions, type GetStatusOptions } from "./operations/status.js";
 
 export {
+  AdminApiAuthError,
+  AdminApiStatusError,
   AdminRateLimitError,
   ContentSourceThrottledError,
   EdsError,
@@ -40,6 +42,7 @@ export {
   JobTimeoutError,
   TransientNetworkError,
   UpstreamUnavailableError,
+  type AdminApiFailureContext,
   type EdsErrorKind,
 } from "./errors.js";
 export type { EdsClientDeps, HttpClient, HttpMethod, SendOptions } from "./http.js";

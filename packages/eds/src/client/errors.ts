@@ -7,13 +7,25 @@
 // literal discriminant every consumer switches on, and the retry policy's
 // input type (`retry.ts`) excludes `ContentSourceThrottledError` entirely —
 // retrying the wrong one is a `tsc` error, not a judgement call.
+//
+// `AdminApiStatusError` and `AdminApiAuthError` are the FALLBACK for every
+// non-ok status the classes above do not claim. They exist because `send()`
+// used to classify 429/502/504/503 and then return the failing response
+// anyway: a 400, 401, 403, 404 or 500 reached the caller as a `Response`
+// that was immediately `.json()`-ed, and because the Admin API answers
+// those with a zero-byte body, the operator was shown
+// `Unexpected end of JSON input` instead of the status.
+import type { Remedy } from "@hiberus-magento/mcp-core";
+
 export type EdsErrorKind =
   | "admin-rate-limited"
   | "content-source-throttled"
   | "upstream-unavailable"
   | "transient-network"
   | "gateway"
-  | "job-timeout";
+  | "job-timeout"
+  | "admin-api-status"
+  | "admin-api-auth";
 
 export abstract class EdsError extends Error {
   abstract readonly kind: EdsErrorKind;
@@ -112,6 +124,109 @@ export class GatewayError extends EdsError {
     super(`Admin API gateway failure (HTTP ${options.status}).`);
     this.name = "GatewayError";
     this.status = options.status;
+  }
+}
+
+export interface AdminApiFailureContext {
+  readonly status: number;
+  readonly method: string;
+  readonly path: string;
+  /** What the request was for, e.g. `"the CDN config"`. Named in the message when present. */
+  readonly label?: string | undefined;
+  /** Bounded excerpt of the response body, or the `x-error` header when the body is empty. */
+  readonly detail?: string | undefined;
+}
+
+/**
+ * The Admin API answers most failures with a zero-byte body, so "what the
+ * body says" is usually nothing at all — say so explicitly rather than
+ * leaving a dangling quote the operator reads as a truncated message.
+ */
+function describeDetail(detail: string | undefined): string {
+  return detail === undefined || detail === "" ? "The response body was empty." : `The response said: ${detail}`;
+}
+
+function describeRequest(context: AdminApiFailureContext): string {
+  const label = context.label === undefined || context.label === "" ? "" : ` (${context.label})`;
+  return `${context.method} ${context.path}${label}`;
+}
+
+function remedyForStatus(status: number): string {
+  if (status === 404) {
+    return "The Admin API has no document at that path. Check the org, site, ref and path spelling — a 404 here is an addressing problem, not a permissions one.";
+  }
+  if (status >= 400 && status < 500) {
+    return "The Admin API rejected the request as invalid. Check the path and the request body against https://www.aem.live/docs/admin.html — retrying it unchanged will fail the same way.";
+  }
+  return "The Admin API failed server-side. Retry later; if it persists for one specific path, report the status and path to Adobe.";
+}
+
+/**
+ * The fallback for any non-ok status no other class claims. Carries the
+ * status, the method and path that produced it, and a bounded excerpt of
+ * whatever the response said — so a failing call can never again surface
+ * as a JSON parse error.
+ */
+export class AdminApiStatusError extends EdsError {
+  readonly kind = "admin-api-status" as const;
+  override readonly status: number;
+  readonly method: string;
+  readonly path: string;
+  readonly label: string | undefined;
+  readonly detail: string | undefined;
+  readonly remedy: string;
+
+  constructor(context: AdminApiFailureContext) {
+    super(`Admin API request failed: ${describeRequest(context)} returned HTTP ${context.status}. ${describeDetail(context.detail)}`);
+    this.name = "AdminApiStatusError";
+    this.status = context.status;
+    this.method = context.method;
+    this.path = context.path;
+    this.label = context.label;
+    this.detail = context.detail;
+    this.remedy = remedyForStatus(context.status);
+  }
+}
+
+export interface AdminApiAuthErrorOptions extends AdminApiFailureContext {
+  readonly credential: Remedy;
+}
+
+/**
+ * 401/403 — actionable in a way a bare status is not, so the message names
+ * the credential and how to set it, in the same shape as `mcp-core`'s
+ * `MissingCredentialError`. 401 means the key was not accepted at all; 403
+ * means it was accepted and lacks the role for this operation (observed on
+ * bulk status with a token minted without it).
+ */
+export class AdminApiAuthError extends EdsError {
+  readonly kind = "admin-api-auth" as const;
+  override readonly status: number;
+  readonly method: string;
+  readonly path: string;
+  readonly label: string | undefined;
+  readonly detail: string | undefined;
+  readonly credential: Remedy;
+  readonly remedy: string;
+
+  constructor(options: AdminApiAuthErrorOptions) {
+    const cause = options.status === 401 ? "the credential was not accepted" : "the credential lacks permission for this operation";
+    const remedy =
+      `Run:      ${options.credential.cliCommand}     (reads the token from stdin)\n` +
+      `Or set:   ${options.credential.envVar}=<value>\n` +
+      `Checked:  ${options.credential.configPath}   (${options.credential.reason})`;
+    super(
+      `Admin API rejected the request with HTTP ${options.status} (${cause}) for domain "${options.credential.domain}": ` +
+        `${describeRequest(options)}. ${describeDetail(options.detail)}\n${remedy}`,
+    );
+    this.name = "AdminApiAuthError";
+    this.status = options.status;
+    this.method = options.method;
+    this.path = options.path;
+    this.label = options.label;
+    this.detail = options.detail;
+    this.credential = options.credential;
+    this.remedy = remedy;
   }
 }
 
