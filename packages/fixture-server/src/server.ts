@@ -6,7 +6,7 @@
 // Imports ONLY the stdio transport deep paths from the SDK — never the
 // package barrel and never `server/index.js` directly (design.md, Decision
 // 1) — so this package's bundle stays clean of express/hono/ajv/etc.
-import { createStdioServer } from "@hiberus-magento/mcp-core";
+import { createStdioServer, serverVersion } from "@hiberus-magento/mcp-core";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
@@ -31,7 +31,7 @@ const noElicitationValidator = {
 const server = new McpServer(
   {
     name: "fixture-server",
-    version: "0.0.0",
+    version: serverVersion(),
   },
   {
     jsonSchemaValidator: noElicitationValidator,

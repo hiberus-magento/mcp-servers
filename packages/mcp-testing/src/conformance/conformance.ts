@@ -8,6 +8,8 @@
 // would parse frames away exactly where inspecting the raw stream IS the
 // test.
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { STARTUP_CPU_BUDGET_MS, checkStartupCpu, measureStartupCpu } from "./cold-start.js";
@@ -133,6 +135,51 @@ export async function runFd1DivertProbe(options: {
   }
 }
 
+/** The `serverInfo` a server returns from `initialize`. */
+export interface McpServerInfo {
+  readonly name?: string;
+  readonly version?: string;
+}
+
+interface InitializeResult {
+  readonly serverInfo?: McpServerInfo;
+}
+
+/** A disagreement found by {@link checkAnnouncedVersion}, naming BOTH sides. */
+export interface AnnouncedVersionViolation {
+  /** What the running server said over `initialize`, or `undefined` if it said nothing. */
+  readonly announced: string | undefined;
+  /** What the package's own `package.json` says. */
+  readonly expected: string;
+}
+
+/**
+ * Pure check backing the "Announced Version" requirement: the version a
+ * server reports in `initialize`'s `serverInfo` must be the version of the
+ * package that ships it.
+ *
+ * This exists because every server hardcoded `version: "0.0.0"` in its
+ * `McpServer` constructor and nothing ever read it back. The packages were
+ * at 0.1.0 and `initialize` answered 0.0.0 — a confidently wrong answer to
+ * the one question an operator asks a server directly ("which version am I
+ * running"), and a constant to any client keying behavior off `serverInfo`.
+ * The tool-surface assertions above could not catch it: they only ever
+ * looked at `tools/list`.
+ *
+ * Extracted out of the `it()` block below for the same reason as
+ * {@link checkToolMetadataComplete} — so the failure path can be exercised
+ * directly, instead of only ever being observed not to fire.
+ */
+export function checkAnnouncedVersion(
+  announced: string | undefined,
+  expected: string,
+): AnnouncedVersionViolation | undefined {
+  if (announced === expected) {
+    return undefined;
+  }
+  return { announced, expected };
+}
+
 /** A single allowlist escape found by {@link checkReadOnlyIsolation}. */
 export interface ReadOnlyIsolationViolation {
   readonly toolName: string;
@@ -202,14 +249,18 @@ export const DEFAULT_SHELL_OUT_PROBE: ShellOutProbe = {
 export function describeConformance(options: ConformanceOptions): void {
   describe(`MCP conformance: ${options.serverPath}`, () => {
     let client: JsonRpcClient;
+    // CHANGED DELIBERATELY: the `initialize` result used to be awaited and
+    // thrown away. It carries `serverInfo`, which no assertion had ever
+    // read — see `checkAnnouncedVersion` for what that cost.
+    let initializeResult: InitializeResult;
 
     beforeAll(async () => {
       client = new JsonRpcClient({ command: process.execPath, args: [options.serverPath] });
-      await client.request("initialize", {
+      initializeResult = (await client.request("initialize", {
         protocolVersion: "2024-11-05",
         capabilities: {},
         clientInfo: { name: "mcp-testing-conformance", version: "0.0.0" },
-      });
+      })) as InitializeResult;
       client.notify("notifications/initialized");
     });
 
@@ -242,6 +293,22 @@ export function describeConformance(options: ConformanceOptions): void {
         violations,
         violations.map((v) => `stray stdout line: ${JSON.stringify(v.line)}`).join("; "),
       ).toEqual([]);
+    });
+
+    // Reads the package.json of the package under test at assertion time,
+    // and the version off the wire from the BUILT bundle — so this fails
+    // both for a server that hardcodes a version and for a bundle built
+    // before the last version bump. Both are the same operator-facing lie.
+    it("announces, over initialize, the version in its own package.json", () => {
+      const packageJsonPath = join(options.packageDir, "package.json");
+      const { version: expected } = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { version: string };
+      const violation = checkAnnouncedVersion(initializeResult.serverInfo?.version, expected);
+      expect(
+        violation,
+        violation &&
+          `serverInfo.version was ${JSON.stringify(violation.announced)} over the protocol, but ` +
+            `${packageJsonPath} is ${JSON.stringify(violation.expected)}`,
+      ).toBeUndefined();
     });
 
     it("every tool has a non-empty description, a schema, and all three annotations", async () => {

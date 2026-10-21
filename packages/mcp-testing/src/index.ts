@@ -3,10 +3,13 @@
 // Public barrel for `@hiberus-magento/mcp-testing`.
 export {
   describeConformance,
+  checkAnnouncedVersion,
   checkReadOnlyIsolation,
   checkStdoutPurity,
   checkToolMetadataComplete,
+  type AnnouncedVersionViolation,
   type ConformanceOptions,
+  type McpServerInfo,
   type McpTool,
   type ReadOnlyIntrospection,
   type ReadOnlyIsolationViolation,

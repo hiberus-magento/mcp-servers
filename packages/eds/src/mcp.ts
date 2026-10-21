@@ -15,7 +15,7 @@
 // domain-independent fd-1 conformance probe, which `await import()`s this
 // exact built bundle and relies on the top-level connect having already run
 // (mcp-conformance spec, "Stdout Purity Assertion").
-import { createStdioServer } from "@hiberus-magento/mcp-core";
+import { createStdioServer, serverVersion } from "@hiberus-magento/mcp-core";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
@@ -39,7 +39,7 @@ const noElicitationValidator = {
 const server = new McpServer(
   {
     name: "eds",
-    version: "0.0.0",
+    version: serverVersion(),
   },
   {
     jsonSchemaValidator: noElicitationValidator,

@@ -1,4 +1,5 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "tsup";
 
@@ -9,6 +10,15 @@ import { defineConfig } from "tsup";
 // `jsonSchemaValidator`, so the real constructors these stubs replace never run.
 const ajvStub = fileURLToPath(new URL("../mcp-core/src/stubs/ajv.js", import.meta.url));
 const ajvFormatsStub = fileURLToPath(new URL("../mcp-core/src/stubs/ajv-formats.js", import.meta.url));
+
+// The version this server announces over `initialize`, substituted into
+// `mcp-core`'s `serverVersion()` at build time. It used to be a literal
+// "0.0.0" in the server source while the package shipped at 0.1.0, so the
+// server gave a confident wrong answer to "which version am I running".
+// Read from THIS package's own package.json, which is the one `changeset
+// version` rewrites — there is no second place to keep in step. The shared
+// conformance suite asserts the two still agree, on the built bundle.
+const packageVersion: string = createRequire(import.meta.url)("./package.json").version;
 
 export default defineConfig({
   // Two binaries, one dist/ (mirrors packages/aco/eds's tsup.config.ts):
@@ -29,6 +39,9 @@ export default defineConfig({
   clean: true,
   dts: false,
   shims: false,
+  define: {
+    __MCP_SERVER_VERSION__: JSON.stringify(packageVersion),
+  },
   esbuildOptions(options) {
     options.alias = {
       ...options.alias,

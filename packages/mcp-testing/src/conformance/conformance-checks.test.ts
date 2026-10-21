@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { RawStdoutLine } from "../jsonrpc-client.js";
 import { JsonRpcClient } from "../jsonrpc-client.js";
 import {
+  checkAnnouncedVersion,
   checkReadOnlyIsolation,
   checkStdoutPurity,
   checkToolMetadataComplete,
@@ -140,6 +141,69 @@ describe("checkReadOnlyIsolation", () => {
     const violations = checkReadOnlyIsolation(introspection);
 
     expect(violations).toEqual([{ toolName: "read-echo", disallowedCommand: "/bin/rm" }]);
+  });
+});
+
+describe("checkAnnouncedVersion", () => {
+  it("passes when the announced version is the package's own", () => {
+    expect(checkAnnouncedVersion("0.1.0", "0.1.0")).toBeUndefined();
+  });
+
+  it("fails and names BOTH sides for the hardcoded-constant case this check was written for", () => {
+    expect(checkAnnouncedVersion("0.0.0", "0.1.0")).toEqual({ announced: "0.0.0", expected: "0.1.0" });
+  });
+
+  it("fails and names both sides for a bundle built before the last version bump", () => {
+    expect(checkAnnouncedVersion("0.1.0", "0.2.0")).toEqual({ announced: "0.1.0", expected: "0.2.0" });
+  });
+
+  it("fails when the server announced no version at all", () => {
+    expect(checkAnnouncedVersion(undefined, "0.1.0")).toEqual({ announced: undefined, expected: "0.1.0" });
+  });
+
+  // A prerelease differing only in its tag is still a different build; this
+  // is an exact comparison, not a semver-range one.
+  it("does not treat a prerelease of the same number as a match", () => {
+    expect(checkAnnouncedVersion("0.1.0", "0.1.0-rc.1")).toEqual({ announced: "0.1.0", expected: "0.1.0-rc.1" });
+  });
+
+  it("proves the check catches a live subprocess announcing the wrong version", async () => {
+    // A raw JSON-RPC server, like the metadata subject above: the real
+    // servers are built with the version injected, so the only way to
+    // observe this check firing end to end is a subject that lies.
+    const script =
+      "process.stdin.setEncoding('utf8');" +
+      "let buf='';" +
+      "process.stdin.on('data', (chunk) => {" +
+      "  buf += chunk;" +
+      "  let index;" +
+      "  while ((index = buf.indexOf('\\n')) >= 0) {" +
+      "    const line = buf.slice(0, index); buf = buf.slice(index + 1);" +
+      "    if (!line) continue;" +
+      "    const msg = JSON.parse(line);" +
+      "    let result = {};" +
+      "    if (msg.method === 'initialize') {" +
+      "      result = { protocolVersion: '2024-11-05', capabilities: {}, serverInfo: { name: 'lying-server', version: '0.0.0' } };" +
+      "    }" +
+      "    process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }) + '\\n');" +
+      "  }" +
+      "});";
+
+    const client = new JsonRpcClient({ command: process.execPath, args: ["-e", script] });
+    try {
+      const result = (await client.request("initialize", {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "conformance-checks-test", version: "0.0.0" },
+      })) as { serverInfo?: { version?: string } };
+
+      expect(checkAnnouncedVersion(result.serverInfo?.version, "0.1.0")).toEqual({
+        announced: "0.0.0",
+        expected: "0.1.0",
+      });
+    } finally {
+      client.close();
+    }
   });
 });
 

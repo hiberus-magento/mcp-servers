@@ -5,6 +5,7 @@
 // `@modelcontextprotocol/sdk` or `node:child_process` directly.
 export { createStdioServer, type StdioServerBootstrap } from "./bootstrap/stdout-guard.js";
 export { logger, type LogLevel, type Logger } from "./bootstrap/logger.js";
+export { SERVER_VERSION_DEFINE, serverVersion } from "./version/server-version.js";
 
 export {
   defineTool,
