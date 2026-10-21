@@ -20,6 +20,8 @@
 //   G5  Shebang preserved on every declared bin, in the built dist/ bundle
 //       AND in the packed tarball
 //   G6  LICENSE file present in the tarball
+//   G7  A package `servers.json` declares is not marked private
+//   G8  No build metadata (the tsup/esbuild metafile) reaches the tarball
 import { execFileSync } from "node:child_process";
 import { createReadStream } from "node:fs";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
@@ -277,6 +279,39 @@ export function gateG7Publishable(pkg, declaredInManifest) {
   }
 }
 
+/**
+ * Matches what `findMetafiles` matches, so the two can never disagree about
+ * what "the metafile" is: a `metafile*.json` at any depth. `metafile-esm`
+ * today, but the suffix follows tsup's configured `format`.
+ */
+const BUILD_METADATA_PATTERN = /(^|\/)metafile[^/]*\.json$/;
+
+/**
+ * G8: build metadata must not reach consumers.
+ *
+ * `tsup.config.ts` sets `metafile: true` on purpose — G3 above and
+ * `scripts/check-licenses.mjs` both read `dist/metafile*.json` to learn what
+ * actually survived bundling. It is build-time tooling: no shipped source
+ * references it, and `files: ["dist", ...]` shipped it anyway, ~126 KB per
+ * package. Most of that is gzip-compressible JSON, so dropping it saved
+ * about 7 KB of the packed tarball and ~6% of what a consumer unpacks —
+ * worth having, but the reason this is a gate is that it is a build
+ * internal, not that it was heavy. The file has to stay on disk and stay
+ * out of the tarball, and the tarball is the only place that second half
+ * can be checked.
+ *
+ * @param {readonly string[]} entries tarball entry paths, as `tar -tf` lists them
+ */
+export function gateG8NoBuildMetadataInTarball(entries) {
+  const offenders = entries.filter((entry) => BUILD_METADATA_PATTERN.test(entry));
+  if (offenders.length > 0) {
+    throw new PackagingGateError(
+      "G8",
+      `tarball ships build metadata that consumers never use: ${offenders.join(", ")}. Exclude it from package.json's "files" (it must stay on disk — G3 and check-licenses.mjs read it).`,
+    );
+  }
+}
+
 export function gateG6LicenseInTarball(entries) {
   const hasLicense = entries.some((entry) => /(^|\/)LICENSE$/.test(entry.replace(/^package\//, "")));
   if (!hasLicense) {
@@ -311,6 +346,7 @@ async function main() {
     const tarballPath = npmPack(packageDir, workDir);
     const entries = listTarball(tarballPath);
     gateG6LicenseInTarball(entries);
+    gateG8NoBuildMetadataInTarball(entries);
 
     extractTarball(tarballPath, workDir);
     const extractedRoot = join(workDir, "package");
@@ -321,7 +357,7 @@ async function main() {
   }
 
   console.error(
-    `verify-bundle: PASS — ${pkg.name}: ${bundleNames.join(", ")} (${totalBundleBytes} bytes total), zero forbidden dependencies, tarball dependencies: {}, shebang + LICENSE present on every declared bin`,
+    `verify-bundle: PASS — ${pkg.name}: ${bundleNames.join(", ")} (${totalBundleBytes} bytes total), zero forbidden dependencies, tarball dependencies: {}, no build metadata packed, shebang + LICENSE present on every declared bin`,
   );
 }
 

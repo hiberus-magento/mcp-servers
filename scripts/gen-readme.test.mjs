@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { checkReadme, renderGeneratedSection, writeReadme } from "./gen-readme.mjs";
+import { UNVERIFIED_MARKER, checkReadme, renderGeneratedSection, writeReadme } from "./gen-readme.mjs";
 
 const SKELETON = `# mcp-servers\n\nTest fixture skeleton.\n\n<!-- servers:start -->\n<!-- servers:end -->\n\n## License\n`;
 
@@ -73,6 +73,30 @@ describe("renderGeneratedSection", () => {
     expect(section).not.toContain("${EXAMPLE_REGION}");
     expect(section).toContain("`EXAMPLE_REGION` (optional) — Overrides the default region.");
     expect(section).toContain("`EXAMPLE_TOKEN` (required) — Bearer for the example API.");
+  });
+
+  // A reader choosing whether to install is the one who needs to know a tool
+  // has never met the real service, so the marker belongs beside the tool in
+  // the generated README and not only in an onboarding doc.
+  it("marks a tool carrying `unverified` and says what was not exercised", () => {
+    const section = renderGeneratedSection({
+      servers: [
+        {
+          ...publishedServer,
+          tools: [
+            { name: "noop", readOnly: true, description: "Does nothing." },
+            { name: "risky", readOnly: false, description: "Changes something.", unverified: "Never run against a live service." },
+          ],
+        },
+      ],
+    });
+    expect(section).toContain(`\`risky\` — Changes something. **${UNVERIFIED_MARKER}** — Never run against a live service.`);
+  });
+
+  it("leaves a tool with no `unverified` field unmarked, so absence records no claim either way", () => {
+    const section = renderGeneratedSection({ servers: [publishedServer] });
+    expect(section).toContain("`noop` (read-only) — Does nothing.");
+    expect(section).not.toContain(UNVERIFIED_MARKER);
   });
 });
 

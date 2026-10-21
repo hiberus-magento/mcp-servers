@@ -4,7 +4,7 @@
       "id": "eds",
       "package": "@hiberus-magento/eds",
       "bin": "hiberus-eds-mcp",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "domain": "eds",
       "status": "alpha",
       "description": "Edge Delivery Services (EDS) Admin API client — CLI and MCP server.",
@@ -45,7 +45,8 @@
         {
           "name": "eds_set_live_state",
           "readOnly": false,
-          "description": "Use this to publish or unpublish one or more paths on a site. Destructive: it changes what is publicly live."
+          "description": "Use this to publish or unpublish one or more paths on a site. Destructive: it changes what is publicly live.",
+          "unverified": "Never run against a live Edge Delivery Services site. The Admin API publishes content that already exists rather than creating it; the site this package was developed against keeps its content in AEM as a Cloud Service, and the package ships no preview operation, so there was no page that could be published safely. Its request shape is covered by unit tests and by the conformance suite."
         },
         {
           "name": "eds_get_site_config",
@@ -55,7 +56,8 @@
         {
           "name": "eds_reindex",
           "readOnly": false,
-          "description": "Use this to re-run indexing for specific paths, or — only with explicit double confirmation — the entire site."
+          "description": "Use this to re-run indexing for specific paths, or — only with explicit double confirmation — the entire site.",
+          "unverified": "Never run against a live Edge Delivery Services site, at either scope."
         },
         {
           "name": "eds_get_audit_log",
@@ -70,7 +72,8 @@
         {
           "name": "eds_manage_snapshot",
           "readOnly": false,
-          "description": "Use this to add paths to a snapshot, remove them, publish it, submit a review decision, or delete it."
+          "description": "Use this to add paths to a snapshot, remove them, publish it, submit a review decision, or delete it.",
+          "unverified": "Partly run against a live Edge Delivery Services site: the add and delete verbs were exercised as a reversible pair. The publish, review and remove verbs were not."
         },
         {
           "name": "eds_get_job_status",
@@ -83,7 +86,7 @@
       "id": "aco",
       "package": "@hiberus-magento/aco",
       "bin": "hiberus-aco-mcp",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "domain": "aco",
       "status": "alpha",
       "description": "Adobe Commerce Optimizer (ACO) admin and Merchandising API client — CLI and MCP server.",
@@ -167,7 +170,7 @@
       "id": "magento-cloud",
       "package": "@hiberus-magento/magento-cloud",
       "bin": "hiberus-magento-cloud-mcp",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "domain": "magento-cloud",
       "status": "alpha",
       "description": "Magento Cloud CLI wrapper — CLI and MCP server for read-only Magento Cloud project, environment, and database operations.",

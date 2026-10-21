@@ -35,12 +35,12 @@ Tools:
 
 - `eds_get_status` (read-only) — Use this when you need one path's current status across edit/preview/live/code/index on a single site — the smallest, cheapest status call.
 - `eds_get_status_bulk` (read-only) — Use this when you need status for several paths on a site at once instead of calling eds_get_status in a loop.
-- `eds_set_live_state` — Use this to publish or unpublish one or more paths on a site. Destructive: it changes what is publicly live.
+- `eds_set_live_state` — Use this to publish or unpublish one or more paths on a site. Destructive: it changes what is publicly live. **Not verified against a live service** — Never run against a live Edge Delivery Services site. The Admin API publishes content that already exists rather than creating it; the site this package was developed against keeps its content in AEM as a Cloud Service, and the package ships no preview operation, so there was no page that could be published safely. Its request shape is covered by unit tests and by the conformance suite.
 - `eds_get_site_config` (read-only) — Use this when you need a site's full effective configuration — the site document alone does not resolve inheritance.
-- `eds_reindex` — Use this to re-run indexing for specific paths, or — only with explicit double confirmation — the entire site.
+- `eds_reindex` — Use this to re-run indexing for specific paths, or — only with explicit double confirmation — the entire site. **Not verified against a live service** — Never run against a live Edge Delivery Services site, at either scope.
 - `eds_get_audit_log` (read-only) — Use this to review recent changes to a site. Returns one page of entries plus a nextToken cursor.
 - `eds_get_snapshots` (read-only) — Use this to list a site's snapshots, or to inspect one by id.
-- `eds_manage_snapshot` — Use this to add paths to a snapshot, remove them, publish it, submit a review decision, or delete it.
+- `eds_manage_snapshot` — Use this to add paths to a snapshot, remove them, publish it, submit a review decision, or delete it. **Not verified against a live service** — Partly run against a live Edge Delivery Services site: the add and delete verbs were exercised as a reversible pair. The publish, review and remove verbs were not.
 - `eds_get_job_status` (read-only) — Use this to check on a specific job by its site/ref/topic/name address, e.g. one returned earlier by eds_set_live_state or eds_reindex.
 
 Environment:
@@ -58,7 +58,7 @@ Configure in an MCP client. Pin the exact version; pass secrets as environment v
       "command": "npx",
       "args": [
         "-y",
-        "@hiberus-magento/eds@0.0.0"
+        "@hiberus-magento/eds@0.1.0"
       ],
       "env": {
         "EDS_ORG": "${EDS_ORG}"
@@ -106,7 +106,7 @@ Configure in an MCP client. Pin the exact version; pass secrets as environment v
       "command": "npx",
       "args": [
         "-y",
-        "@hiberus-magento/aco@0.0.0"
+        "@hiberus-magento/aco@0.1.0"
       ],
       "env": {
         "ACO_ADMIN_BASE_URL": "${ACO_ADMIN_BASE_URL}",
@@ -152,7 +152,7 @@ Configure in an MCP client. Pin the exact version; pass secrets as environment v
       "command": "npx",
       "args": [
         "-y",
-        "@hiberus-magento/magento-cloud@0.0.0"
+        "@hiberus-magento/magento-cloud@0.1.0"
       ]
     }
   }

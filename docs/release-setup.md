@@ -72,10 +72,18 @@ publish, and a private publish on the free plan is rejected outright. This
 repository's `publishConfig` already sets `access: public`, but passing it
 explicitly on a manual publish removes any doubt.
 
-Publish a real `0.0.1` rather than an empty placeholder. A placeholder version
+Publish a real version rather than an empty placeholder. A placeholder version
 occupies the version number permanently — npm does not allow republishing a
 version, even after unpublishing it — and leaves something meaningless in the
 registry forever.
+
+The first version is **`0.1.0`**, not `0.0.1`. Both say "unstable" under semver,
+but they say it to different effect: `^0.0.1` resolves to exactly `0.0.1`, so
+every bugfix would need each consumer to edit their own `package.json`, while
+`^0.1.0` accepts `0.1.x` and stops at `0.2.0`. That gives an alpha package a
+working patch channel and a usable breaking-change channel before `1.0.0`, which
+`0.0.x` does not. It also leaves `0.0.x` unspent rather than burning it on the
+first release.
 
 ### 3. Configure the trusted publisher
 

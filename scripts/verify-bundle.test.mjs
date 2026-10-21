@@ -24,6 +24,7 @@ import {
   gateG5TarballShebang,
   gateG6LicenseInTarball,
   gateG7Publishable,
+  gateG8NoBuildMetadataInTarball,
 } from "./verify-bundle.mjs";
 
 let workDir;
@@ -357,5 +358,62 @@ describe("G7: a package the manifest publishes must not be private", () => {
 
   it("leaves an internal library alone — private is correct there", () => {
     expect(() => gateG7Publishable({ name: "@scope/mcp-core", private: true }, false)).not.toThrow();
+  });
+});
+
+describe("G8: the published tarball carries no build metadata", () => {
+  // `tsup.config.ts` sets `metafile: true` because G3 and
+  // `check-licenses.mjs` both read `dist/metafile-esm.json`. It is
+  // build-time tooling — no shipped source references it — and
+  // `files: ["dist", ...]` took the whole directory, so all ~126 KB of it
+  // reached consumers. This gate asserts the exclusion from
+  // the packed artifact, which is the only place the claim can be checked:
+  // the file must still exist on disk for the gates that read it.
+  it("passes a tarball that ships only the bundles and the files npm needs", () => {
+    expect(() =>
+      gateG8NoBuildMetadataInTarball([
+        "package/dist/cli.js",
+        "package/dist/mcp.js",
+        "package/LICENSE",
+        "package/package.json",
+        "package/THIRD-PARTY-NOTICES.txt",
+      ]),
+    ).not.toThrow();
+  });
+
+  it("fails and names the offender when the esbuild metafile is in the tarball", () => {
+    const entries = ["package/dist/mcp.js", "package/dist/metafile-esm.json", "package/package.json"];
+
+    expect(() => gateG8NoBuildMetadataInTarball(entries)).toThrow(PackagingGateError);
+    try {
+      gateG8NoBuildMetadataInTarball(entries);
+    } catch (error) {
+      expect(error.gate).toBe("G8");
+      expect(error.message).toContain("package/dist/metafile-esm.json");
+    }
+  });
+
+  it("catches a metafile under any name tsup might emit, not just the esm one", () => {
+    // `findMetafiles` already matches `metafile*.json` loosely, because the
+    // suffix follows the configured format. The exclusion has to be at least
+    // as loose, or changing `format` would silently start shipping it again.
+    expect(() => gateG8NoBuildMetadataInTarball(["package/dist/metafile-cjs.json"])).toThrow(/G8/);
+    expect(() => gateG8NoBuildMetadataInTarball(["package/dist/metafile.json"])).toThrow(/G8/);
+  });
+
+  it("does not mistake an ordinary shipped file for build metadata", () => {
+    expect(() =>
+      gateG8NoBuildMetadataInTarball(["package/dist/manifest.json", "package/dist/my-metafile-helper.js"]),
+    ).not.toThrow();
+  });
+
+  it("reports every offender, not just the first", () => {
+    try {
+      gateG8NoBuildMetadataInTarball(["package/dist/metafile-esm.json", "package/dist/metafile-iife.json"]);
+      expect.unreachable("expected G8 to throw");
+    } catch (error) {
+      expect(error.message).toContain("metafile-esm.json");
+      expect(error.message).toContain("metafile-iife.json");
+    }
   });
 });

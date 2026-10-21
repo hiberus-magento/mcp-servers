@@ -221,7 +221,7 @@ export function createEdsTools(config: EdsToolsConfig): readonly EdsMcpTool[] {
   const edsSetLiveState = defineTool({
     name: "eds_set_live_state",
     description:
-      "Use this to publish or unpublish one or more paths on a site. Set wait: true to block until the underlying job completes; otherwise the job continues in the background and eds_get_job_status can follow up on it. Destructive: it changes what is publicly live.",
+      "Use this to publish or unpublish one or more paths on a site. Set wait: true to block until the underlying job completes; otherwise the job continues in the background and eds_get_job_status can follow up on it. Destructive: it changes what is publicly live. Not verified against a live service — this tool has never been run against a real Edge Delivery Services site, so its live behaviour is unconfirmed; its request shape is covered by unit tests and by the conformance suite.",
     inputSchema: setLiveStateInput,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     handler: async (args) => {
@@ -256,7 +256,7 @@ export function createEdsTools(config: EdsToolsConfig): readonly EdsMcpTool[] {
   const edsReindex = defineTool({
     name: "eds_reindex",
     description:
-      'Use this to re-run indexing for specific paths, or — only with explicit double confirmation ({ scope: "full-site", confirmFullReindex: true }) — the entire site. The full-site branch cannot be reached by scope alone; both fields are required. Not destructive to content, but resource-intensive at full-site scope.',
+      'Use this to re-run indexing for specific paths, or — only with explicit double confirmation ({ scope: "full-site", confirmFullReindex: true }) — the entire site. The full-site branch cannot be reached by scope alone; both fields are required. Not destructive to content, but resource-intensive at full-site scope. Not verified against a live service — neither scope has been run against a real Edge Delivery Services site.',
     inputSchema: edsReindexInput,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     handler: async (args) => {
@@ -307,7 +307,7 @@ export function createEdsTools(config: EdsToolsConfig): readonly EdsMcpTool[] {
   const edsManageSnapshot = defineTool({
     name: "eds_manage_snapshot",
     description:
-      "Use this to add paths to a snapshot, remove them, publish it, submit a review decision, or delete it. The write half of the snapshot state machine, split from eds_get_snapshots because annotations are static per tool. Destructive and NOT idempotent — repeating an add/remove changes the snapshot's contents each time.",
+      "Use this to add paths to a snapshot, remove them, publish it, submit a review decision, or delete it. The write half of the snapshot state machine, split from eds_get_snapshots because annotations are static per tool. Destructive and NOT idempotent — repeating an add/remove changes the snapshot's contents each time. Not verified against a live service — only the add and delete verbs have been run against a real Edge Delivery Services site; publish, review and remove have not.",
     inputSchema: manageSnapshotInput,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
     handler: async (args) => {

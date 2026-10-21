@@ -59,9 +59,20 @@ hiberus-eds auth mint --roles publish,author
 ```
 
 API keys belong to the **organization** (`EDS_ORG`), not to a site:
-`/config/{org}/apiKeys.json` is where they live, and the site-level path
-answers 404. `auth mint` therefore takes no `--site` — it rejects one
-rather than accepting a flag it cannot honour.
+`POST /config/{org}/apiKeys.json` is where they are created and where they
+live, and the site-level path answers 404. `auth mint` therefore takes no
+`--site` — it rejects one rather than accepting a flag it cannot honour.
+
+Minting needs a key that already carries `config_admin`. A key holding
+`config` is not enough: `config` and `config_admin` are separate roles, and
+only the latter may read or write anything under `/config/{org}/`. If the
+bootstrap key from step 1 was issued without `config_admin`, `auth mint`
+answers 403 and the key has to be widened in Adobe's UI first.
+
+A minted key carries an `expiration` chosen by the API, not by this CLI —
+one key observed here was minted with a one-year life. `auth keys list`
+prints it, so a key that is about to lapse is visible before it starts
+failing.
 
 **The minted value is shown exactly once and cannot be retrieved again.**
 `auth mint` prints the value alone on stdout (so `| pbcopy` or `> key.txt`
@@ -123,6 +134,46 @@ references, never literal values in the client config file:
   }
 }
 ```
+
+## Which role each tool needs
+
+Most `eds_*` tools are satisfied by the day-to-day roles from step 4
+(`publish`, `author`). One is not:
+
+- **`eds_get_site_config` requires `config_admin`.** `config` is a different,
+  narrower role and does not open these paths. Measured against a live
+  organization: a key carrying `config, author, publish` is answered 403 on
+  both `/config/{org}/sites/{site}.json` and `/config/{org}/sites/{site}/cdn.json`,
+  and the same key succeeds on the status and audit-log endpoints. If this
+  tool is the only one you need `config_admin` for, consider minting a
+  separate key for it rather than widening the day-to-day one.
+
+`hiberus-eds auth status` reports `key lacks the required role (403)`
+per probe, which is the quickest way to tell a role problem from a
+credential problem.
+
+## What has not been verified against a live service
+
+Everything in this package is covered by unit tests and by the shared
+conformance suite, and almost all of it has additionally been exercised
+against a real Edge Delivery Services organization. Three gaps are recorded
+here, and in `servers.json`, in the generated README, and in the tools' own
+descriptions, so they are visible wherever the decision to use them is made.
+This is a statement about what was run, not a report of a defect: nothing
+below is known to be broken.
+
+- **`eds_set_live_state` has never been run.** It is the tool that publishes
+  and unpublishes content, so it is the one where the gap matters most. The
+  reason is that there was no page that could be published safely: the Admin
+  API publishes content that already exists rather than creating it, the site
+  this package was developed against keeps its content in AEM as a Cloud
+  Service, and this package ships no preview operation that could stage a
+  throwaway page first.
+- **`eds_reindex` has never been run**, at either `paths` or `full-site`
+  scope.
+- **`eds_manage_snapshot` has been run only partly.** `add` and `delete` were
+  exercised against a live site as a reversible pair. `publish`, `review` and
+  `remove` were not.
 
 ## What the MCP server will never do for you
 

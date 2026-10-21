@@ -13,6 +13,14 @@ import { fileURLToPath } from "node:url";
 const START_MARKER = "<!-- servers:start -->";
 const END_MARKER = "<!-- servers:end -->";
 
+/**
+ * The exact phrase a tool carrying `unverified` is marked with, in README.md
+ * and in the tool's own shipped description alike. Exported so the drift test
+ * that keeps those two in step has one spelling to check rather than its own
+ * copy of the wording.
+ */
+export const UNVERIFIED_MARKER = "Not verified against a live service";
+
 const DEFAULT_README_PATH = fileURLToPath(new URL("../README.md", import.meta.url));
 const DEFAULT_MANIFEST_PATH = fileURLToPath(new URL("../servers.json", import.meta.url));
 
@@ -67,10 +75,18 @@ function renderEnvironmentSection(server) {
   ];
 }
 
+// A reader deciding whether to install this is the person who most needs to
+// know a tool has never been run against the real service. The marker is
+// rendered from `unverified` rather than written by hand so it cannot drift
+// from the manifest, and the same sentence appears in the shipped tool
+// description, which is what an agent reads before calling the tool.
+function renderToolLine(tool) {
+  const unverified = tool.unverified ? ` **${UNVERIFIED_MARKER}** — ${tool.unverified}` : "";
+  return `- \`${tool.name}\`${tool.readOnly ? " (read-only)" : ""} — ${tool.description}${unverified}`;
+}
+
 function renderServerEntry(server) {
-  const toolLines = server.tools
-    .map((tool) => `- \`${tool.name}\`${tool.readOnly ? " (read-only)" : ""} — ${tool.description}`)
-    .join("\n");
+  const toolLines = server.tools.map(renderToolLine).join("\n");
   const lines = [
     `### ${server.package}`,
     "",
