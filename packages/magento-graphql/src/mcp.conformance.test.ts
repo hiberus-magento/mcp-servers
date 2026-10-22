@@ -23,12 +23,12 @@ const packageDir = fileURLToPath(new URL("../", import.meta.url));
 const serverPath = fileURLToPath(new URL("../dist/mcp.js", import.meta.url));
 
 // This server builds 247 tool input schemas when it starts with every group loaded, so it costs more CPU to start than
-// the six-to-nine-tool servers the shared 75 ms was derived from. MAGENTO_GRAPHQL_GROUPS builds only the schemas of the
+// the six-to-nine-tool servers the shared ratio was derived from. MAGENTO_GRAPHQL_GROUPS builds only the schemas of the
 // groups it names. The figure and how it was derived are in `packages/mcp-testing/src/conformance/cold-start.ts`.
 describeConformance({
   serverPath,
   packageDir,
-  startupCpuBudget: { ms: 150, reason: "constructs 247 tool input schemas at startup with every group loaded (about 30 ms more CPU than the 95-tool magento-rest, measured; a few groups cost about 65 ms)" },
+  startupCpuRatio: { max: 3.75, reason: "constructs 247 tool input schemas at startup with every group loaded (worst measured ratio 2.11 against 0.98 for a six-tool server)" },
 });
 
 interface ListedTool {

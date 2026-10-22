@@ -25,15 +25,15 @@ const packageDir = fileURLToPath(new URL("../", import.meta.url));
 const serverPath = fileURLToPath(new URL("../dist/mcp.js", import.meta.url));
 
 // This server builds ninety-five input schemas when its module is evaluated, so
-// it costs more CPU to start than the six-to-nine-tool servers the shared 75 ms
+// it costs more CPU to start than the six-to-nine-tool servers the shared ratio
 // was derived from. The figure and how it was derived are in
 // `packages/mcp-testing/src/conformance/cold-start.ts` ("PER-PACKAGE OVERRIDE").
 describeConformance({
   serverPath,
   packageDir,
-  startupCpuBudget: {
-    ms: 100,
-    reason: "constructs 95 tool input schemas at import (about 16 ms more CPU than a six-tool server, measured)",
+  startupCpuRatio: {
+    max: 2.25,
+    reason: "constructs 95 tool input schemas at import (worst measured ratio 1.25 against 0.98 for a six-tool server)",
   },
 });
 
