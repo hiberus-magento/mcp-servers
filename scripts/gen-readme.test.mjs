@@ -1,12 +1,13 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
 // RED-first test for tasks.md 11.8/11.9: `gen-readme.mjs` renders the
-// glossary and sibling-repo links from `servers.json`, and `--check`
-// detects a stale committed README.md by re-running the same code path in
-// memory (server-manifest spec, "Generated README, No Hand Edits").
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+// servers index from `servers.json`, and `--check` detects a stale
+// committed README.md by re-running the same code path in memory
+// (server-manifest spec, "Generated README, No Hand Edits").
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   UNVERIFIED_MARKER,
@@ -39,15 +40,6 @@ function setup(manifest) {
 }
 
 describe("renderGeneratedSection", () => {
-  it("includes the EDS/ACS/ACO glossary and both sibling-repository links", () => {
-    const section = renderGeneratedSection({ servers: [] });
-    expect(section).toContain("EDS");
-    expect(section).toContain("ACS");
-    expect(section).toContain("ACO");
-    expect(section).toContain("hiberus-magento/ai-tools");
-    expect(section).toContain("hiberus-magento/hiberus-dockergento");
-  });
-
   // CHANGED DELIBERATELY: `requires.env` entries carry `required`/`description`
   // since the manifest stopped flattening required and optional into one list.
   const publishedServer = {
@@ -95,19 +87,20 @@ describe("renderGeneratedSection", () => {
     ]);
   });
 
-  it("keeps an optional variable out of the consumer snippet but documents it", () => {
+  it("keeps an optional variable out of the consumer snippet", () => {
     const section = renderGeneratedSection({ servers: [publishedServer] });
     // An unset `${EXAMPLE_REGION}` is commonly forwarded literally by an MCP
-    // client, so it must not appear in the snippet at all.
+    // client, so it must not appear in the snippet at all. The root README no
+    // longer documents the variable itself — `renderPackageSection` does.
     expect(section).not.toContain("${EXAMPLE_REGION}");
-    expect(section).toContain("`EXAMPLE_REGION` (optional) — Overrides the default region.");
-    expect(section).toContain("`EXAMPLE_TOKEN` (required) — Bearer for the example API.");
   });
 
-  // A reader choosing whether to install is the one who needs to know a tool
-  // has never met the real service, so the marker belongs beside the tool in
-  // the generated README and not only in an onboarding doc.
-  it("marks a tool carrying `unverified` and says what was not exercised", () => {
+  // The root README is a front door, not a manual. Three package READMEs now
+  // carry the per-tool list, the environment contract and a per-server
+  // snippet, so repeating them here made the root page a duplicate of three
+  // documents — and the duplicate is the copy that goes stale, because it is
+  // the one nobody opens when they change a tool.
+  it("routes to each package instead of repeating its tool list and environment contract", () => {
     const section = renderGeneratedSection({
       servers: [
         {
@@ -119,13 +112,56 @@ describe("renderGeneratedSection", () => {
         },
       ],
     });
-    expect(section).toContain(`\`risky\` — Changes something. **${UNVERIFIED_MARKER}** — Never run against a live service.`);
+    expect(section).not.toContain("`noop`");
+    expect(section).not.toContain("`risky`");
+    expect(section).not.toContain(UNVERIFIED_MARKER);
+    expect(section).not.toContain("`EXAMPLE_TOKEN` (required)");
+    expect(section).not.toContain("`EXAMPLE_REGION` (optional)");
+    expect(section).toContain("./packages/example-domain/README.md");
   });
 
-  it("leaves a tool with no `unverified` field unmarked, so absence records no claim either way", () => {
+  // One row per server, generated, so a server added to `servers.json` cannot
+  // be missing from the front page — which is the single thing the root README
+  // still has to be right about.
+  it("renders one table row per server carrying its purpose, npm page and README", () => {
     const section = renderGeneratedSection({ servers: [publishedServer] });
-    expect(section).toContain("`noop` (read-only) — Does nothing.");
-    expect(section).not.toContain(UNVERIFIED_MARKER);
+    const rows = section.split("\n").filter((line) => line.startsWith("| [") || line.startsWith("| `"));
+    expect(rows).toHaveLength(1);
+    const [row] = rows;
+    expect(row).toContain("[`@hiberus-magento/example-domain`](https://npmjs.com/package/@hiberus-magento/example-domain)");
+    expect(row).toContain("Synthetic example.");
+    expect(row).toContain("[README](./packages/example-domain/README.md)");
+    expect(row).toContain("1.2.3");
+  });
+
+  it("links a server's `docs` entry when the manifest carries one, and omits the link when it does not", () => {
+    const withDocs = renderGeneratedSection({ servers: [{ ...publishedServer, docs: "docs/example-onboarding.md" }] });
+    expect(withDocs).toContain("(./docs/example-onboarding.md)");
+    const withoutDocs = renderGeneratedSection({ servers: [publishedServer] });
+    expect(withoutDocs).not.toContain("example-onboarding");
+  });
+
+  // A `|` inside a manifest description would otherwise be read as a column
+  // break and silently shear the row apart. No current description contains
+  // one; the next one written might.
+  it("escapes a pipe in a description so it cannot break the table apart", () => {
+    const section = renderGeneratedSection({
+      servers: [{ ...publishedServer, description: "Reads a | writes b." }],
+    });
+    expect(section).toContain("Reads a \\| writes b.");
+  });
+
+  // `planned` and `internal` servers have no npm page to link to: `internal`
+  // is never published at all, and `planned` is not built yet. Linking either
+  // would put a 404 on the front page.
+  it("does not link an unpublished server to a package page that does not exist", () => {
+    const section = renderGeneratedSection({ servers: [{ ...publishedServer, status: "planned" }] });
+    expect(section).not.toContain("https://npmjs.com/package/@hiberus-magento/example-domain");
+    expect(section).toContain("`@hiberus-magento/example-domain`");
+  });
+
+  it("says so plainly when the manifest declares no servers at all", () => {
+    expect(renderGeneratedSection({ servers: [] })).toContain("_No servers are published yet._");
   });
 });
 
@@ -207,9 +243,15 @@ describe("renderPackageSection", () => {
     expect(section).not.toContain("${EXAMPLE_REGION}");
   });
 
-  it("carries the same unverified wording the manifest and the root README use", () => {
+  it("carries the same unverified wording the manifest uses", () => {
     const section = renderPackageSection(server);
     expect(section).toContain(`\`risky\` — Changes something. **${UNVERIFIED_MARKER}** — Never run against a live service.`);
+  });
+
+  it("leaves a tool with no `unverified` field unmarked, so absence records no claim either way", () => {
+    const section = renderPackageSection({ ...server, tools: [server.tools[0]] });
+    expect(section).toContain("`noop` (read-only) — Does nothing.");
+    expect(section).not.toContain(UNVERIFIED_MARKER);
   });
 });
 
@@ -271,5 +313,68 @@ describe("checkPackageReadmes / writePackageReadmes", () => {
     const { packagesDir, manifestPath } = setupPackages(manifest);
     rmSync(join(packagesDir, "example-domain", "README.md"));
     expect(checkPackageReadmes({ packagesDir, manifestPath }).missing).toEqual(["example-domain"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The committed artifacts, not just the renderers.
+//
+// The glossary and the sibling-repository links used to be string constants
+// inside gen-readme.mjs, spliced into the generated region. Nothing in
+// `servers.json` fed either of them, so "generated" only meant "edit this
+// prose in a .mjs file, and silently lose any edit made in README.md where a
+// writer would actually make it". They are hand-written prose in README.md
+// now — which means the assertion that they still exist has to look at
+// README.md. That is a stronger check than the one it replaces: it reads the
+// artifact a reader gets, not a constant the generator happens to hold.
+// ---------------------------------------------------------------------------
+const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
+
+describe("the committed root README", () => {
+  const readme = readFileSync(join(REPO_ROOT, "README.md"), "utf8");
+
+  it("still defines all three of EDS, ACS and ACO — the acronyms this domain confuses", () => {
+    expect(readme).toContain("**EDS**");
+    expect(readme).toContain("**ACS**");
+    expect(readme).toContain("**ACO**");
+    expect(readme).toContain("Edge Delivery Services");
+    expect(readme).toContain("Adobe Commerce Storefront");
+    expect(readme).toContain("Adobe Commerce Optimizer");
+  });
+
+  it("still links both sibling repositories", () => {
+    expect(readme).toContain("hiberus-magento/ai-tools");
+    expect(readme).toContain("hiberus-magento/hiberus-dockergento");
+  });
+
+  // The page a new teammate needs. A front door that does not route to it is
+  // not doing its one job.
+  it("links the team setup guide", () => {
+    expect(readme).toContain("docs/team-setup.md");
+    expect(existsSync(join(REPO_ROOT, "docs", "team-setup.md"))).toBe(true);
+  });
+
+  // Every relative link the front page makes is a routing promise, and the
+  // front page is now almost entirely links. A broken one sends a stranger to
+  // a 404 on their first click.
+  it("points every relative link at a file that exists", () => {
+    const targets = [...readme.matchAll(/\]\(\.\/([^)#]+)/g)].map((match) => match[1]);
+    expect(targets.length).toBeGreaterThan(0);
+    expect(targets.filter((target) => !existsSync(join(REPO_ROOT, target)))).toEqual([]);
+  });
+});
+
+// `renderPackageSection` and the root README share `renderConsumerConfigSnippet`,
+// so a change made for one can silently rewrite the other. Running the real
+// check against the real committed files is what catches that: if either
+// renderer moved, one of these two stops being byte-identical to what the
+// code produces, without anyone having to notice.
+describe("the committed files are byte-identical to what this generator renders", () => {
+  it("leaves the root README unchanged", () => {
+    expect(checkReadme().stale).toBe(false);
+  });
+
+  it("leaves every package README unchanged, and none missing", () => {
+    expect(checkPackageReadmes()).toEqual({ stale: [], missing: [] });
   });
 });

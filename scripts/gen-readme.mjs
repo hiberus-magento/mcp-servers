@@ -8,6 +8,23 @@
 // so the staleness check cannot drift from the generator (design.md,
 // Decision 6).
 //
+// What the ROOT README generates is deliberately narrow: an index table of
+// the servers, and one worked client snippet. It used to generate the full
+// per-tool list, environment contract and config snippet for every server —
+// 163 of the file's 184 lines — which is now the content of three package
+// READMEs. A front page that repeats three documents is a fourth copy of
+// them, and the copy nobody opens when they change a tool is the one that
+// goes stale. What stays generated here is only what a reader must not find
+// wrong: which servers exist, what each is for, and where to go next.
+//
+// The glossary and the sibling-repository links were string constants in
+// this file, spliced into the same region. Nothing in `servers.json` fed
+// either, so "generated" bought no drift protection — it only meant the
+// prose lived where a writer would never look, and that an edit made in
+// README.md was silently reverted on the next run. They are hand-written
+// prose in README.md now; `gen-readme.test.mjs` asserts against the
+// committed file that they are still there.
+//
 // It also generates the `<!-- package:start -->`/`<!-- package:end -->`
 // section of each publishable package's own README.md — the page npm renders
 // from the tarball. Only the part that rots is generated (the tool list, the
@@ -37,22 +54,10 @@ const DEFAULT_README_PATH = fileURLToPath(new URL("../README.md", import.meta.ur
 const DEFAULT_MANIFEST_PATH = fileURLToPath(new URL("../servers.json", import.meta.url));
 const DEFAULT_PACKAGES_DIR = fileURLToPath(new URL("../packages", import.meta.url));
 
-const GLOSSARY = [
-  "## Glossary",
-  "",
-  "These three acronyms are adjacent, are **not** the same thing, and Adobe has renamed them before — do not treat them as interchangeable.",
-  "",
-  "- **EDS** — Edge Delivery Services: the publishing platform (preview/publish, indexing, code sync).",
-  "- **ACS** — Adobe Commerce Storefront: a commerce storefront built on EDS (drop-ins, components).",
-  "- **ACO** — Adobe Commerce Optimizer.",
-].join("\n");
-
-const RELATED_REPOSITORIES = [
-  "## Related Repositories",
-  "",
-  "- [`hiberus-magento/ai-tools`](https://github.com/hiberus-magento/ai-tools) — skills and agents. Knowledge that is edited daily; not published as a package.",
-  "- [`hiberus-magento/hiberus-dockergento`](https://github.com/hiberus-magento/hiberus-dockergento) — the development environment that installs and wires this repository and `ai-tools` together.",
-].join("\n");
+// No `www.`: the synthetic-identifier audit allowlists the bare registrable
+// domain, and widening that allowlist to admit a subdomain is the wrong
+// trade for a link that redirects anyway.
+const NPM_PACKAGE_BASE = "https://npmjs.com/package/";
 
 // Only `required: true` variables belong in the consumer snippet: an MCP
 // client that is handed `"ACO_API_KEY": "${ACO_API_KEY}"` for a variable the
@@ -106,46 +111,86 @@ function renderToolLine(tool) {
   return `- \`${tool.name}\`${tool.readOnly ? " (read-only)" : ""} — ${tool.description}${unverified}`;
 }
 
-function renderServerEntry(server) {
-  const toolLines = server.tools.map(renderToolLine).join("\n");
-  const lines = [
-    `### ${server.package}`,
-    "",
-    server.description,
-    "",
-    `- Domain: ${server.domain}`,
-    `- Status: ${server.status}`,
-    `- Binary: \`${server.bin}\``,
-    "",
-    "Tools:",
-    "",
-    toolLines,
-    ...renderEnvironmentSection(server),
-  ];
-  if (server.status !== "internal") {
-    lines.push(
-      "",
-      "Configure in an MCP client. Pin the exact version; pass secrets as environment variable references, never literal values:",
-      "",
-      renderConsumerConfigSnippet(server),
-    );
-  }
-  if (server.docs) {
-    lines.push("", `Docs: ${server.docs}`);
-  }
-  return lines.join("\n");
+/**
+ * A `|` in a manifest description would otherwise be read as a column break
+ * and shear the row apart silently — the table would still render, just
+ * wrongly. No description contains one today; the next one written might.
+ */
+function escapeTableCell(text) {
+  return text.replace(/\|/g, "\\|");
 }
 
+// `internal` is never published and `planned` is not built yet, so neither
+// has an npm page: linking one would put a 404 on the front page.
+function isOnNpm(server) {
+  return server.status === "alpha" || server.status === "published";
+}
+
+// `docs` is "a relative path or URL" (schema). A path needs `./` to resolve
+// from the repository root on GitHub; a URL must be left exactly as written.
+function renderDocsLink(docs) {
+  return /^https?:\/\//.test(docs) ? docs : `./${docs}`;
+}
+
+function renderServerRow(server) {
+  const name = `\`${server.package}\``;
+  const packageCell = isOnNpm(server) ? `[${name}](${NPM_PACKAGE_BASE}${server.package})` : name;
+  const references = [`[README](./packages/${server.id}/README.md)`];
+  if (server.docs) {
+    references.push(`[setup](${renderDocsLink(server.docs)})`);
+  }
+  const cells = [
+    packageCell,
+    escapeTableCell(server.description),
+    `\`${server.version}\` · ${server.status}`,
+    references.join(" · "),
+  ];
+  return `| ${cells.join(" | ")} |`;
+}
+
+// A table, not a section per server. The per-tool list, the environment
+// contract and the per-server snippet all live in the package READMEs now;
+// what the front page owes a reader is the shape of the set and a way out
+// of it. Generated so that a server added to `servers.json` cannot be
+// missing from the front page.
 function renderServersSection(manifest) {
   if (manifest.servers.length === 0) {
-    return "_No servers are published yet._";
+    return ["## Servers", "", "_No servers are published yet._"].join("\n");
   }
-  return manifest.servers.map(renderServerEntry).join("\n\n");
+  return [
+    "## Servers",
+    "",
+    "| Package | What it talks to | Version | Reference |",
+    "| --- | --- | --- | --- |",
+    ...manifest.servers.map(renderServerRow),
+  ].join("\n");
+}
+
+// One worked example, not one per server: the snippet's shape is identical
+// everywhere and only its package, binary and variables differ, all of which
+// the table and the package READMEs already name. Rendered by the same
+// `renderConsumerConfigSnippet` the package READMEs use, so the `--package
+// <spec> <bin>` form that these two-binary packages actually need has one
+// implementation and cannot be retyped wrongly here.
+function renderQuickstartSection(manifest) {
+  const example = manifest.servers.find(isOnNpm);
+  if (!example) {
+    return undefined;
+  }
+  return [
+    "## Quickstart",
+    "",
+    `Nothing to install first — each server is a single bundled file with no runtime dependencies, so \`npx\` fetches and runs it on its own. Add one to your MCP client's configuration; here \`${example.package}\`, and every other server in the table takes the same shape with its own package, binary and variables:`,
+    "",
+    renderConsumerConfigSnippet(example),
+    "",
+    `Then see [team setup](./docs/team-setup.md) for which configuration file to put that in, and [\`packages/${example.id}/README.md\`](./packages/${example.id}/README.md) for this server's own tools and environment contract.`,
+  ].join("\n");
 }
 
 /** @param {{servers: unknown[]}} manifest */
 export function renderGeneratedSection(manifest) {
-  return [GLOSSARY, RELATED_REPOSITORIES, "## Servers", "", renderServersSection(manifest)].join("\n\n");
+  return [renderServersSection(manifest), renderQuickstartSection(manifest)].filter(Boolean).join("\n\n");
 }
 
 /**
