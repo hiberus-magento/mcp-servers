@@ -22,6 +22,8 @@
 //   G6  LICENSE file present in the tarball
 //   G7  A package `servers.json` declares is not marked private
 //   G8  No build metadata (the tsup/esbuild metafile) reaches the tarball
+//   G9  A package `servers.json` declares ships a README.md in its tarball —
+//       npm renders its page from that file and nowhere else
 import { execFileSync } from "node:child_process";
 import { createReadStream } from "node:fs";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
@@ -319,6 +321,35 @@ export function gateG6LicenseInTarball(entries) {
   }
 }
 
+/**
+ * G9: a published package's npm page is its README, and npm reads that README
+ * from the tarball and nowhere else.
+ *
+ * All three packages shipped at 0.1.0 with no README at all, and every gate
+ * above passed — because each asked about the bundle, and none asked whether
+ * the page a stranger lands on from npm would say anything. It stayed
+ * invisible until a human opened npmjs.com.
+ *
+ * Keyed off `servers.json` exactly as G7 is: `fixture-server` is built and
+ * gated like a real package but is never published, so a page it will never
+ * have cannot be a defect.
+ *
+ * @param {readonly string[]} entries tarball entry paths, as `tar -tf` lists them
+ * @param {boolean} declaredInManifest
+ */
+export function gateG9ReadmeInTarball(entries, declaredInManifest) {
+  if (!declaredInManifest) {
+    return;
+  }
+  const hasReadme = entries.some((entry) => /^README\.md$/i.test(entry.replace(/^package\//, "")));
+  if (!hasReadme) {
+    throw new PackagingGateError(
+      "G9",
+      `tarball ships no README.md — npm renders a package's page from this file alone, so this package would publish with a blank page. Add packages/<id>/README.md and list "README.md" in package.json's "files". Entries: ${entries.join(", ")}`,
+    );
+  }
+}
+
 async function main() {
   const packageDir = process.cwd();
   const distDir = join(packageDir, "dist");
@@ -347,6 +378,7 @@ async function main() {
     const entries = listTarball(tarballPath);
     gateG6LicenseInTarball(entries);
     gateG8NoBuildMetadataInTarball(entries);
+    gateG9ReadmeInTarball(entries, declaredInManifest);
 
     extractTarball(tarballPath, workDir);
     const extractedRoot = join(workDir, "package");
@@ -357,7 +389,7 @@ async function main() {
   }
 
   console.error(
-    `verify-bundle: PASS — ${pkg.name}: ${bundleNames.join(", ")} (${totalBundleBytes} bytes total), zero forbidden dependencies, tarball dependencies: {}, no build metadata packed, shebang + LICENSE present on every declared bin`,
+    `verify-bundle: PASS — ${pkg.name}: ${bundleNames.join(", ")} (${totalBundleBytes} bytes total), zero forbidden dependencies, tarball dependencies: {}, no build metadata packed, shebang + LICENSE present on every declared bin, README packed`,
   );
 }
 

@@ -25,6 +25,7 @@ import {
   gateG6LicenseInTarball,
   gateG7Publishable,
   gateG8NoBuildMetadataInTarball,
+  gateG9ReadmeInTarball,
 } from "./verify-bundle.mjs";
 
 let workDir;
@@ -415,5 +416,38 @@ describe("G8: the published tarball carries no build metadata", () => {
       expect(error.message).toContain("metafile-esm.json");
       expect(error.message).toContain("metafile-iife.json");
     }
+  });
+});
+
+describe("G9: a package the manifest publishes carries a README in its tarball", () => {
+  // npm renders a package's page from the README inside the tarball and from
+  // nowhere else. All three packages shipped at 0.1.0 with no README, and
+  // every gate here passed, because every gate asked about the bundle and
+  // none asked whether the page a stranger lands on would say anything at
+  // all. It was invisible until a human opened the npm page. G6 already
+  // proves the same shape for LICENSE; this is its sibling.
+  it("passes a manifest package whose tarball includes README.md", () => {
+    expect(() =>
+      gateG9ReadmeInTarball(["package/dist/mcp.js", "package/LICENSE", "package/README.md", "package/package.json"], true),
+    ).not.toThrow();
+  });
+
+  it("fails and says why when a manifest package ships no README", () => {
+    const entries = ["package/dist/mcp.js", "package/LICENSE", "package/package.json"];
+    expect(() => gateG9ReadmeInTarball(entries, true)).toThrow(PackagingGateError);
+    try {
+      gateG9ReadmeInTarball(entries, true);
+      expect.unreachable("expected G9 to throw");
+    } catch (error) {
+      expect(error.gate).toBe("G9");
+      expect(error.message).toMatch(/README/);
+    }
+  });
+
+  // `fixture-server` is built and gated like a real package but is never
+  // published, so an npm page it will never have cannot be a defect — the
+  // rule keys off servers.json, exactly as G7 does.
+  it("does not require a README of a package the manifest does not declare", () => {
+    expect(() => gateG9ReadmeInTarball(["package/dist/server.js", "package/package.json"], false)).not.toThrow();
   });
 });

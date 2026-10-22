@@ -2,8 +2,29 @@
   "name": "@hiberus-magento/__NAME__",
   "private": true,
   "version": "0.0.0",
+  "description": "MCP server for the __DOMAIN__ domain. Replace this description before publishing — npm shows it under the package name in search results.",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "adobe",
+    "__DOMAIN__"
+  ],
+  "homepage": "https://github.com/hiberus-magento/mcp-servers/tree/main/packages/__NAME__#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hiberus-magento/mcp-servers.git",
+    "directory": "packages/__NAME__"
+  },
+  "bugs": {
+    "url": "https://github.com/hiberus-magento/mcp-servers/issues"
+  },
+  "author": "Hiberus",
   "type": "module",
   "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public",
     "provenance": true
@@ -15,6 +36,7 @@
     "dist",
     "!dist/metafile-*.json",
     "LICENSE",
+    "README.md",
     "THIRD-PARTY-NOTICES.txt"
   ],
   "scripts": {

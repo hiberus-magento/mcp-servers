@@ -1,8 +1,34 @@
 {
   "name": "@hiberus-magento/magento-cloud",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "description": "MCP server and CLI wrapping the Magento Cloud CLI — read-only Adobe Commerce on Cloud projects, environments, deployment activities and bounded database diagnostics.",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "adobe",
+    "adobe-commerce",
+    "magento",
+    "magento-cloud",
+    "commerce-cloud",
+    "devops",
+    "read-only"
+  ],
+  "homepage": "https://github.com/hiberus-magento/mcp-servers/tree/main/packages/magento-cloud#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hiberus-magento/mcp-servers.git",
+    "directory": "packages/magento-cloud"
+  },
+  "bugs": {
+    "url": "https://github.com/hiberus-magento/mcp-servers/issues"
+  },
+  "author": "Hiberus",
   "type": "module",
   "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public",
     "provenance": true
@@ -15,6 +41,7 @@
     "dist",
     "!dist/metafile-*.json",
     "LICENSE",
+    "README.md",
     "THIRD-PARTY-NOTICES.txt"
   ],
   "scripts": {

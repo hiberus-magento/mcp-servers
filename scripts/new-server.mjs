@@ -9,7 +9,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderTemplate } from "./template-lib.mjs";
-import { writeReadme } from "./gen-readme.mjs";
+import { writePackageReadmes, writeReadme } from "./gen-readme.mjs";
 
 const DEFAULT_PACKAGES_DIR = fileURLToPath(new URL("../packages", import.meta.url));
 const DEFAULT_MANIFEST_PATH = fileURLToPath(new URL("../servers.json", import.meta.url));
@@ -83,6 +83,11 @@ export function runNewServer(options) {
 
   if (regenerateReadme) {
     writeReadme({ readmePath, manifestPath: serversJsonPath });
+    // The template ships a README skeleton carrying the generator's markers,
+    // and `gen-readme --check` fails on a manifest server whose markers are
+    // stale. Filling them here is what keeps a freshly scaffolded package from
+    // landing with CI already red.
+    writePackageReadmes({ packagesDir, manifestPath: serversJsonPath });
   }
 
   return { ok: true, targetDir };

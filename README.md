@@ -2,6 +2,8 @@
 
 MCP (Model Context Protocol) servers for Adobe Commerce and Edge Delivery Services tooling, published independently to npm under `@hiberus-magento`. Every server is a single bundled file with no runtime dependencies, runnable via `npx` with no prior install.
 
+**Setting these up on your own machine?** Start with the [team setup guide](./docs/team-setup.md) — which configuration file to use (and which one must never hold a secret), what each server actually needs, and what the common failure messages mean.
+
 The sections below the marker are generated from [`servers.json`](./servers.json) by [`scripts/gen-readme.mjs`](./scripts/gen-readme.mjs) — do not hand-edit them. Run `node scripts/gen-readme.mjs` to regenerate after changing `servers.json`; CI fails if the committed file is stale (`node scripts/gen-readme.mjs --check`).
 
 <!-- servers:start -->
@@ -58,7 +60,9 @@ Configure in an MCP client. Pin the exact version; pass secrets as environment v
       "command": "npx",
       "args": [
         "-y",
-        "@hiberus-magento/eds@0.1.0"
+        "--package",
+        "@hiberus-magento/eds@0.1.1",
+        "hiberus-eds-mcp"
       ],
       "env": {
         "EDS_ORG": "${EDS_ORG}"
@@ -106,7 +110,9 @@ Configure in an MCP client. Pin the exact version; pass secrets as environment v
       "command": "npx",
       "args": [
         "-y",
-        "@hiberus-magento/aco@0.1.0"
+        "--package",
+        "@hiberus-magento/aco@0.1.1",
+        "hiberus-aco-mcp"
       ],
       "env": {
         "ACO_ADMIN_BASE_URL": "${ACO_ADMIN_BASE_URL}",
@@ -152,7 +158,9 @@ Configure in an MCP client. Pin the exact version; pass secrets as environment v
       "command": "npx",
       "args": [
         "-y",
-        "@hiberus-magento/magento-cloud@0.1.0"
+        "--package",
+        "@hiberus-magento/magento-cloud@0.1.1",
+        "hiberus-magento-cloud-mcp"
       ]
     }
   }

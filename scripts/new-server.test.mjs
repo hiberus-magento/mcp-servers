@@ -16,6 +16,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { checkPackageReadmes } from "./gen-readme.mjs";
 import { runNewServer } from "./new-server.mjs";
 
 const README_SKELETON = "# test\n\n<!-- servers:start -->\n<!-- servers:end -->\n";
@@ -55,6 +56,28 @@ describe("runNewServer", () => {
     expect(manifest.servers).toHaveLength(1);
     expect(manifest.servers[0].id).toBe("example-domain");
     expect(manifest.servers[0].package).toBe("@hiberus-magento/example-domain");
+  });
+
+  // The scaffold ships a README skeleton with the generator's markers, and
+  // `gen-readme --check` now fails on a manifest server whose markers are
+  // stale or whose README is absent. If `new-server` did not fill them in,
+  // every scaffold would leave CI red on its first commit — the same class of
+  // "generator leaves the tree inconsistent" defect the readmePath default
+  // above was fixed for.
+  it("fills in the scaffolded package's own README from the manifest entry it just registered", () => {
+    const { packagesDir, serversJsonPath, readmePath } = setup();
+    runNewServer({
+      name: "example-domain",
+      domain: "example",
+      description: "A synthetic example domain server.",
+      packagesDir,
+      serversJsonPath,
+      readmePath,
+    });
+    const packageReadme = readFileSync(join(packagesDir, "example-domain", "README.md"), "utf8");
+    expect(packageReadme).toContain("## Tools");
+    expect(packageReadme).toContain("`noop` (read-only)");
+    expect(checkPackageReadmes({ packagesDir, manifestPath: serversJsonPath })).toEqual({ stale: [], missing: [] });
   });
 
   it("rejects a name collision without overwriting the existing package or manifest", () => {
