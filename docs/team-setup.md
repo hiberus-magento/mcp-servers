@@ -1,11 +1,12 @@
 # Team setup — configuring these MCP servers on your own machine
 
 The one page to send a colleague. It covers where MCP client configuration
-lives, which file must never contain a secret, what each of the three servers
+lives, which file must never contain a secret, what each of the four servers
 actually needs, and how to tell a working setup from a broken one.
 
 The per-server onboarding docs — [eds](./eds-onboarding.md),
-[aco](./aco-onboarding.md), [magento-cloud](./magento-cloud-onboarding.md) —
+[aco](./aco-onboarding.md), [magento-cloud](./magento-cloud-onboarding.md),
+[magento-rest](./magento-rest-onboarding.md) —
 go deeper on each domain's own bootstrap. This page is the part that is the
 same for everyone, plus the part that is different between the three and that
 people get wrong.
@@ -72,7 +73,7 @@ Two details that cost people time:
 
 ## 2. What each server actually needs
 
-The three differ more than they look. The authoritative list is
+The servers differ more than they look. The authoritative list is
 [`servers.json`](../servers.json)'s `requires.env`, which records
 required-vs-optional per variable and is checked against the servers' own
 sources by `scripts/manifest-env.test.mjs` — if this page and that file ever
@@ -151,6 +152,30 @@ created in a Developer Console project that has the *Adobe Commerce Optimizer
 Admin* API added to it, and getting an `access_token` back does not prove it
 carries the `commerce.aco.admin` scope.
 
+### `magento-rest` — one URL, one token, and a write switch
+
+- `MAGENTO_REST_BASE_URL` — **required.** The REST root, e.g.
+  `https://demo-host.example-domain/rest/V1`. Resolved on the first tool call;
+  `tools/list` works without it. It must be `https` (plain `http` only for
+  `localhost`), and TLS verification cannot be turned off.
+- `MAGENTO_REST_TOKEN` — optional *as a variable*, because the credential may
+  instead come from the file in §3. A token from one source or the other is
+  needed for every tool call. Use an integration's **Access Token**.
+- `MAGENTO_REST_ALLOW_WRITES` — optional. Only the exact string `true` registers
+  the write tools; unset, or any other value, and they are absent from
+  `tools/list`. Read once at startup.
+
+- `MAGENTO_REST_FIELDS_FILE` — optional. A JSON file that **adds** fields to what
+  a resource exposes (`{"product":{"add":["cost"]}}`). Additive only, with a floor
+  that refuses credential and payment fields. Read once at startup, and a file
+  that does not validate stops the server. Commit it with the project so the
+  change is reviewed.
+
+Give the read-only configuration a read-only integration, and keep a separate
+integration for the one that sets the write switch. The full walk-through, with
+what each tool returns and what the failures mean, is
+[magento-rest-onboarding.md](./magento-rest-onboarding.md).
+
 ---
 
 ## 3. The alternative to putting a secret in any config file
@@ -199,6 +224,8 @@ export EDS_ORG=acme-demo-org
 npx -y --package @hiberus-magento/eds hiberus-eds auth status
 npx -y --package @hiberus-magento/aco hiberus-aco auth status
 npx -y --package @hiberus-magento/magento-cloud hiberus-magento-cloud auth status
+export MAGENTO_REST_BASE_URL=https://demo-host.example-domain/rest/V1
+npx -y --package @hiberus-magento/magento-rest hiberus-magento-rest auth status
 ```
 
 - `hiberus-eds auth status` probes a couple of cheap read endpoints and reports
@@ -208,8 +235,11 @@ npx -y --package @hiberus-magento/magento-cloud hiberus-magento-cloud auth statu
   (`selection: minted` / `selection: pasted-bearer`).
 - `hiberus-magento-cloud auth status` wraps the upstream CLI's own
   `auth:info --no-auto-login` and never prints the token under any outcome.
+- `hiberus-magento-rest auth status` prints the same 8-hex fingerprint and
+  probes one cheap authenticated read, reporting whether Magento accepted the
+  token. It never prints the token.
 
-Then, in your MCP client: `tools/list` should answer for all three servers even
+Then, in your MCP client: `tools/list` should answer for all four servers even
 with nothing configured. That is deliberate — configuration is resolved on the
 first `tools/call`, so a configuration problem shows up as a named tool error
 and never as a server that fails to start.
@@ -225,6 +255,9 @@ and never as a server that fails to start.
 | `ACO_ADMIN_BASE_URL and ACO_MERCHANDISING_BASE_URL are both required` | A *configuration* error, not a credential one. Set both and restart. |
 | `"magento-cloud" was not found on the configured PATH` | Detected before any process is spawned. Usually the MCP client's `PATH`, not yours — see §1. |
 | `The Magento Cloud CLI is not authenticated` | Names the easier exit first: `magento-cloud login`. The headless exit is `MAGENTO_CLOUD_CLI_TOKEN`, or `hiberus-magento-cloud auth token set`. |
+| `MAGENTO_REST_BASE_URL is required` | A *configuration* error, not a credential one. Set it and restart the server — it is resolved once per process. |
+| `magento-rest: refusing to start — MAGENTO_REST_FIELDS_FILE …` | The field file could not be read or did not validate. The message names the path and the reason; see [magento-rest-onboarding.md](./magento-rest-onboarding.md). |
+| A `magento-rest` `401` that ends `(resource: Magento_…::…)` | Magento answers 401 both for a token it does not accept and for a valid token whose integration lacks that resource. Check that Magento's *Allow OAuth Access Tokens to be used as standalone Bearer tokens* setting is Yes (it is off by default since 2.4.4), that the integration is Active, that you stored its **Access Token** (not the Consumer Key), and that it grants the resource named; see [magento-rest-onboarding.md](./magento-rest-onboarding.md). |
 | An EDS `401` | The key was not accepted at all. Wrong or revoked key. |
 | An EDS `403` | The key was accepted and lacks the role. Usually `config_admin` — see §2. |
 | An EDS `404` | **An addressing problem, not a permissions one**, and the error says so. Check the org, site, ref and path spelling. |

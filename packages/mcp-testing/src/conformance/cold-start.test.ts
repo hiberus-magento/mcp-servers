@@ -17,6 +17,8 @@ import {
   checkStartupCpu,
   measureMedianColdStart,
   measureStartupCpu,
+  resolveStartupCpuBudget,
+  startupCpuTestTitle,
 } from "./cold-start.js";
 
 describe("checkColdStart", () => {
@@ -84,4 +86,48 @@ describe("measureStartupCpu — the CI gate's positive control", () => {
 
     expect(minCpuMs).toBeLessThan(STARTUP_CPU_BUDGET_MS);
   }, 30_000);
+});
+
+// A server that builds ninety-five input schemas at import legitimately costs
+// more CPU to start than one that builds six. The shared 75 ms stays the
+// default for everyone; a package may declare its own, but only openly: a
+// reason that is part of the test's title, an integer, and a hard ceiling so
+// the override cannot be used to hollow the gate out.
+describe("resolveStartupCpuBudget", () => {
+  const REASON = "builds ninety-five input schemas at import, about 16 ms more than a six-tool server";
+
+  it("is the shared budget when no package overrides it", () => {
+    expect(resolveStartupCpuBudget(undefined)).toEqual({ budgetMs: STARTUP_CPU_BUDGET_MS });
+    expect(STARTUP_CPU_BUDGET_MS).toBe(75);
+  });
+
+  it("takes a documented per-package override, carrying its reason", () => {
+    expect(resolveStartupCpuBudget({ ms: 100, reason: REASON })).toEqual({ budgetMs: 100, reason: REASON });
+  });
+
+  it("allows a STRICTER budget than the default, and the ceiling itself", () => {
+    expect(resolveStartupCpuBudget({ ms: 50, reason: REASON }).budgetMs).toBe(50);
+    expect(resolveStartupCpuBudget({ ms: 200, reason: REASON }).budgetMs).toBe(200);
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, 75.5, 201, 10_000])("refuses a budget of %s ms", (ms) => {
+    expect(() => resolveStartupCpuBudget({ ms, reason: REASON })).toThrow(/startup CPU budget/i);
+  });
+
+  it.each(["", "   ", "slow", "because", "needs more time"])("refuses the reason %j: an override has to say why, in a sentence", (reason) => {
+    expect(() => resolveStartupCpuBudget({ ms: 100, reason })).toThrow(/reason/i);
+  });
+});
+
+describe("startupCpuTestTitle", () => {
+  it("is exactly the established title for the shared budget", () => {
+    expect(startupCpuTestTitle({ budgetMs: 75 })).toBe("spends at or under 75 ms of CPU starting up (min of 7 samples)");
+  });
+
+  it("names the override and its reason, so a reader of the test output sees the exception", () => {
+    const title = startupCpuTestTitle({ budgetMs: 100, reason: "builds ninety-five input schemas at import" });
+    expect(title).toContain("100 ms");
+    expect(title).toContain("package override");
+    expect(title).toContain("builds ninety-five input schemas at import");
+  });
 });

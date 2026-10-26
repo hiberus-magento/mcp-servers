@@ -235,6 +235,591 @@
           "description": "Use this for a bounded, read-only diagnostic query against an environment's database — a size check, or a single guarded SELECT/SHOW/DESCRIBE/EXPLAIN statement."
         }
       ]
+    },
+    {
+      "id": "magento-rest",
+      "package": "@hiberus-magento/magento-rest",
+      "bin": "hiberus-magento-rest-mcp",
+      "version": "0.0.0",
+      "domain": "magento-rest",
+      "status": "alpha",
+      "description": "Magento 2 REST API client — CLI and MCP server for catalog, orders, customers, stock and content, with opt-in write tools.",
+      "tools": [
+        {
+          "name": "magentorest_get_product_by_sku",
+          "readOnly": true,
+          "description": "Use this to read one product by its SKU: name, price, status, visibility, type, timestamps, catalog attributes and category links."
+        },
+        {
+          "name": "magentorest_search_products",
+          "readOnly": true,
+          "description": "Use this to find products whose name contains a phrase. Returns a bounded page of summaries (id, sku, name, price, status, type) and the total count."
+        },
+        {
+          "name": "magentorest_advanced_product_search",
+          "readOnly": true,
+          "description": "Use this to filter products on one field with a chosen comparison (eq, like, gt, gteq, lt, lteq, in, ...) and sort the result. Returns a bounded page of summaries and the total count."
+        },
+        {
+          "name": "magentorest_create_product",
+          "readOnly": false,
+          "description": "Use this to create a new product. Adds a catalog record; the SKU must be unique. Does not touch stock or categories."
+        },
+        {
+          "name": "magentorest_update_product",
+          "readOnly": false,
+          "description": "Use this to change fields of an existing product. Only the fields you pass are sent; at least one is required. Overwrites the current values."
+        },
+        {
+          "name": "magentorest_update_product_attribute",
+          "readOnly": false,
+          "description": "Use this to set ONE attribute of a product by code (name, price, status, description, a custom attribute, ...). Overwrites the current value. The identity attributes sku, id, entity_id and type_id are refused."
+        },
+        {
+          "name": "magentorest_delete_product",
+          "readOnly": false,
+          "description": "Use this to permanently delete a product by SKU. Irreversible: the product, its images and its URL rewrites are removed."
+        },
+        {
+          "name": "magentorest_assign_product_to_category",
+          "readOnly": false,
+          "description": "Use this to add a product to a category at a position. Adds a link; it does not move the product out of other categories."
+        },
+        {
+          "name": "magentorest_remove_product_from_category",
+          "readOnly": false,
+          "description": "Use this to remove a product from one category. The product itself and its other category links are kept."
+        },
+        {
+          "name": "magentorest_get_store_configs",
+          "readOnly": true,
+          "description": "Use this to read each store view's configuration: code, locale, base currency, timezone, weight unit and base URLs."
+        },
+        {
+          "name": "magentorest_get_store_views",
+          "readOnly": true,
+          "description": "Use this to list every store view with its code, name, website, store group and whether it is active."
+        },
+        {
+          "name": "magentorest_get_websites",
+          "readOnly": true,
+          "description": "Use this to list every website with its code, name and default store group."
+        },
+        {
+          "name": "magentorest_get_store_groups",
+          "readOnly": true,
+          "description": "Use this to list every store group with its website, root category and default store view."
+        },
+        {
+          "name": "magentorest_get_countries",
+          "readOnly": true,
+          "description": "Use this to list the countries Magento knows, with ISO codes, English names and their regions."
+        },
+        {
+          "name": "magentorest_get_currency_info",
+          "readOnly": true,
+          "description": "Use this to read the base and display currency, the available currency codes and the exchange rates."
+        },
+        {
+          "name": "magentorest_get_category_tree",
+          "readOnly": true,
+          "description": "Use this to read the category structure under a root category as a flat list: each node has its id, parent_id, name, level, position, product count and whether it is active. Capped at 500 nodes; truncated says when the cap cut it short."
+        },
+        {
+          "name": "magentorest_get_category_by_id",
+          "readOnly": true,
+          "description": "Use this to read one category by its numeric ID: name, parent, level, position, product count, children, URL path and catalog attributes."
+        },
+        {
+          "name": "magentorest_list_categories",
+          "readOnly": true,
+          "description": "Use this to find categories, optionally by parent, by a phrase in the name, or by active status. Returns a bounded page and the total count."
+        },
+        {
+          "name": "magentorest_get_products_in_category",
+          "readOnly": true,
+          "description": "Use this to list the products assigned to one category. Returns a bounded page of product summaries (id, sku, name, price, status, type) and the total count."
+        },
+        {
+          "name": "magentorest_create_category",
+          "readOnly": false,
+          "description": "Use this to create a category under a parent. Adds a record; it does not assign any product to it."
+        },
+        {
+          "name": "magentorest_update_category",
+          "readOnly": false,
+          "description": "Use this to change fields of an existing category. Only the fields you pass are sent; at least one is required. Overwrites the current values."
+        },
+        {
+          "name": "magentorest_delete_category",
+          "readOnly": false,
+          "description": "Use this to permanently delete a category and its subcategories by ID. Irreversible; the products stay in the catalog but lose the assignment."
+        },
+        {
+          "name": "magentorest_move_category",
+          "readOnly": false,
+          "description": "Use this to move a category under a different parent, optionally right after a sibling. Changes the category tree and the URL paths below it."
+        },
+        {
+          "name": "magentorest_get_customer_by_id",
+          "readOnly": true,
+          "description": "Use this to read one customer by numeric ID: name, email, group, website, store and the default address IDs. Date of birth, tax number and the address book are not returned."
+        },
+        {
+          "name": "magentorest_search_customers",
+          "readOnly": true,
+          "description": "Use this to find customers by part of the email or name, by group or website, or by creation date range (YYYY-MM-DD). Filters are combined with AND. Returns a bounded page of summaries and the total count."
+        },
+        {
+          "name": "magentorest_get_customer_groups",
+          "readOnly": true,
+          "description": "Use this to list the customer groups with their code and tax class."
+        },
+        {
+          "name": "magentorest_get_customer_addresses",
+          "readOnly": true,
+          "description": "Use this to list a customer's addresses by location: country, region, city, postcode and which is the default billing or shipping address. Street, telephone and the addressee are not returned."
+        },
+        {
+          "name": "magentorest_create_customer",
+          "readOnly": false,
+          "description": "Use this to create a customer account from an email and a name. It takes no password: Magento's own password-reset flow is how the customer sets one. Adds a record; the email must not already exist on the website."
+        },
+        {
+          "name": "magentorest_update_customer",
+          "readOnly": false,
+          "description": "Use this to change a customer's email, name or group. Only the fields you pass change; at least one is required. Overwrites the current values."
+        },
+        {
+          "name": "magentorest_delete_customer",
+          "readOnly": false,
+          "description": "Use this to permanently delete a customer account by ID. Irreversible: the account and its address book are removed; past orders keep their own copy of the details."
+        },
+        {
+          "name": "magentorest_get_order_by_id",
+          "readOnly": true,
+          "description": "Use this to read one order by entity ID: status, state, totals, currency, the customer as the order records it, and the order lines. Billing and shipping addresses and payment details are not returned."
+        },
+        {
+          "name": "magentorest_get_order_by_increment_id",
+          "readOnly": true,
+          "description": "Use this to read one order by its order number (increment ID), the one a customer quotes. Same fields as reading by entity ID. A number with no order is reported as not-found."
+        },
+        {
+          "name": "magentorest_search_orders",
+          "readOnly": true,
+          "description": "Use this to find orders by status, customer email or ID, creation date range (YYYY-MM-DD, whole days) and grand-total range. Filters are combined with AND. Newest first unless you sort otherwise. Returns a bounded page of summaries and the total count."
+        },
+        {
+          "name": "magentorest_get_order_items",
+          "readOnly": true,
+          "description": "Use this to list the lines of one order: SKU, name, quantities ordered, shipped, invoiced and refunded, price and row total, tax and discount."
+        },
+        {
+          "name": "magentorest_get_order_comments",
+          "readOnly": true,
+          "description": "Use this to read an order's status history: each entry's status, comment text, date and whether the customer was notified or can see it."
+        },
+        {
+          "name": "magentorest_add_order_comment",
+          "readOnly": false,
+          "description": "Use this to add a comment to an order's history, optionally moving it to another status. Silent and hidden from the customer unless you say otherwise: setting is_customer_notified to true makes Magento EMAIL the customer."
+        },
+        {
+          "name": "magentorest_cancel_order",
+          "readOnly": false,
+          "description": "Use this to cancel an order that has not been invoiced. Changes its state to canceled and releases the reserved stock; it cannot be undone from here."
+        },
+        {
+          "name": "magentorest_hold_order",
+          "readOnly": false,
+          "description": "Use this to put an order on hold, which stops it being invoiced or shipped until it is released with magentorest_unhold_order."
+        },
+        {
+          "name": "magentorest_unhold_order",
+          "readOnly": false,
+          "description": "Use this to release an order from hold so it can be invoiced and shipped again."
+        },
+        {
+          "name": "magentorest_get_invoice_by_id",
+          "readOnly": true,
+          "description": "Use this to read one invoice by its numeric ID: state, totals, currency and the invoiced lines."
+        },
+        {
+          "name": "magentorest_search_invoices",
+          "readOnly": true,
+          "description": "Use this to find invoices by order, state and creation date range (YYYY-MM-DD, whole days). Filters are combined with AND. Returns a bounded page of summaries and the total count."
+        },
+        {
+          "name": "magentorest_get_shipment_by_id",
+          "readOnly": true,
+          "description": "Use this to read one shipment by its numeric ID: quantities, weight, the shipped lines and the tracking entries."
+        },
+        {
+          "name": "magentorest_search_shipments",
+          "readOnly": true,
+          "description": "Use this to find shipments by order and creation date range (YYYY-MM-DD, whole days). Filters are combined with AND. Returns a bounded page of summaries and the total count."
+        },
+        {
+          "name": "magentorest_get_creditmemo_by_id",
+          "readOnly": true,
+          "description": "Use this to read one credit memo (refund) by its numeric ID: state, totals, adjustments, currency and the refunded lines."
+        },
+        {
+          "name": "magentorest_search_creditmemos",
+          "readOnly": true,
+          "description": "Use this to find credit memos (refunds) by order, state and creation date range (YYYY-MM-DD, whole days). Filters are combined with AND. Returns a bounded page of summaries and the total count."
+        },
+        {
+          "name": "magentorest_create_invoice",
+          "readOnly": false,
+          "description": "Use this to invoice an order, whole or by line. With capture set to true Magento CAPTURES the payment — the customer is charged; the default is false, which only records the invoice. Setting notify_customer to true emails the customer. Returns the new invoice ID."
+        },
+        {
+          "name": "magentorest_create_shipment",
+          "readOnly": false,
+          "description": "Use this to record a shipment for an order, whole or by line, optionally with tracking numbers. Setting notify_customer to true emails the customer. Returns the new shipment ID. Shipping deducts stock from the product's source: if a product has none there, Magento answers only \"Could not save a shipment\" (its log says the quantity is not available), so check stock first with magentorest_get_source_items."
+        },
+        {
+          "name": "magentorest_add_shipment_tracking",
+          "readOnly": false,
+          "description": "Use this to add a tracking number to an existing shipment. Adds an entry; it does not change the shipment's lines or notify the customer."
+        },
+        {
+          "name": "magentorest_create_creditmemo",
+          "readOnly": false,
+          "description": "Use this to REFUND an order, whole or by line, with optional shipping and manual adjustments. Money goes back to the customer; it cannot be undone from here. Setting notify_customer to true emails the customer. Returns the new credit memo ID."
+        },
+        {
+          "name": "magentorest_get_product_stock",
+          "readOnly": true,
+          "description": "Use this to read the stock item of one product by SKU: quantity, in-stock flag, whether stock is managed, sale quantity limits and backorder setting. With multi-source inventory enabled (the usual setup now) this legacy stock item mirrors only the default source, so it can show a null or zero quantity for a product held in other sources: use magentorest_get_source_items for every source."
+        },
+        {
+          "name": "magentorest_get_low_stock_products",
+          "readOnly": true,
+          "description": "Use this to list stock items at or below a quantity threshold, for one stock scope. Items already at zero are included. Returns a bounded page and the total count. With multi-source inventory enabled (the usual setup now) this legacy stock item mirrors only the default source, so it can show a null or zero quantity for a product held in other sources: use magentorest_get_source_items for every source."
+        },
+        {
+          "name": "magentorest_get_inventory_sources",
+          "readOnly": true,
+          "description": "Use this to list the inventory sources (warehouses) of multi-source inventory: code, name, whether enabled, country, region, city, postcode and priority. Street, phone, email and contact person are not returned."
+        },
+        {
+          "name": "magentorest_get_inventory_stocks",
+          "readOnly": true,
+          "description": "Use this to list the inventory stocks of multi-source inventory with the sales channels (websites) each one serves."
+        },
+        {
+          "name": "magentorest_get_source_items",
+          "readOnly": true,
+          "description": "Use this to read a product's quantity and status in each inventory source, by SKU."
+        },
+        {
+          "name": "magentorest_update_product_stock",
+          "readOnly": false,
+          "description": "Use this to set a product's stock quantity on the default stock. The in-stock flag follows the quantity (in stock when above zero) unless you set it. Overwrites the current quantity. With multi-source inventory enabled this changes the quantity of the default source (observed on a live store) and no other source; magentorest_get_source_items reads every source, and nothing here writes the others."
+        },
+        {
+          "name": "magentorest_get_cart_by_id",
+          "readOnly": true,
+          "description": "Use this to read one cart by ID: activity, item count and quantity, currency, the customer's identity (id, name, email, group) and the cart lines. Addresses are not returned."
+        },
+        {
+          "name": "magentorest_search_carts",
+          "readOnly": true,
+          "description": "Use this to find carts by customer email or ID, active status and creation date range (YYYY-MM-DD, whole days). Filters are combined with AND. Returns a bounded page of summaries and the total count."
+        },
+        {
+          "name": "magentorest_get_cart_items",
+          "readOnly": true,
+          "description": "Use this to list the lines of one cart: SKU, name, quantity, price and product type."
+        },
+        {
+          "name": "magentorest_get_abandoned_carts",
+          "readOnly": true,
+          "description": "Use this to find abandoned carts: active, non-empty carts not updated for at least a number of days, most recently updated first. Each entry names the owner (or Guest), the item count and the dates. Returns a bounded page, the total count and the cutoff used."
+        },
+        {
+          "name": "magentorest_get_cms_block_by_id",
+          "readOnly": true,
+          "description": "Use this to read one CMS block by ID, including its content (HTML), title, identifier, dates and whether it is active."
+        },
+        {
+          "name": "magentorest_search_cms_blocks",
+          "readOnly": true,
+          "description": "Use this to find CMS blocks by identifier (exact), part of the title, or active status. Filters are combined with AND. Returns a bounded page of summaries WITHOUT the content, and the total count; read one by ID for its content."
+        },
+        {
+          "name": "magentorest_update_cms_block",
+          "readOnly": false,
+          "description": "Use this to change a CMS block's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront."
+        },
+        {
+          "name": "magentorest_delete_cms_block",
+          "readOnly": false,
+          "description": "Use this to permanently delete a CMS block by ID. Irreversible: it disappears from the storefront immediately."
+        },
+        {
+          "name": "magentorest_get_cms_page_by_id",
+          "readOnly": true,
+          "description": "Use this to read one CMS page by ID, including its content (HTML), title, identifier, dates and whether it is active."
+        },
+        {
+          "name": "magentorest_search_cms_pages",
+          "readOnly": true,
+          "description": "Use this to find CMS pages by identifier (exact), part of the title, or active status. Filters are combined with AND. Returns a bounded page of summaries WITHOUT the content, and the total count; read one by ID for its content."
+        },
+        {
+          "name": "magentorest_update_cms_page",
+          "readOnly": false,
+          "description": "Use this to change a CMS page's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront."
+        },
+        {
+          "name": "magentorest_delete_cms_page",
+          "readOnly": false,
+          "description": "Use this to permanently delete a CMS page by ID. Irreversible: it disappears from the storefront immediately."
+        },
+        {
+          "name": "magentorest_create_cms_block",
+          "readOnly": false,
+          "description": "Use this to create a CMS block. Adds a block for all store views (Magento's REST body takes no store assignment) that is active unless you say otherwise."
+        },
+        {
+          "name": "magentorest_create_cms_page",
+          "readOnly": false,
+          "description": "Use this to create a CMS page at a URL key. Adds a page for all store views (Magento's REST body takes no store assignment) that is active, with a one-column layout, unless you say otherwise."
+        },
+        {
+          "name": "magentorest_get_product_attribute",
+          "readOnly": true,
+          "description": "Use this to read one product attribute by code: its input type, scope, flags (required, searchable, filterable, comparable), options and store labels."
+        },
+        {
+          "name": "magentorest_search_product_attributes",
+          "readOnly": true,
+          "description": "Use this to find product attributes by part of the code, input type (text, select, multiselect, boolean, ...), or the searchable and filterable flags. Filters are combined with AND. Returns a bounded page of summaries and the total count."
+        },
+        {
+          "name": "magentorest_get_attribute_options",
+          "readOnly": true,
+          "description": "Use this to list the options of a select or multiselect attribute as label and value pairs."
+        },
+        {
+          "name": "magentorest_get_attribute_sets",
+          "readOnly": true,
+          "description": "Use this to list the product attribute sets with their ID, name and sort order. Returns a bounded page and the total count."
+        },
+        {
+          "name": "magentorest_get_attribute_set_attributes",
+          "readOnly": true,
+          "description": "Use this to list the attributes that belong to one attribute set, as summaries (code, input type, label, required, searchable, filterable)."
+        },
+        {
+          "name": "magentorest_add_attribute_option",
+          "readOnly": false,
+          "description": "Use this to add an option to a select or multiselect attribute. Adds an option that is not the default; it does not assign it to any product.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_get_product_media",
+          "readOnly": true,
+          "description": "Use this to list a product's media entries (images and videos): ID, type, label, position, whether hidden, the roles it plays and its file path."
+        },
+        {
+          "name": "magentorest_get_product_media_entry",
+          "readOnly": true,
+          "description": "Use this to read one media entry of a product by its entry ID."
+        },
+        {
+          "name": "magentorest_add_product_image",
+          "readOnly": false,
+          "description": "Use this to add an image to a product from base64 data (at most 2,000,000 characters, JPEG, PNG, GIF or WebP). Adds a media entry; it does not remove existing ones. Returns the new entry ID."
+        },
+        {
+          "name": "magentorest_update_product_media",
+          "readOnly": false,
+          "description": "Use this to change a media entry's label, position, roles or hidden flag. Only the fields you pass change; at least one is required. Overwrites the current values."
+        },
+        {
+          "name": "magentorest_delete_product_media",
+          "readOnly": false,
+          "description": "Use this to permanently delete one media entry of a product. Irreversible: the image stops showing on the storefront."
+        },
+        {
+          "name": "magentorest_get_sales_rules",
+          "readOnly": true,
+          "description": "Use this to list the cart price rules (promotions): name, dates, whether active, discount type and amount, coupon type, usage limits, websites and customer groups. Returns a bounded page and the total count.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_get_sales_rule_by_id",
+          "readOnly": true,
+          "description": "Use this to read one cart price rule by ID: its dates, discount, coupon type, usage limits, websites and customer groups.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_search_coupons",
+          "readOnly": true,
+          "description": "Use this to find coupons by part of the code and by the rule they belong to. Filters are combined with AND. Returns a bounded page and the total count; each coupon shows its code, limits, times used and expiry.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_get_coupon_by_id",
+          "readOnly": true,
+          "description": "Use this to read one coupon by ID: its code, rule, limits, times used and expiry.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_delete_coupon",
+          "readOnly": false,
+          "description": "Use this to permanently delete one coupon by ID. Irreversible: customers holding that code can no longer redeem it.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_get_tax_rates",
+          "readOnly": true,
+          "description": "Use this to list the tax rates: code, rate, country, region and postcode (or postcode range). Returns a bounded page and the total count."
+        },
+        {
+          "name": "magentorest_get_tax_rules",
+          "readOnly": true,
+          "description": "Use this to list the tax rules: code, priority, and the customer tax classes, product tax classes and tax rates each one combines. Returns a bounded page and the total count.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_get_tax_classes",
+          "readOnly": true,
+          "description": "Use this to list the tax classes, optionally only the CUSTOMER or only the PRODUCT ones. Returns one page of up to 100 and the total count."
+        },
+        {
+          "name": "magentorest_get_revenue",
+          "readOnly": true,
+          "description": "Use this to total the revenue of a period: revenue, currency, order count, average order value and tax. Computed from the orders in the period; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial."
+        },
+        {
+          "name": "magentorest_get_order_count",
+          "readOnly": true,
+          "description": "Use this to count the orders of a period, optionally by status. The count is Magento's own total, so it is exact and is never partial."
+        },
+        {
+          "name": "magentorest_get_product_sales",
+          "readOnly": true,
+          "description": "Use this to see what sold in a period: orders, items, units, revenue, and the ten best-selling products by quantity with their revenue. Optionally for one country (billing or shipping). Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial."
+        },
+        {
+          "name": "magentorest_get_revenue_by_country",
+          "readOnly": true,
+          "description": "Use this to total the revenue of a period for one country (orders billed or shipped there): revenue, currency, order count, average order value and tax. Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial."
+        },
+        {
+          "name": "magentorest_get_customer_ordered_products_by_email",
+          "readOnly": true,
+          "description": "Use this to list every order of one customer, found by exact email, with each order's lines (SKU, name, price, quantity). Returns the customer's id, name and email, never their addresses. For a product's own detail use magentorest_get_product_by_sku. Reads at most max_pages pages of 100 orders and says when the result is partial."
+        },
+        {
+          "name": "magentorest_db_status",
+          "readOnly": true,
+          "description": "Use this to check that the database connection works: returns the server version, the database name, that the session is read-only, and whether database writes are enabled. Run it first when a database tool fails.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_db_list_tables",
+          "readOnly": true,
+          "description": "Use this to list the tables of the Magento database, optionally only those whose name contains a fragment (e.g. `sales_order`). Returns each table's name, engine and approximate row count (an estimate, not a count: use magentorest_db_stats or a COUNT(*) for exact figures).",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_db_describe_table",
+          "readOnly": true,
+          "description": "Use this to see the columns of one table: name, type, whether it can be NULL, key, default and extra. Refuses the tables that hold credentials (administrators, OAuth tokens, integrations).",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_db_query",
+          "readOnly": true,
+          "description": "Use this for a question the other tools cannot answer: runs ONE read-only SELECT and returns its columns and rows. Name the columns (SELECT * is refused; COUNT(*) is fine), pass values as ? placeholders in params, and expect at most max_rows rows (default 100, at most 500; a LIMIT above that is refused, none is added for you). No comments, no second statement, no INTO, no locking, and no credential tables (administrators, OAuth tokens, integrations); values of columns named like a password, hash or token, and of secret configuration rows, come back as [redacted].",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_db_magento_tables",
+          "readOnly": true,
+          "description": "Use this to see the well-known Magento 2 tables grouped by what they hold (products, categories, customers, orders, quotes, invoices, shipments, CMS, EAV, URL rewrites, store), each marked with whether it exists in this database. Table prefixes are not applied.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_db_product_by_sku",
+          "readOnly": true,
+          "description": "Use this for a quick look at one product straight from the database: id, SKU, type, created and updated dates, quantity and in-stock flag (legacy stock table). For the full product use magentorest_get_product_by_sku.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_db_recent_orders",
+          "readOnly": true,
+          "description": "Use this to see the latest orders straight from the database: id, increment id, status, state, customer email and name, totals, currency and dates. Newest first; limit defaults to 10, at most 100. Never returns addresses or payment data.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_db_stats",
+          "readOnly": true,
+          "description": "Use this to count the rows of the key tables in one call: products, categories, customers, orders, order items, quotes, CMS pages and blocks. A table that does not exist says so.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_db_execute",
+          "readOnly": false,
+          "description": "Use this ONLY when no other tool can make the change: runs ONE INSERT, UPDATE or DELETE (UPDATE and DELETE need a WHERE) in a transaction. It bypasses Magento's own validation, indexing and events, so a change made here may not show on the storefront until a reindex and cache flush. Try it first with dry_run=true: the statement runs and is rolled back, and you see how many rows it would change. It rolls back by itself, changing nothing, if more than max_affected rows (default 100, at most 10000) would change. No DDL (DROP, ALTER, TRUNCATE), no REPLACE, no comments, no credential tables. Irreversible once committed.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        }
+      ],
+      "docs": "docs/magento-rest-onboarding.md",
+      "requires": {
+        "binaries": [
+          "hiberus-magento-rest"
+        ],
+        "env": [
+          {
+            "name": "MAGENTO_REST_BASE_URL",
+            "required": true,
+            "description": "The Magento REST root every magentorest_* tool addresses, e.g. https://<host>/rest/V1 (or /rest/<store-code>/V1 for one store view). Resolved on the first tool call and refused without it; tools/list still works. Must be https — plain http is accepted only for localhost."
+          },
+          {
+            "name": "MAGENTO_REST_TOKEN",
+            "required": false,
+            "description": "A Magento integration access token or admin token, sent as a Bearer. Every tool call needs one, but it may come from this variable OR from the credential file written by `hiberus-magento-rest auth token set`, so neither source is required on its own."
+          },
+          {
+            "name": "MAGENTO_REST_FIELDS_FILE",
+            "required": false,
+            "description": "Path to a JSON file that ADDS fields to what a resource exposes, e.g. {\"product\":{\"add\":[\"cost\"]}}. Additive only — a resource may carry only `add`, so a file can widen the shipped list but never narrow or replace it — and credential and payment fields (passwords, hashes, tokens, secrets, card and payment data) can never be added. Read once at startup; a file that cannot be read or does not validate stops the server with exit code 1 rather than starting with a half-applied configuration."
+          },
+          {
+            "name": "MAGENTO_REST_ALLOW_WRITES",
+            "required": false,
+            "description": "Set to exactly `true` to register the write tools (create, update, delete, cancel, invoice, refund, ...). Unset, or any other value, and the server registers read tools only — a write tool is then absent from tools/list, not merely refused. Read once at startup."
+          },
+          {
+            "name": "MAGENTO_REST_GROUPS",
+            "required": false,
+            "description": "Comma-separated tool groups to load, e.g. `products,customers`, so a project registers only the tools it needs instead of every one. Groups: `products`, `store`, `categories`, `customers`, `orders`, `sales-documents`, `stock`, `carts`, `cms`, `attributes`, `media`, `promotions`, `tax`, `analytics`, `database` (only with MAGENTO_REST_DATABASE_CONNECTION; naming it without one stops the server). Case-insensitive; blanks and repeats are ignored. Unset or empty loads every group (`database` too, when a connection is configured). A name that is not a group stops the server with exit code 1, listing the valid ones. MAGENTO_REST_ALLOW_WRITES still decides whether the write tools of a loaded group are registered. Read once at startup."
+          },
+          {
+            "name": "MAGENTO_REST_DATABASE_CONNECTION",
+            "required": false,
+            "description": "Adds the `database` tool group (magentorest_db_*): direct, read-only access to the Magento database. A URL with NO password, e.g. `mysql://reader@127.0.0.1:3306/magento`; a password in it stops the server. A host that is not this machine uses verified TLS unless you write `?ssl=false`. Unset, there are no database tools. Use a database user with the narrowest grants you can: SELECT only unless you also enable writes. The URL is validated at startup (exit code 1 if it is invalid); the password is only needed when a tool is called."
+          },
+          {
+            "name": "MAGENTO_REST_DATABASE_PASSWORD",
+            "required": false,
+            "description": "The password of the database user, used by the database tools. It may come from this variable OR from the credential file written by `hiberus-magento-rest auth db-password set` (read from stdin, mode 0600), so neither source is required on its own. Resolved on every connection, so a stored password applies without a restart."
+          },
+          {
+            "name": "MAGENTO_REST_DATABASE_ALLOW_WRITES",
+            "required": false,
+            "description": "Set to exactly `true` to register magentorest_db_execute (one INSERT, UPDATE or DELETE per call, in a transaction, with a dry run and a cap on rows changed). A switch of its own: MAGENTO_REST_ALLOW_WRITES does not enable it. Unset, or any other value, and the tool is absent from tools/list. Without MAGENTO_REST_DATABASE_CONNECTION it stops the server with exit code 1. Read once at startup."
+          }
+        ]
+      }
     }
   ]
 }
