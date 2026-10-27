@@ -70,32 +70,27 @@
         {
           "name": "eds_list_sites",
           "readOnly": true,
-          "description": "Use this to find which sites exist in the configured org.",
-          "unverified": "Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site."
+          "description": "Use this to find which sites exist in the configured org."
         },
         {
           "name": "eds_get_config_versions",
           "readOnly": true,
-          "description": "Use this to see a site's configuration history before planning a version.restore.",
-          "unverified": "Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site."
+          "description": "Use this to see a site's configuration history before planning a version.restore."
         },
         {
           "name": "eds_get_robots",
           "readOnly": true,
-          "description": "Use this to read a site's robots.txt as text.",
-          "unverified": "Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site."
+          "description": "Use this to read a site's robots.txt as text."
         },
         {
           "name": "eds_get_code_status",
           "readOnly": true,
-          "description": "Use this to check one code file's status; the repository is resolved from the site's configuration.",
-          "unverified": "Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site."
+          "description": "Use this to check one code file's status; the repository is resolved from the site's configuration."
         },
         {
           "name": "eds_list_jobs",
           "readOnly": true,
-          "description": "Use this to list a site's jobs for one topic.",
-          "unverified": "Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site."
+          "description": "Use this to list a site's jobs for one topic."
         },
         {
           "name": "eds_list_api_keys",
@@ -111,7 +106,7 @@
           "name": "eds_apply",
           "readOnly": false,
           "description": "Use this only after the user explicitly confirms a plan from eds_plan. Takes the plan's token with its site and kind repeated (they must match) and issues exactly the planned requests. Destructive.",
-          "unverified": "Of its 22 operation kinds, only snapshot.add and snapshot.delete (as the former eds_manage_snapshot) have run against a live Edge Delivery Services site. Every other kind is built from the Admin API contract and covered by unit tests only."
+          "unverified": "Run against a live Edge Delivery Services site for site.create, site.delete, config.patch, version.restore and robots.set, and (as the former eds_manage_snapshot) snapshot.add and snapshot.delete. Every other kind, including preview, publish, unpublish, index, cache, sitemap, code and job.stop, is built from the Admin API contract and covered by unit tests only."
         }
       ]
     },

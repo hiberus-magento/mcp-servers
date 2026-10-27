@@ -211,18 +211,18 @@ and what Phase 6 must look at:
 
 ## Phase 6: Manual validation (outside CI, against a real non-production tenant)
 
-- [ ] 6.1 Reads: every read tool against one non-production site.
-- [ ] 6.2 `config.patch` → apply → verify → `version.restore` → verify. Record whether the `POST` created a new entry in `versions.json`.
+- [x] 6.1 Reads: every read tool against one non-production site.
+- [x] 6.2 `config.patch` → apply → verify → `version.restore` → verify. Record whether the `POST` created a new entry in `versions.json`.
 - [ ] 6.2b On a throwaway site with a secret set, check whether `GET` returns the secret masked and whether a `config.patch` round-trip preserves it. If it does not, block `config.patch` on such documents before publish.
-- [ ] 6.3 `robots.set` and back.
+- [x] 6.3 `robots.set` and back.
 - [ ] 6.4 `preview.update` → `live.publish` → `live.unpublish` on a test page; AEM warning shown when applicable.
-- [ ] 6.5 `site.create` → `site.delete` of a throwaway site.
-- [ ] 6.6 Negative: apply without asking is not attempted by the model; reused, expired and stale tokens; protected site without `confirmSite`.
+- [x] 6.5 `site.create` → `site.delete` of a throwaway site.
+- [x] 6.6 Negative: apply without asking is not attempted by the model; reused, expired and stale tokens; protected site without `confirmSite`.
 - [ ] 6.7 Repeat 6.2 and 6.6 in Claude Code, GitHub Copilot and opencode.
-- [ ] 6.8 Remove the `unverified` marker only for the kinds actually exercised.
+- [x] 6.8 Remove the `unverified` marker only for the kinds actually exercised.
 
 **Phase 6 progress.** Real org and site names stay out of this file.
-- **6.1, partial:** `eds_list_sites` works live. The live response is the object form
+- **6.1 done:** every read tool works live, including the six new ones. The site list arrives in the object form
   `{ sites: [{ name }] }`, which confirms the 2.3 fix.
 - **Test site:** created by `site.create` in a fresh session. It points at an existing content
   source and the shared code repository, so `code.delete` and content writes on it are not run
@@ -236,6 +236,22 @@ and what Phase 6 must look at:
   - Spec ("eds_apply Accepts Only a Token", "Protected Sites Require the Site Name"), design, README,
     onboarding and `servers.json` now state that `confirmSite` guards against the wrong site, not
     against a model that skips asking.
+- **6.2, 6.3, 6.5 done:** on the throwaway site, live: `site.create`, `config.patch` →
+  `version.restore`, `robots.set` and back, `site.delete`. **Not recorded:** whether the config `POST`
+  added an entry to `versions.json`. Until it is, `previousVersionId` stays documented as a hint.
+- **6.6 done:** all five negatives behaved (no apply without asking, and expired, reused, stale and
+  missing-`confirmSite` tokens rejected), plus the `site`/`kind` echo above.
+- **6.4, open:** only the AEM warning was checked, on an unapplied `live.publish` plan for an
+  AEM-sourced site. `preview.update` → `live.publish` → `live.unpublish` was not run: the throwaway
+  site shared its content source with a real site, so it would have published there. This needs a
+  site with its own content source.
+- **6.2b, open, blocks publish as the task says:** the secrets round-trip has not been checked. The
+  plan warns about non-empty `secrets`/`tokens`, and onboarding says to avoid `config.patch` on such
+  documents until this is verified.
+- **6.7, open:** the flow has been run only in Claude Code. Copilot and opencode remain.
+- **6.8 done:** the `unverified` marker is removed from the five new read tools. `eds_apply` keeps
+  it, but it now names the kinds that have run live. `servers.json`, the tool descriptions, the
+  README and onboarding agree.
 - **Follow-up, not done:** MCP elicitation for protected sites (a confirmation the model cannot
   fill), set aside on request.
 - **Follow-up, not done:** `code.delete`'s warning should say the code bus is shared by every site

@@ -258,7 +258,7 @@ export function createEdsTools(config: EdsToolsConfig): readonly EdsMcpTool[] {
 
   const edsListSites = defineTool({
     name: "eds_list_sites",
-    description: "Use this to find which sites exist in the configured org before planning or reading one. Returns site names. Read-only. Not verified against a live service — built from the Admin API contract and covered by unit tests only.",
+    description: "Use this to find which sites exist in the configured org before planning or reading one. Returns site names. Read-only.",
     inputSchema: orgInput,
     annotations: READ_ONLY,
     handler: async () => {
@@ -270,7 +270,7 @@ export function createEdsTools(config: EdsToolsConfig): readonly EdsMcpTool[] {
   const edsGetConfigVersions = defineTool({
     name: "eds_get_config_versions",
     description:
-      "Use this to see a site's configuration history — the current version id and earlier versions — before planning a version.restore with eds_plan. Read-only. Not verified against a live service — built from the Admin API contract and covered by unit tests only.",
+      "Use this to see a site's configuration history — the current version id and earlier versions — before planning a version.restore with eds_plan. Read-only.",
     inputSchema: siteInput,
     annotations: READ_ONLY,
     handler: async (args) => {
@@ -281,7 +281,7 @@ export function createEdsTools(config: EdsToolsConfig): readonly EdsMcpTool[] {
 
   const edsGetRobots = defineTool({
     name: "eds_get_robots",
-    description: "Use this to read a site's robots.txt as text, e.g. before planning a robots.set with eds_plan. Read-only. Not verified against a live service — built from the Admin API contract and covered by unit tests only.",
+    description: "Use this to read a site's robots.txt as text, e.g. before planning a robots.set with eds_plan. Read-only.",
     inputSchema: siteInput,
     annotations: READ_ONLY,
     handler: async (args) => {
@@ -293,7 +293,7 @@ export function createEdsTools(config: EdsToolsConfig): readonly EdsMcpTool[] {
   const edsGetCodeStatus = defineTool({
     name: "eds_get_code_status",
     description:
-      "Use this to check one code file's status on the code bus. The repository is resolved from the site's own configuration — it cannot be supplied. Read-only. Not verified against a live service — built from the Admin API contract and covered by unit tests only.",
+      "Use this to check one code file's status on the code bus. The repository is resolved from the site's own configuration — it cannot be supplied. Read-only.",
     inputSchema: getCodeStatusInput,
     annotations: READ_ONLY,
     handler: async (args) => {
@@ -310,7 +310,7 @@ export function createEdsTools(config: EdsToolsConfig): readonly EdsMcpTool[] {
 
   const edsListJobs = defineTool({
     name: "eds_list_jobs",
-    description: "Use this to list a site's jobs for one topic (e.g. live, preview, index), to find a running job to inspect or to plan a job.stop for. Read-only. Not verified against a live service — built from the Admin API contract and covered by unit tests only.",
+    description: "Use this to list a site's jobs for one topic (e.g. live, preview, index), to find a running job to inspect or to plan a job.stop for. Read-only.",
     inputSchema: listJobsInput,
     annotations: READ_ONLY,
     handler: async (args) => {
@@ -346,7 +346,7 @@ export function createEdsTools(config: EdsToolsConfig): readonly EdsMcpTool[] {
   const edsApply = defineTool({
     name: "eds_apply",
     description:
-      "Use this only after the user has explicitly confirmed a plan from eds_plan in their latest message. Takes the plan's token with the plan's site and kind repeated (they must match, so they cannot change anything), plus confirmSite when the plan requires the site name, and issues exactly the planned requests. A token works once and expires after ten minutes. Destructive and not idempotent. Not verified against a live service — only snapshot.add and snapshot.delete have run against a real Edge Delivery Services site; every other kind is built from the Admin API contract and covered by unit tests only.",
+      "Use this only after the user has explicitly confirmed a plan from eds_plan in their latest message. Takes the plan's token with the plan's site and kind repeated (they must match, so they cannot change anything), plus confirmSite when the plan requires the site name, and issues exactly the planned requests. A token works once and expires after ten minutes. Destructive and not idempotent. Not verified against a live service for most kinds — site.create, site.delete, config.patch, version.restore, robots.set, snapshot.add and snapshot.delete have run against a real Edge Delivery Services site; preview, publish, unpublish, index, cache, sitemap, code and job.stop are built from the Admin API contract and covered by unit tests only.",
     inputSchema: edsApplyInput,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
     handler: async (args) => {

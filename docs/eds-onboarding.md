@@ -225,15 +225,26 @@ generated README and in the tools' own descriptions, so they are visible whereve
 the decision to use them is made. This is a statement about what was run, not a
 report of a defect: nothing below is known to be broken.
 
-- **`eds_apply`.** Of its 22 operation kinds, only `snapshot.add` and
-  `snapshot.delete` have run against a live site, as a reversible pair under
-  0.1's `eds_manage_snapshot`. Every other kind is built from the Admin API
-  contract. That includes publishing, which 0.1 could not try safely: the Admin
-  API publishes content that already exists, and 0.1 had no preview operation to
-  stage a throwaway page. `preview.update` now makes that possible.
-- **The new read tools.** `eds_list_sites`, `eds_get_config_versions`,
-  `eds_get_robots`, `eds_get_code_status` and `eds_list_jobs` have not been run
-  live either.
+- **`eds_apply`, partly.** These kinds have run against a live organization:
+  - `site.create`, `config.patch`, `version.restore`, `robots.set` and
+    `site.delete`, on a throwaway site;
+  - `snapshot.add` and `snapshot.delete`, as a reversible pair under 0.1's
+    `eds_manage_snapshot`.
+
+  The others have not. The content kinds (`preview.*`, `live.*`, `index.*`)
+  were left out on purpose: the throwaway site shared its content source with a
+  real one, so publishing there would have published on that site too. The
+  same goes for `cache.purge`, `sitemap.rebuild`, `code.*`, `job.stop`, and
+  snapshot publish, review and remove. All of these are built from the Admin
+  API contract. The AEM warning has been seen on a real plan, which was not
+  applied.
+- **Secrets in a site document.** Whether `config.patch` keeps a site's
+  `secrets` and `tokens` intact has not been checked. The plan warns when the
+  document has them; until this is verified, avoid `config.patch` on such a
+  site.
+- **Clients other than Claude Code.** The confirmation flow has been run in
+  Claude Code only. The VS Code Copilot and opencode settings above come from
+  those clients' documentation and source code.
 
 ## What the MCP server will never do for you
 

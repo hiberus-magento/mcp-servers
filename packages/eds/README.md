@@ -44,14 +44,14 @@ npx -y --package @hiberus-magento/eds hiberus-eds-mcp           # the server
 - `eds_get_audit_log` (read-only) — Use this to review recent changes to a site. Returns one page of entries plus a nextToken cursor.
 - `eds_get_snapshots` (read-only) — Use this to list a site's snapshots, or to inspect one by id.
 - `eds_get_job_status` (read-only) — Use this to check on a specific job by its site/ref/topic/name address, e.g. one returned by eds_apply when wait was not requested.
-- `eds_list_sites` (read-only) — Use this to find which sites exist in the configured org. **Not verified against a live service** — Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site.
-- `eds_get_config_versions` (read-only) — Use this to see a site's configuration history before planning a version.restore. **Not verified against a live service** — Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site.
-- `eds_get_robots` (read-only) — Use this to read a site's robots.txt as text. **Not verified against a live service** — Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site.
-- `eds_get_code_status` (read-only) — Use this to check one code file's status; the repository is resolved from the site's configuration. **Not verified against a live service** — Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site.
-- `eds_list_jobs` (read-only) — Use this to list a site's jobs for one topic. **Not verified against a live service** — Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site.
+- `eds_list_sites` (read-only) — Use this to find which sites exist in the configured org.
+- `eds_get_config_versions` (read-only) — Use this to see a site's configuration history before planning a version.restore.
+- `eds_get_robots` (read-only) — Use this to read a site's robots.txt as text.
+- `eds_get_code_status` (read-only) — Use this to check one code file's status; the repository is resolved from the site's configuration.
+- `eds_list_jobs` (read-only) — Use this to list a site's jobs for one topic.
 - `eds_list_api_keys` (read-only) — Use this to see the org's Admin API keys — metadata only. Creating and deleting keys is CLI-only.
 - `eds_plan` (read-only) — Use this for any change to an EDS site. Changes nothing: returns exactly what would happen, a confirmation message for the user and a one-time token.
-- `eds_apply` — Use this only after the user explicitly confirms a plan from eds_plan. Takes the plan's token with its site and kind repeated (they must match) and issues exactly the planned requests. Destructive. **Not verified against a live service** — Of its 22 operation kinds, only snapshot.add and snapshot.delete (as the former eds_manage_snapshot) have run against a live Edge Delivery Services site. Every other kind is built from the Admin API contract and covered by unit tests only.
+- `eds_apply` — Use this only after the user explicitly confirms a plan from eds_plan. Takes the plan's token with its site and kind repeated (they must match) and issues exactly the planned requests. Destructive. **Not verified against a live service** — Run against a live Edge Delivery Services site for site.create, site.delete, config.patch, version.restore and robots.set, and (as the former eds_manage_snapshot) snapshot.add and snapshot.delete. Every other kind, including preview, publish, unpublish, index, cache, sitemap, code and job.stop, is built from the Admin API contract and covered by unit tests only.
 
 ## Environment
 
