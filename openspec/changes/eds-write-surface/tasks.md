@@ -183,10 +183,31 @@ and what Phase 6 must look at:
 ## Phase 5: Manifest, docs, release
 
 - [x] 5.1 `servers.json`: new tool list; every new write kind described under `eds_apply`'s `unverified` marker. Run `node scripts/gen-readme.mjs`.
-- [ ] 5.2 `packages/eds/README.md`: plan/apply flow, operation kinds, `EDS_PROTECTED_SITES`, migration table for the three removed tools.
-- [ ] 5.3 `docs/eds-onboarding.md`: per-client "always ask for `eds_apply`" settings from 0.2 (`client-matrix.md`); note that Claude Code prompts without configuration because of `requiresUserInteraction`.
-- [ ] 5.4 Changeset: minor bump of `@hiberus-magento/eds`. Mention the bulk-unpublish body fix (2.7b): `0.1.x`'s `eds_set_live_state` with `unpublished` did not send `delete: true`.
-- [ ] 5.5 All `AGENTS.md` gates: lint, typecheck, test, build, `verify:package`, `gen-readme --check`, `check-licenses`, `audit-synthetic-identifiers`.
+- [x] 5.2 `packages/eds/README.md`: plan/apply flow, operation kinds, `EDS_PROTECTED_SITES`, migration table for the three removed tools.
+- [x] 5.3 `docs/eds-onboarding.md`: per-client "always ask for `eds_apply`" settings from 0.2 (`client-matrix.md`); note that Claude Code prompts without configuration because of `requiresUserInteraction`.
+- [x] 5.4 Changeset: minor bump of `@hiberus-magento/eds`. Mention the bulk-unpublish body fix (2.7b): `0.1.x`'s `eds_set_live_state` with `unpublished` did not send `delete: true`.
+- [x] 5.5 All `AGENTS.md` gates: lint, typecheck, test, build, `verify:package`, `gen-readme --check`, `check-licenses`, `audit-synthetic-identifiers`.
+
+**Phase 5 done** (eds suite 643/643; every gate green; `changeset status` reports a minor bump of
+`@hiberus-magento/eds`).
+
+- **Defect found while documenting roles, fixed test-first:**
+  - `preview.*`/`live.*` plans read the site document for the AEM check. That document needs
+    `config_admin`, and the README already records that a day-to-day `publish, author` key gets a
+    403 there. So every publish plan would have failed with the usual key.
+  - Now a 403 skips the check with a warning. A 401 still fails the plan.
+  - Added as a scenario to the eds-mcp delta ("Site document not readable with the key").
+- **Pre-existing doc defect fixed in `docs/eds-onboarding.md`:** its config snippet used the bare
+  `npx -y @hiberus-magento/eds@<version>` form. The 0.1.1 changelog records that this form fails.
+- **README "Roles":** which tools need `config_admin` is **inferred from the `/config/` path**, not
+  measured; only the site document and CDN paths were measured in 0.1. Phase 6 should confirm it
+  with a `publish, author` key.
+- **Key deletion:** the docs say it is not implemented in the CLI either (delete keys in Adobe's UI).
+  The CLI still has only `auth token set`, `auth mint`, `auth keys list` and `auth status`.
+- **Changeset:** it names only user-visible fixes. The `putSiteConfig` and code-path `{ref}` fixes
+  were not reachable from any 0.1 tool or command, so they are not presented as fixes.
+- **Identifier audit:** it rejects the `rfc-editor.org` domain, so the RFC 7386 link is plain text.
+  The allowlist is not widened.
 
 ## Phase 6: Manual validation (outside CI, against a real non-production tenant)
 

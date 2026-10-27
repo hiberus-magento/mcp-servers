@@ -2,9 +2,10 @@
 
 An MCP (Model Context Protocol) server, and a companion operator CLI, for the
 **Adobe Edge Delivery Services Admin API** — the API documented at
-<https://www.aem.live/docs/admin.html>. It covers a site's publishing surface:
-per-path and bulk status, publish and unpublish, the full effective site
-configuration, re-indexing, the audit log, snapshots, and job polling.
+<https://www.aem.live/docs/admin.html>. It reads a site's state — status,
+configuration, versions, `robots.txt`, code, jobs, the audit log, snapshots —
+and changes it through one reviewed path: **`eds_plan` shows exactly what would
+happen, the user confirms, and `eds_apply` does exactly that and nothing else.**
 
 > **EDS is not ACS, and not ACO.** Three adjacent Adobe acronyms that are
 > routinely confused, and that Adobe has renamed before:
@@ -22,7 +23,7 @@ installed first.
 | Binary | What it is |
 | --- | --- |
 | `hiberus-eds-mcp` | The **stdio MCP server**. This is what you put in an MCP client's configuration. It speaks JSON-RPC on stdout and nothing else. |
-| `hiberus-eds` | The **operator CLI**, for a human at a terminal. It handles credential storage (`auth token set`), key minting (`auth mint`), key listing (`auth keys list`) and reachability checks (`auth status`) — none of which are, or will ever be, MCP tools. |
+| `hiberus-eds` | The **operator CLI**, for a human at a terminal. It handles credential storage (`auth token set`), key minting (`auth mint`), key listing (`auth keys list`) and reachability checks (`auth status`). Storing and minting keys are not, and will never be, MCP tools. |
 
 Because the package declares two binaries, `npx` has to be told which one to
 run — the bare `npx -y @hiberus-magento/eds` form cannot guess, and exits with
@@ -119,14 +120,26 @@ from it. Keys belong to the **organisation**, not to a site:
 `POST /config/{org}/apiKeys.json` is where they live, and the site-level path
 answers 404.
 
-**Roles.** Minting requires a key that already carries `config_admin`; plain
-`config` is a different, narrower role and is not enough. `eds_get_site_config`
-also requires `config_admin` — measured against a live organisation, a key
-carrying `config, author, publish` is answered 403 on the site-config paths and
-succeeds on the status and audit-log endpoints. Every other tool here is
-satisfied by the day-to-day roles. If site configuration is the only thing you
-need `config_admin` for, consider minting a separate key for it rather than
-widening the one in daily use.
+**Roles.** Minting requires a key that already carries `config_admin`. Plain
+`config` is a different, narrower role and is not enough. The same holds for
+`eds_get_site_config`. Measured against a live organisation, a key carrying
+`config, author, publish` is answered 403 on the site-config paths but succeeds
+on the status and audit-log endpoints.
+
+**Inferred from the path, not measured:** every other read or write under
+`/config/{org}/` needs `config_admin` too. That covers:
+- `eds_list_sites`, `eds_get_config_versions`, `eds_get_robots` and
+  `eds_list_api_keys`;
+- `eds_get_code_status` and `code.*` plans, which read the site's `code`
+  block;
+- the `config.patch`, `site.*`, `version.restore` and `robots.set` operations.
+
+`preview.*` and `live.*` plans also read the site document, to check for an AEM
+content source. With a day-to-day key they skip that check and say so in a
+warning, rather than failing.
+
+If site configuration is the only thing you need `config_admin` for, consider
+minting a separate key for it rather than widening the one in daily use.
 
 `hiberus-eds auth status` reports a per-probe verdict — `reachable`,
 `key rejected (401)`, `key lacks the required role (403)`,
@@ -134,16 +147,112 @@ widening the one in daily use.
 problem from a credential problem. It never prints the token, only an
 8-hex-character fingerprint.
 
-## What this server deliberately does not do
+## Changing a site: plan, confirm, apply
 
-`site apply`, `site delete`, `site source set`, `key create`, `key delete`,
-`auth mint`, `code show`, `code sync`, `code delete`, `version restore`,
-`cache purge`, `robots show` and `sitemap rebuild` have no MCP tool, and will
-not get one. Minting and rotating credentials, restoring a prior version, and
-repository-adjacent code operations are high blast radius or easy for an agent
-to aim at the wrong site; they stay with a human at the terminal. `auth mint`
-is implemented as a CLI command; the rest have no implementation in this
-release at all.
+Every write goes through two tools. No other tool writes.
+
+1. **`eds_plan`** takes `{ site, ref?, operation }` and changes nothing. It
+   reads what the operation depends on and returns:
+   - a one-line `summary` and the exact requests that will be sent;
+   - for configuration changes, every changed key with its value before and
+     after;
+   - `warnings`;
+   - a `confirmationMessage` assembled by the server, so every model relays the
+     same text;
+   - an `instruction` telling the model to show that message and to wait for
+     an explicit yes;
+   - a one-time `token`.
+2. **The user confirms** in the conversation.
+3. **`eds_apply`** takes only `{ token, confirmSite?, wait? }`. It cannot
+   restate the operation, so it cannot alter it, and it sends exactly the
+   requests the plan recorded.
+
+A token is 32 random bytes and expires after ten minutes. It is spent the
+moment `eds_apply` starts, whether the apply then succeeds, fails or is
+rejected, so a retry never repeats a write: plan again instead. Tokens live in
+the server's memory only, so restarting the server invalidates every one of
+them.
+
+**Stale plans.** For `config.patch`, `site.delete`, `version.restore` and
+`robots.set`, `eds_apply` re-reads what the user reviewed and writes nothing if
+it changed in the meantime (`stale-plan`). For `site.create`, it rejects the
+apply if the site has been created since the plan.
+
+**Configuration changes.** `config.patch` is an
+RFC 7386 JSON Merge Patch:
+- objects merge;
+- `null` removes a key;
+- arrays and scalars are replaced whole.
+
+The plan sends the whole merged document, so what is applied is what was shown.
+A patch that changes nothing returns `no-changes` and no token. Applied
+configuration changes report `previousVersionId`, the newest version before the
+change, to use with `version.restore`.
+
+### Operation kinds
+
+| Area | Kinds |
+| --- | --- |
+| Site configuration | `config.patch`, `site.create`, `site.delete`, `version.restore`, `robots.set` |
+| Content | `preview.update`, `preview.delete`, `live.publish`, `live.unpublish` |
+| Index, cache, sitemap | `index.update`, `index.delete`, `index.full-site` (requires `confirmFullReindex: true`), `cache.purge`, `sitemap.rebuild` |
+| Code | `code.sync`, `code.delete`. The repository is read from the site's own `code` block, never supplied. |
+| Jobs and snapshots | `job.stop`, `snapshot.add`, `snapshot.remove`, `snapshot.publish`, `snapshot.review`, `snapshot.delete` |
+
+`paths` takes 1 to 100 entries and is never read as "everything". `ref`
+defaults to `main` and is accepted only by the kinds that are addressed by
+branch.
+
+### Protected sites
+
+`EDS_PROTECTED_SITES` is a comma-separated list of site-name patterns. `*` is the
+only wildcard; matching is anchored and case-sensitive, and every other
+character is literal. For example:
+
+```sh
+EDS_PROTECTED_SITES="acme-demo-site-us,*-prod"
+```
+
+A plan for a matching site warns, and `eds_apply` refuses it until `confirmSite`
+repeats the site name exactly. That refusal does **not** spend the token, so the
+user can simply answer again.
+
+### What this protects against, and what it does not
+
+The token guarantees three things: nothing is written without a plan, exactly
+the planned requests are sent, and a reused, expired or stale plan is refused. It
+does **not** prove that a human said yes. That relies on the model following the
+plan's instruction, and on your MCP client asking before `eds_apply`. Claude
+Code asks on every call because `eds_apply` is marked
+`anthropic/requiresUserInteraction`. Other clients need one setting each; see
+[EDS onboarding](https://github.com/hiberus-magento/mcp-servers/blob/main/docs/eds-onboarding.md#confirming-eds_apply-in-your-client).
+
+### What stays off the MCP surface
+
+**API key writes.** `auth mint` returns the key value exactly once, and over MCP
+that value would land in the model's context and transcript, so it is
+CLI-only. Deleting a key is an org-level operation that does not fit a
+site-scoped plan, so it is not an MCP operation either, and this release's CLI
+does not implement it: delete keys in Adobe's admin UI.
+`eds_list_api_keys` shows the org's keys as metadata, never key material.
+
+**Project-specific orchestration**, such as generating site documents from a
+site model or applying one change to many sites, belongs in the consuming
+project. That project can compose `eds_plan` operations.
+
+### Migrating from 0.1
+
+| 0.1 tool | 0.2 equivalent |
+| --- | --- |
+| `eds_set_live_state` with `state: "published"` | `eds_plan` with `{ kind: "live.publish", paths }`, then `eds_apply` |
+| `eds_set_live_state` with `state: "unpublished"` | `eds_plan` with `{ kind: "live.unpublish", paths }`, then `eds_apply` |
+| `eds_set_live_state` with `wait: true` | `eds_apply` with `wait: true` |
+| `eds_reindex` with `scope: "paths"` | `eds_plan` with `{ kind: "index.update", paths }`, then `eds_apply` |
+| `eds_reindex` with `scope: "full-site"` | `eds_plan` with `{ kind: "index.full-site", confirmFullReindex: true }`, then `eds_apply` |
+| `eds_manage_snapshot` with `verb: "add"` (and so on) | `eds_plan` with `{ kind: "snapshot.add", id, paths? }` (and so on), then `eds_apply` |
+
+In 0.1, `eds_set_live_state` with `unpublished` on several paths sent the bulk
+job without `delete: true`. `live.unpublish` sends it.
 
 ## Verification status
 

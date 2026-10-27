@@ -238,6 +238,13 @@ AEM and that publishing from AEM is preferable when an audit trail is required.
 - WHEN a `live.publish` plan is built
 - THEN `warnings` contains no AEM warning
 
+#### Scenario: Site document not readable with the key
+
+- GIVEN a key without `config_admin`, which the Admin API answers with 403 on the site document
+- WHEN a `live.publish` plan is built
+- THEN the plan is still produced, and `warnings` says that the AEM check was skipped
+- AND a 401 on the same read still fails the plan
+
 ### Requirement: Code Operations Resolve the Repository From the Site
 
 `code.sync` and `code.delete` MUST NOT accept `owner` or `repo` fields. The repository MUST be

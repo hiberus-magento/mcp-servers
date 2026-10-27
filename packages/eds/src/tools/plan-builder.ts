@@ -5,7 +5,7 @@
 // the state the user reviews, assembles the confirmation message and stores
 // the plan under a one-time token. It never writes: every client call here
 // is a read, and the writes are only BUILT (`writeRequests`), never sent.
-import { writeRequests, type EdsClient, type PlannedRequest } from "../client/index.js";
+import { AdminApiAuthError, writeRequests, type EdsClient, type PlannedRequest } from "../client/index.js";
 import { fingerprint } from "../confirm/fingerprint.js";
 import { diffDocuments, mergeConfigPatch, type ConfigChange } from "../confirm/merge-patch.js";
 import type { PlanStore } from "../confirm/plan-store.js";
@@ -82,6 +82,9 @@ const AEM_DELIVERY_MARKER = "/bin/franklin.delivery";
 const AEM_WARNING =
   "The content source is AEM: previewing or publishing through the Admin API leaves no replication record in AEM, " +
   "so the author will not show these pages as published. Publish from AEM instead when an audit trail is required.";
+const AEM_UNCHECKED_WARNING =
+  "The site configuration could not be read with this key (it needs config_admin), so whether the content source is AEM was not checked. " +
+  "If it is, previewing or publishing here leaves no replication record in AEM.";
 const FULL_SITE_WARNING =
   "This is a full-site reindex: every published page of the site is reindexed. It is resource-intensive and cannot be narrowed once started.";
 
@@ -146,6 +149,22 @@ async function currentVersionId(deps: PlanDeps, site: string): Promise<{ id?: st
     return versions.current === undefined ? {} : { id: String(versions.current) };
   } catch {
     return { warning: "The configuration versions could not be read, so no previous version is reported for rollback." };
+  }
+}
+
+/**
+ * The AEM check is advisory, and the site document needs `config_admin`,
+ * which a day-to-day `publish, author` key does not carry (README, "Roles").
+ * So a 403 there skips the check, saying so, instead of blocking the plan.
+ * Any other failure — including a 401, where the writes would fail too — still
+ * stops it.
+ */
+async function aemSourceWarnings(deps: PlanDeps, site: string): Promise<string[]> {
+  try {
+    return isAemSource(await readSiteDocument(deps, site)) ? [AEM_WARNING] : [];
+  } catch (error) {
+    if (error instanceof AdminApiAuthError && error.status === 403) return [AEM_UNCHECKED_WARNING];
+    throw error;
   }
 }
 
@@ -231,7 +250,7 @@ async function draftFor(deps: PlanDeps, site: string, ref: string, operation: Pl
     case "live.unpublish": {
       const resource = operation.kind.startsWith("preview") ? "preview" : "live";
       const remove = operation.kind === "preview.delete" || operation.kind === "live.unpublish";
-      const document = await readSiteDocument(deps, site);
+      const aemWarnings = await aemSourceWarnings(deps, site);
       const writes = contentWrites(resource, remove, address, operation.paths);
       const verb = { "preview.update": "Preview", "preview.delete": "Remove from preview", "live.publish": "Publish", "live.unpublish": "Unpublish" }[operation.kind];
       return {
@@ -240,7 +259,7 @@ async function draftFor(deps: PlanDeps, site: string, ref: string, operation: Pl
         details: pathDetails(operation.paths),
         warnings: [
           ...(remove ? [`This removes ${plural(operation.paths.length, "path")} from ${resource === "live" ? "the live site" : "preview"}.`] : []),
-          ...(isAemSource(document) ? [AEM_WARNING] : []),
+          ...aemWarnings,
         ],
       };
     }

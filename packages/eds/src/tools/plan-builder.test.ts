@@ -377,6 +377,22 @@ describe("buildPlan — AEM content source warning (4.5)", () => {
     expect(result.status === "planned" && result.warnings.some((w) => AEM.test(w))).toBe(false);
   });
 
+  // A day-to-day key (`publish, author`) is answered 403 on the site
+  // document — only `config_admin` opens it (README, "Roles"). The AEM check
+  // is advisory, so it must not cost that key the ability to publish.
+  it("a site document the key may not read does not block a content plan; the plan says the check was skipped", async () => {
+    const routes = { ...baseRoutes(), [`GET ${EU_DOC}`]: { status: 403 } };
+    const result = await harness({ routes }).plan({ site: EU, operation: { kind: "live.publish", paths: ["/a"] } });
+
+    expect(result.status).toBe("planned");
+    expect(result.status === "planned" && result.warnings.some((w) => /could not be read.*AEM/i.test(w))).toBe(true);
+  });
+
+  it("a rejected credential (401) still stops the plan — the writes would fail too", async () => {
+    const routes = { ...baseRoutes(), [`GET ${EU_DOC}`]: { status: 401 } };
+    await expect(harness({ routes }).plan({ site: EU, operation: { kind: "live.publish", paths: ["/a"] } })).rejects.toThrow(/401/);
+  });
+
   it("other kinds on an AEM-sourced site do not warn", async () => {
     const result = await harness({ routes: baseRoutes(AEM_DOC) }).plan({ site: EU, operation: { kind: "index.update", paths: ["/a"] } });
     expect(result.status === "planned" && result.warnings.some((w) => AEM.test(w))).toBe(false);
