@@ -127,18 +127,28 @@ describe("edsPlanInput — per-kind gates", () => {
   });
 });
 
-describe("edsApplyInput — only a token (4.12)", () => {
-  it("accepts { token }, { token, confirmSite }, { token, wait }", () => {
-    expect(edsApplyInput.safeParse({ token: "t" }).success).toBe(true);
-    expect(edsApplyInput.safeParse({ token: "t", confirmSite: SITE, wait: true }).success).toBe(true);
+// CHANGED DELIBERATELY (Phase 6 finding, 6.6): `eds_apply` used to take only
+// `{ token, confirmSite?, wait? }`. A client's approval dialog then showed an
+// opaque token, so the user approved without seeing WHAT. `site` and `kind`
+// are now required echoes of the plan: they cannot change what is applied (a
+// mismatch is rejected, see apply.test.ts) but they appear in the dialog.
+describe("edsApplyInput — a token plus the plan's site and kind (4.12)", () => {
+  it("accepts { token, site, kind } with optional confirmSite and wait", () => {
+    expect(edsApplyInput.safeParse({ token: "t", site: SITE, kind: "robots.set" }).success).toBe(true);
+    expect(edsApplyInput.safeParse({ token: "t", site: SITE, kind: "robots.set", confirmSite: SITE, wait: true }).success).toBe(true);
   });
 
   it.each([
-    [{ token: "t", site: "acme-demo-site-us" }],
-    [{ token: "t", operation: { kind: "site.delete" } }],
-    [{ token: "t", paths: ["/a"] }],
-    [{}],
-    [{ token: "" }],
+    [{ token: "t" }],
+    [{ token: "t", site: SITE }],
+    [{ token: "t", kind: "robots.set" }],
+    [{ token: "t", site: SITE, kind: "key.delete" }],
+    [{ token: "t", site: "", kind: "robots.set" }],
+    [{ token: "t", site: SITE, kind: "robots.set", operation: { kind: "site.delete" } }],
+    [{ token: "t", site: SITE, kind: "robots.set", paths: ["/a"] }],
+    [{ token: "t", site: SITE, kind: "robots.set", content: "User-agent: *" }],
+    [{ site: SITE, kind: "robots.set" }],
+    [{ token: "", site: SITE, kind: "robots.set" }],
   ])("rejects %j", (input) => {
     expect(edsApplyInput.safeParse(input).success).toBe(false);
   });

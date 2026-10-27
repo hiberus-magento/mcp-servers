@@ -268,7 +268,7 @@ describe("eds_plan → eds_apply through the tools", () => {
     const tools = toolsOver(client);
 
     const planned = (await call(tools, "eds_plan", { site: EU, operation: { kind: "config.patch", patch: { a: 2 } } })) as { token: string };
-    const applied = await call(tools, "eds_apply", { token: planned.token });
+    const applied = await call(tools, "eds_apply", { token: planned.token, site: EU, kind: "config.patch" });
 
     expect(applied).toMatchObject({ status: "applied", site: EU, kind: "config.patch", previousVersionId: "4" });
     expect(callKeys(calls).filter((key) => key.startsWith("POST "))).toEqual([`POST ${EU_DOC}`]);
@@ -283,8 +283,8 @@ describe("eds_plan → eds_apply through the tools", () => {
 
     const planned = (await call(tools, "eds_plan", { site: EU, operation: { kind: "live.publish", paths: ["/a"] } })) as { token: string; requiresConfirmSite: boolean };
     expect(planned.requiresConfirmSite).toBe(true);
-    expect(await call(tools, "eds_apply", { token: planned.token })).toMatchObject({ status: "rejected", reason: "confirm-site-missing" });
-    expect(await call(tools, "eds_apply", { token: planned.token, confirmSite: EU })).toMatchObject({ status: "applied" });
+    expect(await call(tools, "eds_apply", { token: planned.token, site: EU, kind: "live.publish" })).toMatchObject({ status: "rejected", reason: "confirm-site-missing" });
+    expect(await call(tools, "eds_apply", { token: planned.token, site: EU, kind: "live.publish", confirmSite: EU })).toMatchObject({ status: "applied" });
   });
 
   it("eds_apply rejects extra operation fields at the schema level (4.12)", async () => {
@@ -302,7 +302,7 @@ describe("eds_plan → eds_apply through the tools", () => {
     const tools = toolsOver(client);
 
     const planned = (await call(tools, "eds_plan", { site: EU, operation: { kind: "snapshot.delete", id: "launch-2026" } })) as { token: string };
-    const result = await tool(tools, "eds_apply").invoke({ token: planned.token }, {});
+    const result = await tool(tools, "eds_apply").invoke({ token: planned.token, site: EU, kind: "snapshot.delete" }, {});
 
     expect(result.isError).not.toBe(true);
     expect(result.content[0]?.text).not.toContain("JSON input");

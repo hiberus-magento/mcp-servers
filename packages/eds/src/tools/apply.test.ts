@@ -12,7 +12,7 @@ import { callKeys, createClientDouble, TEST_ORG } from "../testing/client-double
 import type { RecordedCall, RouteResponse, RouteTable } from "../testing/fetch-double.js";
 import { applyPlan, type ApplyResult } from "./apply.js";
 import { buildPlan, type StoredPlan } from "./plan-builder.js";
-import type { EdsPlanInput } from "./plan.js";
+import type { EdsPlanInput, OperationKind } from "./plan.js";
 
 const EU = "acme-demo-site-eu";
 const US = "acme-demo-site-us";
@@ -50,6 +50,9 @@ function harness(options: { reads?: Reads; protectedSites?: readonly string[] } 
   const { client, calls } = createClientDouble(routes(options.reads ?? defaultReads()));
   const store = createPlanStore<StoredPlan>({ now: () => now });
   const deps = { client, org: TEST_ORG, store, protectedSites: options.protectedSites ?? [] };
+  // `site` and `kind` echo the plan (see plan-schema.test.ts); tests pass them
+  // explicitly only when the echo itself is under test.
+  const planned = new Map<string, StoredPlan>();
   return {
     calls,
     advance: (ms: number) => {
@@ -60,9 +63,13 @@ function harness(options: { reads?: Reads; protectedSites?: readonly string[] } 
       if (result.status !== "planned") throw new Error("expected a planned result");
       const lookup = store.peek(result.token);
       if (lookup.status !== "ok") throw new Error("token not stored");
+      planned.set(result.token, lookup.plan);
       return { token: result.token, stored: lookup.plan };
     },
-    apply: (input: { token: string; confirmSite?: string; wait?: boolean }) => applyPlan({ client, store }, input),
+    apply: (input: { token: string; site?: string; kind?: OperationKind; confirmSite?: string; wait?: boolean }) => {
+      const stored = planned.get(input.token);
+      return applyPlan({ client, store }, { site: stored?.site ?? EU, kind: stored?.kind ?? "config.patch", ...input });
+    },
   };
 }
 
@@ -291,6 +298,44 @@ describe("eds_apply — protected sites (4.11)", () => {
   });
 });
 
+// Phase 6 finding (6.6): asked to "not ask", a model in a real session planned
+// and applied straight away, filling confirmSite from the plan itself — the
+// client's approval dialog was the only human step, and it showed an opaque
+// token. `site` and `kind` now travel in the call so the dialog shows them;
+// they must match the plan exactly or nothing happens.
+describe("eds_apply — site and kind must echo the plan", () => {
+  it("a different site is plan-mismatch: no write, and the token stays valid", async () => {
+    const h = harness();
+    const { token } = await h.plan({ site: EU, operation: { kind: "live.publish", paths: ["/a"] } });
+
+    rejected(await h.apply({ token, site: US }), "plan-mismatch");
+    expect(writes(h.calls)).toEqual([]);
+    expect((await h.apply({ token })).status).toBe("applied");
+  });
+
+  it("a different kind is plan-mismatch: no write, and the token stays valid", async () => {
+    const h = harness();
+    const { token } = await h.plan({ site: EU, operation: { kind: "live.publish", paths: ["/a"] } });
+
+    rejected(await h.apply({ token, kind: "live.unpublish" }), "plan-mismatch");
+    expect(writes(h.calls)).toEqual([]);
+    expect((await h.apply({ token })).status).toBe("applied");
+  });
+
+  it("an unknown token is still unknown-token, whatever site and kind say", async () => {
+    const h = harness();
+    rejected(await h.apply({ token: "forged-token-0000000000000000000000000000000", site: EU, kind: "site.delete" }), "unknown-token");
+  });
+
+  it("echoing site and kind does not replace confirmSite on a protected site", async () => {
+    const h = harness({ protectedSites: ["*-eu"] });
+    const { token } = await h.plan({ site: EU, operation: { kind: "live.publish", paths: ["/a"] } });
+
+    rejected(await h.apply({ token, site: EU, kind: "live.publish" }), "confirm-site-missing");
+    expect(writes(h.calls)).toEqual([]);
+  });
+});
+
 describe("eds_apply — wait (4.13)", () => {
   it("wait: true on a job-backed kind returns the final job", async () => {
     const h = harness();
@@ -357,7 +402,7 @@ describe("eds_apply — output redaction", () => {
     const planned = await buildPlan({ client, org: TEST_ORG, store, protectedSites: [] }, { site: EU, operation: { kind: "config.patch", patch: { a: 2 } } });
     const token = planned.status === "planned" ? planned.token : "";
 
-    const result = await applyPlan({ client, store }, { token });
+    const result = await applyPlan({ client, store }, { token, site: EU, kind: "config.patch" });
 
     expect(JSON.stringify(result)).not.toContain("0000000009");
     expect(writes(calls)).toHaveLength(1);

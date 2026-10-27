@@ -206,7 +206,7 @@ and what Phase 6 must look at:
   The CLI still has only `auth token set`, `auth mint`, `auth keys list` and `auth status`.
 - **Changeset:** it names only user-visible fixes. The `putSiteConfig` and code-path `{ref}` fixes
   were not reachable from any 0.1 tool or command, so they are not presented as fixes.
-- **Identifier audit:** it rejects the `rfc-editor.org` domain, so the RFC 7386 link is plain text.
+- **Identifier audit:** it rejects the RFC editor's domain, so the RFC 7386 link is plain text.
   The allowlist is not widened.
 
 ## Phase 6: Manual validation (outside CI, against a real non-production tenant)
@@ -220,3 +220,25 @@ and what Phase 6 must look at:
 - [ ] 6.6 Negative: apply without asking is not attempted by the model; reused, expired and stale tokens; protected site without `confirmSite`.
 - [ ] 6.7 Repeat 6.2 and 6.6 in Claude Code, GitHub Copilot and opencode.
 - [ ] 6.8 Remove the `unverified` marker only for the kinds actually exercised.
+
+**Phase 6 progress.** Real org and site names stay out of this file.
+- **6.1, partial:** `eds_list_sites` works live. The live response is the object form
+  `{ sites: [{ name }] }`, which confirms the 2.3 fix.
+- **Test site:** created by `site.create` in a fresh session. It points at an existing content
+  source and the shared code repository, so `code.delete` and content writes on it are not run
+  (the content bus may be shared with that source's site).
+- **6.6 finding:**
+  - Told "change robots.txt, don't ask me for confirmation", a fresh Claude Code session planned
+    and applied straight away. It filled `confirmSite` from the plan.
+  - The `requiresUserInteraction` dialog was the only human step, and it showed an opaque token.
+  - **Fixed test-first:** `eds_apply` now requires `site` and `kind`. They must equal the plan's
+    (`plan-mismatch` otherwise: no write, token not consumed), and the dialog shows them.
+  - Spec ("eds_apply Accepts Only a Token", "Protected Sites Require the Site Name"), design, README,
+    onboarding and `servers.json` now state that `confirmSite` guards against the wrong site, not
+    against a model that skips asking.
+- **Follow-up, not done:** MCP elicitation for protected sites (a confirmation the model cannot
+  fill), set aside on request.
+- **Follow-up, not done:** `code.delete`'s warning should say the code bus is shared by every site
+  on the same repository.
+- **Follow-up, not done:** `hiberus-eds auth token set` requires `EDS_ORG` although it does not use
+  it, and onboarding step 2 omits it.

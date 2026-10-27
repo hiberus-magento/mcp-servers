@@ -51,7 +51,7 @@ npx -y --package @hiberus-magento/eds hiberus-eds-mcp           # the server
 - `eds_list_jobs` (read-only) — Use this to list a site's jobs for one topic. **Not verified against a live service** — Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site.
 - `eds_list_api_keys` (read-only) — Use this to see the org's Admin API keys — metadata only. Creating and deleting keys is CLI-only.
 - `eds_plan` (read-only) — Use this for any change to an EDS site. Changes nothing: returns exactly what would happen, a confirmation message for the user and a one-time token.
-- `eds_apply` — Use this only after the user explicitly confirms a plan from eds_plan. Takes only the plan's token and issues exactly the planned requests. Destructive. **Not verified against a live service** — Of its 22 operation kinds, only snapshot.add and snapshot.delete (as the former eds_manage_snapshot) have run against a live Edge Delivery Services site. Every other kind is built from the Admin API contract and covered by unit tests only.
+- `eds_apply` — Use this only after the user explicitly confirms a plan from eds_plan. Takes the plan's token with its site and kind repeated (they must match) and issues exactly the planned requests. Destructive. **Not verified against a live service** — Of its 22 operation kinds, only snapshot.add and snapshot.delete (as the former eds_manage_snapshot) have run against a live Edge Delivery Services site. Every other kind is built from the Admin API contract and covered by unit tests only.
 
 ## Environment
 
@@ -163,9 +163,12 @@ Every write goes through two tools. No other tool writes.
      an explicit yes;
    - a one-time `token`.
 2. **The user confirms** in the conversation.
-3. **`eds_apply`** takes only `{ token, confirmSite?, wait? }`. It cannot
-   restate the operation, so it cannot alter it, and it sends exactly the
-   requests the plan recorded.
+3. **`eds_apply`** takes `{ token, site, kind, confirmSite?, wait? }`.
+   - `site` and `kind` must be exactly the plan's; anything else is
+     `plan-mismatch` and writes nothing. They are there so that your client's
+     approval dialog shows *what* you are approving, not just a token.
+   - The operation itself cannot be restated, so it cannot be altered, and
+     `eds_apply` sends exactly the requests the plan recorded.
 
 A token is 32 random bytes and expires after ten minutes. It is spent the
 moment `eds_apply` starts, whether the apply then succeeds, fails or is
@@ -217,6 +220,11 @@ A plan for a matching site warns, and `eds_apply` refuses it until `confirmSite`
 repeats the site name exactly. That refusal does **not** spend the token, so the
 user can simply answer again.
 
+`confirmSite` is sent by the model, so it catches a model aiming at the wrong
+site. It does **not** catch a model that skips asking: told "don't ask me", a
+model can copy the name from the plan. The step that only a human can take is
+your client's approval dialog (below).
+
 ### What this protects against, and what it does not
 
 The token guarantees three things: nothing is written without a plan, exactly
@@ -224,7 +232,8 @@ the planned requests are sent, and a reused, expired or stale plan is refused. I
 does **not** prove that a human said yes. That relies on the model following the
 plan's instruction, and on your MCP client asking before `eds_apply`. Claude
 Code asks on every call because `eds_apply` is marked
-`anthropic/requiresUserInteraction`. Other clients need one setting each; see
+`anthropic/requiresUserInteraction`, and its dialog shows the call's `site` and
+`kind`: read them before approving. Other clients need one setting each; see
 [EDS onboarding](https://github.com/hiberus-magento/mcp-servers/blob/main/docs/eds-onboarding.md#confirming-eds_apply-in-your-client).
 
 ### What stays off the MCP surface

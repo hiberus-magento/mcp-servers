@@ -110,7 +110,7 @@
         {
           "name": "eds_apply",
           "readOnly": false,
-          "description": "Use this only after the user explicitly confirms a plan from eds_plan. Takes only the plan's token and issues exactly the planned requests. Destructive.",
+          "description": "Use this only after the user explicitly confirms a plan from eds_plan. Takes the plan's token with its site and kind repeated (they must match) and issues exactly the planned requests. Destructive.",
           "unverified": "Of its 22 operation kinds, only snapshot.add and snapshot.delete (as the former eds_manage_snapshot) have run against a live Edge Delivery Services site. Every other kind is built from the Admin API contract and covered by unit tests only."
         }
       ]

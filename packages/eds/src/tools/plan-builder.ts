@@ -16,7 +16,7 @@ import { redactChange, redactValue } from "./redact-output.js";
 /** Returned in every planned result: a model weighs what it just received more than a description read at session start (Decision 4). */
 export const PLAN_INSTRUCTION =
   "Show confirmationMessage to the user, translated into the user's language if needed, without summarising the changes away. " +
-  "Call eds_apply only if the user's most recent message explicitly confirms this plan. " +
+  "Call eds_apply only if the user's most recent message explicitly confirms this plan, passing this token with this plan's site and kind. " +
   "If the user asks for any modification, call eds_plan again; do not reuse this token.";
 
 /** How `eds_apply` re-checks the state the user reviewed (Decision 3). */

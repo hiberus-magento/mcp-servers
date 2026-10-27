@@ -139,15 +139,27 @@ and MUST NOT issue a token.
 
 ### Requirement: eds_apply Accepts Only a Token
 
-`eds_apply` MUST accept exactly `{ token, confirmSite?, wait? }` and MUST reject any other field.
-It MUST issue exactly the requests recorded when the token was planned — same methods, paths,
-bodies and content types — and nothing else.
+`eds_apply` MUST accept exactly `{ token, site, kind, confirmSite?, wait? }` and MUST reject any
+other field. `site` and `kind` MUST equal the planned site and kind. They exist only so that a
+client's approval dialog shows what is being approved, and they cannot change what is applied: a
+mismatch MUST be rejected with reason `plan-mismatch`, MUST issue no request, and MUST NOT consume
+the token. `eds_apply` MUST issue exactly the requests recorded when the token was planned (same
+methods, paths, bodies and content types) and nothing else.
+(Phase 6 finding: with only `{ token, confirmSite?, wait? }`, a client's approval dialog showed an
+opaque token, so the user approved without seeing the site or the operation.)
 
 #### Scenario: Extra operation field is rejected
 
-- GIVEN a call to `eds_apply` with a valid token and `site: "acme-demo-site-us"`
+- GIVEN a call to `eds_apply` with a valid token, the plan's `site` and `kind`, and `paths: ["/a"]`
 - WHEN the tool validates the input
 - THEN the call is rejected at the schema level and no request is issued
+
+#### Scenario: Site that does not match the plan is rejected
+
+- GIVEN a plan for `acme-demo-site-eu`
+- WHEN `eds_apply` is called with its token and `site: "acme-demo-site-us"`
+- THEN the result is `rejected` with reason `plan-mismatch`, no request is issued, and the same
+  token is still accepted afterwards with `site: "acme-demo-site-eu"`
 
 #### Scenario: Applied requests equal planned requests
 
@@ -205,7 +217,9 @@ reject if the site exists at apply time.
 When the planned site matches a pattern in `EDS_PROTECTED_SITES` (comma-separated; `*` is the only
 wildcard; anchored; case-sensitive), the plan MUST set `requiresConfirmSite: true` and add a
 warning, and `eds_apply` MUST reject a missing or non-identical `confirmSite` without consuming
-the token.
+the token. `confirmSite` is supplied by the model, so it guards against a model that targets the
+wrong site, not against one that skips asking the user. A Phase 6 session, told "do not ask me",
+filled `confirmSite` from the plan; the client's approval dialog was the only human step.
 
 #### Scenario: Protected site without confirmSite
 

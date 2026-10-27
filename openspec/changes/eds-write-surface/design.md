@@ -36,6 +36,8 @@ export const edsPlanInput = z.object({
 
 export const edsApplyInput = z.object({
   token: z.string().min(1),
+  site: z.string().min(1),               // must equal the plan's: shown in the approval dialog
+  kind: z.enum(OPERATION_KINDS),         // idem; a mismatch is `plan-mismatch` (Phase 6 finding)
   confirmSite: z.string().min(1).optional(),
   wait: z.boolean().optional(),          // block until a job-backed operation completes
 }).strict();
@@ -155,8 +157,8 @@ All plan output passes through `mcp-core`'s `redact` before it is returned.
 type ApplyResult =
   | { status: "applied"; site: string; kind: OperationKind; responses: readonly unknown[];
       job?: unknown; previousVersionId?: string }
-  | { status: "rejected"; reason: "unknown-token" | "expired" | "used" | "stale-plan"
-      | "confirm-site-missing" | "confirm-site-mismatch"; message: string }
+  | { status: "rejected"; reason: "unknown-token" | "expired" | "used" | "plan-mismatch"
+      | "stale-plan" | "confirm-site-missing" | "confirm-site-mismatch"; message: string }
   | { status: "pending"; message: string };   // reserved; never produced by this change
 ```
 
@@ -244,7 +246,7 @@ tools ── GET site doc / versions / robots … ──► client ──► Adm
 tools ── diff + fingerprint + warnings + message ──► plan store ── token
 model ◄── PlanResult (confirmationMessage, instruction, token)
 model ── shows message, asks ──► user ── "yes" ──► model
-model ── eds_apply {token, confirmSite?} ──► tools
+model ── eds_apply {token, site, kind, confirmSite?} ──► tools
 tools ── consume token ──► plan store
 tools ── re-read + compare fingerprint ──► client ──► Admin API
 tools ── replay recorded requests ──► client ──► Admin API
@@ -293,7 +295,7 @@ All synthetic (`acme-demo-org`, `acme-demo-site-eu`, `acme-demo-site-us`), over 
 | Boundary | Adversarial cases | Response | RED tests |
 |---|---|---|---|
 | Model applies without user consent | plan then apply in one turn | instruction + message; documented per-client "always ask" settings (`client-matrix.md`). `destructiveHint` is correct metadata but no client prompts on it today. Not fully preventable server-side (stated in proposal) | instruction and message present in every planned result |
-| Model alters the operation between plan and apply | apply with different site/paths | `eds_apply` accepts no operation fields; `.strict()` rejects extras | apply with extra fields rejected; replay equality |
+| Model alters the operation between plan and apply | apply with different site/paths | `eds_apply` accepts no operation fields; `.strict()` rejects extras; `site`/`kind` must equal the plan's (`plan-mismatch`) | apply with extra fields rejected; mismatched site/kind rejected; replay equality |
 | Token guessing or reuse | forged, reused, expired token | random 32-byte token, single use, TTL | write-gate tests |
 | Concurrent edit | config changed after plan | fingerprint re-check | stale-plan test |
 | Wrong repository for code ops | model supplies another owner/repo | no owner/repo input; resolved from site config | schema rejects `owner`/`repo` |

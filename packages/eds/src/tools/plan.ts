@@ -58,10 +58,18 @@ export const edsPlanInput = z
 
 export type EdsPlanInput = z.infer<typeof edsPlanInput>;
 
-/** Only a token: the operation cannot be restated, so it cannot be altered (eds-mcp spec, "eds_apply Accepts Only a Token"). */
+/**
+ * A token plus two echoes of the plan. The operation itself cannot be
+ * restated, so it cannot be altered (eds-mcp spec, "eds_apply Accepts Only a
+ * Token"). `site` and `kind` must equal the plan's or nothing happens; they
+ * exist so a client's approval dialog shows WHAT is being approved instead of
+ * an opaque token (Phase 6 finding, 6.6).
+ */
 export const edsApplyInput = z
   .object({
     token: z.string().min(1),
+    site: z.string().min(1),
+    kind: z.enum(OPERATION_KINDS as readonly [OperationKind, ...OperationKind[]]),
     confirmSite: z.string().min(1).optional(),
     /** Block until a job-backed operation completes. Changes how the result is reported, never what is written. */
     wait: z.boolean().optional(),

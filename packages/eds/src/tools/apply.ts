@@ -5,8 +5,9 @@
 // recorded. Order matters:
 //
 //   1. peek — unknown, expired or used tokens stop here, nothing read;
-//   2. confirmSite — the one check that runs BEFORE consumption (it reads and
-//      writes nothing), so the user can answer again without re-planning;
+//   2. site/kind echo, then confirmSite — the checks that run BEFORE
+//      consumption (they read and write nothing), so the call can be repeated
+//      correctly without re-planning;
 //   3. consume — from here on the token is spent, whatever happens next, so
 //      no retry loop can silently re-issue the writes;
 //   4. stale check — re-read what the user reviewed; a mismatch writes nothing;
@@ -18,7 +19,7 @@ import type { Fingerprint, StoredPlan } from "./plan-builder.js";
 import type { EdsApplyInput, OperationKind } from "./plan.js";
 import { redactValue } from "./redact-output.js";
 
-export type ApplyRejection = PlanRejection | "stale-plan" | "confirm-site-missing" | "confirm-site-mismatch";
+export type ApplyRejection = PlanRejection | "plan-mismatch" | "stale-plan" | "confirm-site-missing" | "confirm-site-mismatch";
 
 export type ApplyResult =
   | {
@@ -43,6 +44,8 @@ const MESSAGES: Readonly<Record<ApplyRejection, string>> = {
   "unknown-token": "This token was never issued by this server, or the server has restarted since. Nothing was written. Plan the operation again with eds_plan.",
   expired: "This plan has expired (plans live ten minutes). Nothing was written. Plan the operation again with eds_plan and confirm it with the user.",
   used: "This token has already been used. Nothing was written now. Plan the operation again with eds_plan if it is still needed.",
+  "plan-mismatch":
+    "site and kind must be exactly the site and kind of the plan this token was issued for. Nothing was written, and the token is still valid. Pass them as eds_plan returned them.",
   "stale-plan":
     "What the user reviewed has changed since this plan was made. Nothing was written, and the token is spent. Plan again with eds_plan and show the new plan to the user.",
   "confirm-site-missing":
@@ -78,6 +81,7 @@ export async function applyPlan(deps: ApplyDeps, input: EdsApplyInput): Promise<
   if (peeked.status === "rejected") return reject(peeked.reason);
   const plan = peeked.plan;
 
+  if (input.site !== plan.site || input.kind !== plan.kind) return reject("plan-mismatch");
   if (input.confirmSite !== undefined && input.confirmSite !== plan.site) return reject("confirm-site-mismatch");
   if (plan.protected && input.confirmSite === undefined) return reject("confirm-site-missing");
 

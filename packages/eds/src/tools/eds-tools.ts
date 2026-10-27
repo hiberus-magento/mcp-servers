@@ -346,7 +346,7 @@ export function createEdsTools(config: EdsToolsConfig): readonly EdsMcpTool[] {
   const edsApply = defineTool({
     name: "eds_apply",
     description:
-      "Use this only after the user has explicitly confirmed a plan from eds_plan in their latest message. Takes only the plan's token (and confirmSite when the plan requires the site name) and issues exactly the planned requests. A token works once and expires after ten minutes. Destructive and not idempotent. Not verified against a live service — only snapshot.add and snapshot.delete have run against a real Edge Delivery Services site; every other kind is built from the Admin API contract and covered by unit tests only.",
+      "Use this only after the user has explicitly confirmed a plan from eds_plan in their latest message. Takes the plan's token with the plan's site and kind repeated (they must match, so they cannot change anything), plus confirmSite when the plan requires the site name, and issues exactly the planned requests. A token works once and expires after ten minutes. Destructive and not idempotent. Not verified against a live service — only snapshot.add and snapshot.delete have run against a real Edge Delivery Services site; every other kind is built from the Admin API contract and covered by unit tests only.",
     inputSchema: edsApplyInput,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
     handler: async (args) => {

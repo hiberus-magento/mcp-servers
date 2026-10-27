@@ -157,7 +157,9 @@ Every change goes through two tools:
    - a one-time token.
 2. **You confirm** in the conversation, typing the site name if it is
    protected.
-3. **`eds_apply`** takes only the token and sends exactly the planned requests.
+3. **`eds_apply`** takes the token plus the plan's site and kind, which must
+   match, and sends exactly the planned requests. Your client's approval dialog
+   shows that site and kind; read them before approving.
 
 A token expires after ten minutes and works once. If something changed between
 the plan and the apply, for example someone else edited the configuration, the
@@ -182,8 +184,9 @@ another server would match it too. `eds_plan` and the read tools carry
 change nothing.
 
 Avoid the bypass modes in the table for sessions that can reach a production
-site, or list those sites in `EDS_PROTECTED_SITES`, so that applying needs the
-typed site name even when the client does not ask.
+site. `EDS_PROTECTED_SITES` adds a site-name check, but the model sends that name:
+it stops a model aiming at the wrong site, not one told "don't ask me". The
+client's dialog is the step only you can take.
 
 ## Which role each tool needs
 
