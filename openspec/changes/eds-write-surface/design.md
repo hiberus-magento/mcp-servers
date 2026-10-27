@@ -165,7 +165,8 @@ type ApplyResult =
 `previousVersionId` is the newest entry of `GET /config/{org}/sites/{site}/versions.json` read at
 plan time, returned for config kinds so the user can be offered `version.restore`. **Inferred
 only**: the contract documents the versions list but not that a `POST` creates a new version; the
-field is reported as "the newest version before this change", not as a guaranteed rollback point.
+field is reported as "the newest version before this change". Phase 6 verified that a configuration
+`POST` creates a new version, so it is the point to restore to.
 
 `pending` is in the type now so that an out-of-band approval step can be added later without a
 breaking change to the result shape. A test asserts nothing in this change produces it.
@@ -343,15 +344,25 @@ Reviewed 2026-10-27 (task 1.2) against the code on `feat/eds-write-surface`, the
 
 ### Deferred to manual validation (Phase 6)
 
-- [ ] **Config versions.** The contract lists and restores versions but does not say a `POST`
-      creates one. `previousVersionId` stays "newest version before this change". Verified by
-      6.2.
+- [x] **Config versions.** The contract lists and restores versions but does not say a `POST`
+      creates one. **Verified live (6.2b run):** creating a site, creating a site secret and each
+      configuration `POST` each added one entry, and `current` moved with it (1 → 2 → 3). So
+      `previousVersionId` is the version just before the change, and restoring it undoes the change.
 - [ ] **Secrets round-trip in `config.patch`** (found in review). The `POST` "stores new site
       configuration", meaning it replaces the document, so the plan correctly sends the full merged
       document. The document schema includes `secrets`, `tokens` and `apiKeys`. If `GET` returns
       those masked, sending them back would overwrite the real values. Until 6.2 proves the round-trip on a site that has
       secrets, a `config.patch` plan on a document that has a non-empty `secrets` or `tokens` key
       carries a warning naming them. New tasks 4.5b and 6.2b.
+      **Verified live (6.2b):**
+      - `GET` returns `secrets` as an array of metadata entries (`id`, `type`, `description`,
+        dates), never with `value` or `hash`. The contract's schema describes a keyed object.
+      - A `config.patch` that sent such an entry back unchanged left a hashed site secret intact:
+        the same metadata, including `lastModified`, in the document, in `secrets.json` and on the
+        secret's own endpoint.
+      - So `config.patch` is not blocked. The warning stays, informative, and now also catches the
+        array form, which it missed (fixed test-first).
+      - `tokens` (deprecated) was not exercised.
 
 ### Decided 2026-10-27 (accepted by the user; applied to the deltas)
 

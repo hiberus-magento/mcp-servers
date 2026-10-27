@@ -406,6 +406,22 @@ describe("buildPlan — secrets round-trip warning (4.5b)", () => {
     expect(result.status === "planned" && result.warnings.some((w) => w.includes(`"${key}"`))).toBe(true);
   });
 
+  // Phase 6 (6.2b), observed live: a site document carries `secrets` as an
+  // ARRAY of metadata entries, not the keyed object the contract's schema
+  // describes. The object-only check above missed it, and a real plan on a
+  // site with a secret carried no warning.
+  it.each(["secrets", "tokens"])("a non-empty %s ARRAY, as observed live, is named in a warning", async (key) => {
+    const doc = { ...SITE_DOC, [key]: [{ id: "demo-id", type: "hashed", description: "demo" }] };
+    const result = await harness({ routes: baseRoutes(doc) }).plan({ site: EU, operation: { kind: "config.patch", patch: { a: 2 } } });
+    expect(result.status === "planned" && result.warnings.some((w) => w.includes(`"${key}"`))).toBe(true);
+  });
+
+  it("an empty secrets array does not warn", async () => {
+    const doc = { ...SITE_DOC, secrets: [] };
+    const result = await harness({ routes: baseRoutes(doc) }).plan({ site: EU, operation: { kind: "config.patch", patch: { a: 2 } } });
+    expect(result.status === "planned" && result.warnings.some((w) => w.includes('"secrets"'))).toBe(false);
+  });
+
   it("an empty secrets object does not warn", async () => {
     const doc = { ...SITE_DOC, secrets: {} };
     const result = await harness({ routes: baseRoutes(doc) }).plan({ site: EU, operation: { kind: "config.patch", patch: { a: 2 } } });

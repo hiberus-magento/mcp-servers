@@ -238,10 +238,11 @@ report of a defect: nothing below is known to be broken.
   snapshot publish, review and remove. All of these are built from the Admin
   API contract. The AEM warning has been seen on a real plan, which was not
   applied.
-- **Secrets in a site document.** Whether `config.patch` keeps a site's
-  `secrets` and `tokens` intact has not been checked. The plan warns when the
-  document has them; until this is verified, avoid `config.patch` on such a
-  site.
+- **Secrets in a site document: partly.** On a live site, a `config.patch` left
+  a hashed site secret intact. The Admin API returns `secrets` as metadata only
+  and keeps the secret when that metadata is sent back unchanged. The deprecated
+  `tokens` entry has not been exercised. The plan still names `secrets` or
+  `tokens` in a warning when the document has them.
 - **Clients other than Claude Code.** The confirmation flow has been run in
   Claude Code only. The VS Code Copilot and opencode settings above come from
   those clients' documentation and source code.

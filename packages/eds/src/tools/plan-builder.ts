@@ -123,14 +123,24 @@ function isAemSource(document: unknown): boolean {
   return isRecord(source) && source.type === "markup" && typeof source.url === "string" && source.url.includes(AEM_DELIVERY_MARKER);
 }
 
+function isNonEmpty(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length > 0;
+  return isRecord(value) && Object.keys(value).length > 0;
+}
+
+// Observed live (Phase 6, 6.2b): `secrets` arrives as an ARRAY of metadata
+// entries (id, type, description, dates; never the value), although the
+// contract's schema describes a keyed object — so both shapes count. A
+// config.patch that sent such an entry back unchanged left a hashed site
+// secret intact; `tokens` (deprecated) was not exercised.
 function secretsWarnings(document: unknown): string[] {
   if (!isRecord(document)) return [];
   return ["secrets", "tokens"]
-    .filter((key) => isRecord(document[key]) && Object.keys(document[key]).length > 0)
+    .filter((key) => isNonEmpty(document[key]))
     .map(
       (key) =>
-        `The site document has a non-empty "${key}" entry. This plan sends the whole document back as read, ` +
-        `so it relies on the Admin API returning "${key}" intact on read (not yet verified against a live tenant).`,
+        `The site document has "${key}". This plan sends the whole document back with "${key}" exactly as read (metadata only, never a value). ` +
+        `Verified live for a hashed site secret, which was kept intact; check the site's ${key} after applying.`,
     );
 }
 

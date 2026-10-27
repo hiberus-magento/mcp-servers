@@ -213,7 +213,7 @@ and what Phase 6 must look at:
 
 - [x] 6.1 Reads: every read tool against one non-production site.
 - [x] 6.2 `config.patch` → apply → verify → `version.restore` → verify. Record whether the `POST` created a new entry in `versions.json`.
-- [ ] 6.2b On a throwaway site with a secret set, check whether `GET` returns the secret masked and whether a `config.patch` round-trip preserves it. If it does not, block `config.patch` on such documents before publish.
+- [x] 6.2b On a throwaway site with a secret set, check whether `GET` returns the secret masked and whether a `config.patch` round-trip preserves it. If it does not, block `config.patch` on such documents before publish.
 - [x] 6.3 `robots.set` and back.
 - [ ] 6.4 `preview.update` → `live.publish` → `live.unpublish` on a test page; AEM warning shown when applicable.
 - [x] 6.5 `site.create` → `site.delete` of a throwaway site.
@@ -245,9 +245,22 @@ and what Phase 6 must look at:
   AEM-sourced site. `preview.update` → `live.publish` → `live.unpublish` was not run: the throwaway
   site shared its content source with a real site, so it would have published there. This needs a
   site with its own content source.
-- **6.2b, open, blocks publish as the task says:** the secrets round-trip has not been checked. The
-  plan warns about non-empty `secrets`/`tokens`, and onboarding says to avoid `config.patch` on such
-  documents until this is verified.
+- **6.2b done, publish no longer blocked.** Run on a second throwaway site:
+  - **Steps:** `site.create`, then one hashed site secret created by a one-off `POST` outside the
+    MCP surface (its value discarded unread), then `config.patch` (`title`), then `site.delete`.
+  - **The secret was kept intact.** Its metadata, including `lastModified`, was identical in the
+    document, in `secrets.json` and on the secret's own endpoint.
+  - **Live shape:** `secrets` arrives as an ARRAY of metadata entries. The secrets warning expected
+    an object and stayed silent on a real plan. Fixed test-first (array and object both count), and
+    the warning text now states what was verified.
+  - **Versions:** each config `POST` added a version (2 → 3), so `previousVersionId` is a real
+    restore point. This also answers the open question in 6.2.
+  - **Redaction:** the apply response showed `"secrets": "***"`.
+  - **Shared content bus confirmed:** the throwaway site's `contentBusId` was identical to that of
+    the site whose content source it reused.
+  - **Token lifetime:** two of three confirmations arrived after the 10-minute lifetime and were
+    rejected as `expired` with no write, as designed. But a real conversation's pace can exceed 10
+    minutes; revisit the lifetime with this evidence (design.md, "Plan lifetime").
 - **6.7, open:** the flow has been run only in Claude Code. Copilot and opencode remain.
 - **6.8 done:** the `unverified` marker is removed from the five new read tools. `eds_apply` keeps
   it, but it now names the kinds that have run live. `servers.json`, the tool descriptions, the
