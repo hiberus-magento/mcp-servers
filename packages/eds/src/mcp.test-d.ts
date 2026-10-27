@@ -40,13 +40,14 @@ test("scope: paths with a non-empty paths array is assignable", () => {
 
 test("an empty array literal is rejected at the client-boundary paths tuple parameter", async () => {
   const { setLiveState } = await import("./client/operations/live.js");
-  // CHANGED DELIBERATELY: `HttpClient` gained `readJson`/`readOptionalJson`,
-  // so this stub has to satisfy them too. The assertion under test —
-  // that `paths: []` is rejected — is untouched.
+  // CHANGED DELIBERATELY: `HttpClient` gained `readJson`/`readOptionalJson`
+  // and later `readText`, so this stub has to satisfy them too. The
+  // assertion under test — that `paths: []` is rejected — is untouched.
   const httpStub = {
     send: async () => new Response(null, { status: 200 }),
     readJson: async () => ({}) as never,
     readOptionalJson: async () => ({ status: 200, hasContent: false }) as never,
+    readText: async () => "",
   };
   void setLiveState(httpStub, {
     org: "acme-demo-org",

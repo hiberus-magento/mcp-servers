@@ -1,11 +1,15 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
-// Site configuration read + write (design.md, Decision 5). Existence is
-// ALWAYS checked via an explicit `GET` before any `PUT` — never inferred
-// from a caught `409` on the `PUT` itself, which is an assumption inherited
-// from the old Python CLI and never confirmed by Adobe's docs.
+// Site configuration read + write (design.md, Decision 5), site lifecycle
+// and configuration versions (eds-write-surface). Existence is ALWAYS
+// checked via an explicit `GET` before a create or an update — never
+// inferred from a caught `409` on the write itself, which is an assumption
+// inherited from the old Python CLI.
+import { SiteExistenceError } from "../errors.js";
 import { readJsonBody, type HttpClient } from "../http.js";
 import { sitePath } from "../paths.js";
+import { parseSiteList, type SiteListResult, type SiteListWire } from "../types.js";
+import { toWriteResult, type WriteResult } from "./write-result.js";
 
 function siteConfigPath(org: string, site: string): string {
   return `/config/${org}/sites/${site}.json`;
@@ -87,35 +91,75 @@ export async function getSiteConfig(http: HttpClient, params: SiteConfigParams):
   return { site, cdn: cdn.config, cdnPresent: cdn.present, effective };
 }
 
-export interface PutSiteConfigResult {
-  readonly existed: boolean;
-  /**
-   * Whether the `PUT` answered with a body at all. A write is allowed to
-   * succeed and say nothing (a `204`), and that is not the same as
-   * answering with an empty document — never inferred from `response`
-   * being falsy.
-   */
-  readonly hasResponse: boolean;
-  /** `undefined` exactly when `hasResponse` is false. */
-  readonly response?: unknown;
+/**
+ * The existence check both writes share. The one read in the client that
+ * *asks* for a non-ok status: a 404 here is the answer "it does not exist",
+ * not a failure. Every other status still becomes a named error.
+ */
+async function siteExists(http: HttpClient, params: SiteConfigParams): Promise<boolean> {
+  const response = await http.send({ method: "GET", path: siteConfigPath(params.org, params.site), label: "the site document", expectedStatuses: [404] });
+  return response.ok;
 }
 
 /**
- * A first pass here caught an HTTP 409 from the `PUT` as its existence
- * check instead of issuing a `GET` first — `site-config.test.ts` failed
- * against it (no GET was ever recorded before the PUT) before being fixed
- * to the GET-then-PUT sequence below. The GET result alone decides whether
- * the site already existed; the PUT's own status is never consulted for
- * that purpose.
+ * The contract: `PUT` creates and answers 409 if the site exists. That 409
+ * is never relied on — the `GET` decides (eds-client spec, "Config Write
+ * Existence Check via GET-Before-Write"), and an existing site is an error
+ * naming it, never a fall-through to an update.
  */
-export async function putSiteConfig(http: HttpClient, params: SiteConfigParams, config: unknown): Promise<PutSiteConfigResult> {
-  const path = siteConfigPath(params.org, params.site);
-  // The one request in the client that *asks* for a non-ok status: a 404
-  // here is the answer "it does not exist yet", not a failure. Every other
-  // status still becomes a named error rather than a silent `existed: false`.
-  const existenceCheck = await http.send({ method: "GET", path, label: "the site document", expectedStatuses: [404] });
-  const existed = existenceCheck.ok;
+export async function createSite(http: HttpClient, params: SiteConfigParams, config: unknown): Promise<WriteResult> {
+  if (await siteExists(http, params)) {
+    throw new SiteExistenceError({ site: params.site, expected: "absent" });
+  }
+  return toWriteResult(await http.readOptionalJson({ method: "PUT", path: siteConfigPath(params.org, params.site), body: config, label: "the site document" }));
+}
 
-  const written = await http.readOptionalJson({ method: "PUT", path, body: config, label: "the site document" });
-  return written.hasContent ? { existed, hasResponse: true, response: written.content } : { existed, hasResponse: false };
+/**
+ * The contract: `POST` "stores new site configuration" — it replaces the
+ * document, so `config` is the whole document, not a patch. A missing site
+ * is an error, never a fall-through to a create.
+ */
+export async function updateSiteConfig(http: HttpClient, params: SiteConfigParams, config: unknown): Promise<WriteResult> {
+  if (!(await siteExists(http, params))) {
+    throw new SiteExistenceError({ site: params.site, expected: "present" });
+  }
+  return toWriteResult(await http.readOptionalJson({ method: "POST", path: siteConfigPath(params.org, params.site), body: config, label: "the site document" }));
+}
+
+export async function deleteSite(http: HttpClient, params: SiteConfigParams): Promise<WriteResult> {
+  return toWriteResult(await http.readOptionalJson({ method: "DELETE", path: siteConfigPath(params.org, params.site), label: "the site document" }));
+}
+
+export interface ListSitesOptions {
+  readonly org: string;
+}
+
+export async function listSites(http: HttpClient, options: ListSitesOptions): Promise<SiteListResult> {
+  return parseSiteList(await http.readJson<SiteListWire>({ method: "GET", path: `/config/${options.org}/sites.json`, label: "the site list" }));
+}
+
+/** As the contract documents it; `version` is a number there, but restore takes it as an opaque id. */
+export interface ConfigVersion {
+  readonly version: number | string;
+  readonly created?: string;
+  readonly name?: string;
+}
+
+export interface ConfigVersions {
+  readonly current?: number | string;
+  readonly versions: readonly ConfigVersion[];
+}
+
+export async function listConfigVersions(http: HttpClient, params: SiteConfigParams): Promise<ConfigVersions> {
+  return http.readJson<ConfigVersions>({ method: "GET", path: `/config/${params.org}/sites/${params.site}/versions.json`, label: "the config versions" });
+}
+
+export interface RestoreConfigVersionOptions extends SiteConfigParams {
+  readonly versionId: string;
+}
+
+/** Bodyless `POST` with the id in the query; encoded so an id can never add parameters of its own. */
+export async function restoreConfigVersion(http: HttpClient, options: RestoreConfigVersionOptions): Promise<WriteResult> {
+  const path = `${siteConfigPath(options.org, options.site)}?restoreVersion=${encodeURIComponent(options.versionId)}`;
+  return toWriteResult(await http.readOptionalJson({ method: "POST", path, label: "the config version restore" }));
 }

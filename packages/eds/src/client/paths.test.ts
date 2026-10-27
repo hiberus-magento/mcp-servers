@@ -9,9 +9,12 @@ import { codePath, sitePath, snapshotPath } from "./paths.js";
 
 describe("codePath", () => {
   it("addresses code endpoints by owner/repo, not org/site", () => {
-    const path = codePath({ owner: "example-owner", repo: "example-repo", file: "/head.html" });
+    const path = codePath({ owner: "example-owner", repo: "example-repo", ref: "main", file: "/head.html" });
 
-    expect(path).toBe("/code/example-owner/example-repo/head.html");
+    // CHANGED DELIBERATELY (eds-write-surface tasks.md 2.10): the contract
+    // path is `/code/{owner}/{repo}/{ref}/{path}`; the `{ref}` segment was
+    // missing.
+    expect(path).toBe("/code/example-owner/example-repo/main/head.html");
     expect(path).not.toContain("acme-demo-org");
   });
 });

@@ -8,6 +8,7 @@
 // operations, so reconstructing it is a known bug source.
 import { readJsonBody, type HttpClient } from "./http.js";
 import { JobTimeoutError } from "./errors.js";
+import { toWriteResult, type WriteResult } from "./operations/write-result.js";
 import { sitePath } from "./paths.js";
 
 export type JobState = "created" | "running" | "stopped" | "completed";
@@ -82,6 +83,31 @@ export async function getJobStatus(http: HttpClient, options: GetJobStatusOption
   const ref = options.ref ?? "main";
   const self = sitePath({ resource: "job", org: options.org, site: options.site, ref, suffix: `${options.topic}/${options.name}` });
   return fetchJobEnvelope(http, self);
+}
+
+export interface ListJobsOptions {
+  readonly org: string;
+  readonly site: string;
+  readonly ref?: string;
+  readonly topic: string;
+}
+
+/** As the contract documents a topic's job list. */
+export interface JobList {
+  readonly topic: string;
+  readonly jobs: readonly { readonly name: string; readonly state: string; readonly time: string; readonly href: string }[];
+  readonly links: JobLinks;
+}
+
+export async function listJobs(http: HttpClient, options: ListJobsOptions): Promise<JobList> {
+  const path = sitePath({ resource: "job", org: options.org, site: options.site, ref: options.ref ?? "main", suffix: options.topic });
+  return http.readJson<JobList>({ method: "GET", path, label: `the ${options.topic} job list` });
+}
+
+/** Stops a job. Like every job call, success is any 2xx — `readOptionalJson` only throws on a non-ok status. */
+export async function stopJob(http: HttpClient, options: GetJobStatusOptions): Promise<WriteResult> {
+  const path = sitePath({ resource: "job", org: options.org, site: options.site, ref: options.ref ?? "main", suffix: `${options.topic}/${options.name}` });
+  return toWriteResult(await http.readOptionalJson({ method: "DELETE", path, label: "the job" }));
 }
 
 const TERMINAL_STATES: ReadonlySet<JobState> = new Set(["completed", "stopped"]);

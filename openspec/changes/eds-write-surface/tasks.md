@@ -46,23 +46,42 @@ Decision needed before apply: No (open questions in design.md do not block the R
 
 ## Phase 2: Client (`packages/eds/src/client/`)
 
-- [ ] 2.1 RED: `createSite` — GET 404 → PUT; GET 200 → error, no PUT. GREEN: replace `putSiteConfig`.
-- [ ] 2.2 RED: `updateSiteConfig` — GET 200 → POST; GET 404 → error, no POST. GREEN.
-- [ ] 2.3 RED: `listSites` (both response shapes), `deleteSite`. GREEN.
-- [ ] 2.4 RED: `listConfigVersions`, `restoreConfigVersion` (query parameter). GREEN.
-- [ ] 2.5 RED: `getRobots` (text), `setRobots` (`text/plain` body). GREEN.
-- [ ] 2.6 RED: preview single update/delete and bulk with explicit body + `delete: true`; ignored paths reported. GREEN: `preview.ts`.
-- [ ] 2.7 RED: live single publish/unpublish beside the existing bulk. GREEN.
-- [ ] 2.7b RED: bulk live sends `{ paths }` to publish and `{ paths, delete: true }` to unpublish, never `state` (contract body has no `state` field; defect in shipped `setLiveState`). GREEN: fix `live.ts` and its test.
-- [ ] 2.8 RED: index single update/delete. GREEN.
-- [ ] 2.8b RED: bulk index sends exactly `{ paths }`, with no `scope`; full-site sends `POST /index/{org}/{site}/{ref}/*` with no body (design.md D1). GREEN: rewrite `reindex` in `index-ops.ts` and its test.
-- [ ] 2.9 RED: `purgeCache` per path, `rebuildSitemap`. GREEN: `cache.ts`, `sitemap.ts`.
-- [ ] 2.10 RED: code status/sync/delete keyed by owner/repo, path `/code/{owner}/{repo}/{ref}/{path}`. GREEN: `code.ts`; add the missing `{ref}` segment to `codePath`.
-- [ ] 2.11 RED: `listJobs`, `stopJob` (any 2xx). GREEN.
-- [ ] 2.12 RED: `listApiKeys` (org-level) returns metadata only; `deleteApiKey` (used by the CLI only, D2); source scan asserts no key-creating function is exported. GREEN: `api-keys.ts`.
-- [ ] 2.13 Export every new function from `client/index.ts`; extend the existing exports test.
-- [ ] 2.14 Purity test still passes over the enlarged `client/` tree.
-- [ ] 2.15 RED: `sendPlannedRequest` accepts only `POST`/`PUT`/`DELETE`, sends method, path, body and content type unchanged, and rejects `GET`. GREEN: export from `client/index.ts` (design.md, Open Questions, "How `eds_apply` replays requests").
+- [x] 2.1 RED: `createSite` — GET 404 → PUT; GET 200 → error, no PUT. GREEN: replace `putSiteConfig`.
+- [x] 2.2 RED: `updateSiteConfig` — GET 200 → POST; GET 404 → error, no POST. GREEN.
+- [x] 2.3 RED: `listSites` (both response shapes), `deleteSite`. GREEN.
+- [x] 2.4 RED: `listConfigVersions`, `restoreConfigVersion` (query parameter). GREEN.
+- [x] 2.5 RED: `getRobots` (text), `setRobots` (`text/plain` body). GREEN.
+- [x] 2.6 RED: preview single update/delete and bulk with explicit body + `delete: true`; ignored paths reported. GREEN: `preview.ts`.
+- [x] 2.7 RED: live single publish/unpublish beside the existing bulk. GREEN.
+- [x] 2.7b RED: bulk live sends `{ paths }` to publish and `{ paths, delete: true }` to unpublish, never `state` (contract body has no `state` field; defect in shipped `setLiveState`). GREEN: fix `live.ts` and its test.
+- [x] 2.8 RED: index single update/delete. GREEN.
+- [x] 2.8b RED: bulk index sends exactly `{ paths }`, with no `scope`; full-site sends `POST /index/{org}/{site}/{ref}/*` with no body (design.md D1). GREEN: rewrite `reindex` in `index-ops.ts` and its test.
+- [x] 2.9 RED: `purgeCache` per path, `rebuildSitemap`. GREEN: `cache.ts`, `sitemap.ts`.
+- [x] 2.10 RED: code status/sync/delete keyed by owner/repo, path `/code/{owner}/{repo}/{ref}/{path}`. GREEN: `code.ts`; add the missing `{ref}` segment to `codePath`.
+- [x] 2.11 RED: `listJobs`, `stopJob` (any 2xx). GREEN.
+- [x] 2.12 RED: `listApiKeys` (org-level) returns metadata only; `deleteApiKey` (used by the CLI only, D2); source scan asserts no key-creating function is exported. GREEN: `api-keys.ts`.
+- [x] 2.13 Export every new function from `client/index.ts`; extend the existing exports test.
+- [x] 2.14 Purity test still passes over the enlarged `client/` tree.
+- [x] 2.15 RED: `sendPlannedRequest` accepts only `POST`/`PUT`/`DELETE`, sends method, path, body and content type unchanged, and rejects `GET`. GREEN: export from `client/index.ts` (design.md, Open Questions, "How `eds_apply` replays requests").
+
+Phase 2 done 2026-10-27, strict TDD (each RED run failed for the stated reason before GREEN). `eds`
+suite 211/211; all `AGENTS.md` gates green. Recorded deviations and findings:
+
+- 2.3: the contract's site list is `{ sites: [{ name }] }` (objects). `parseSiteList` now accepts
+  that, in addition to the two inferred string shapes.
+- 2.1/2.2: a contradicting existence `GET` throws the new `SiteExistenceError` (`expected:
+  "absent" | "present"`). `putSiteConfig` is removed.
+- 2.5: `HttpClient` gained a `text` body option (sent as `text/plain`) and `readText`.
+- 2.6–2.9: single-path preview/live/index/cache/sitemap writes share `write-result.ts`
+  (`WriteResult`, `writeContentPath`). Bulk preview and live share `submitBulkJob`.
+- 2.12: `deleteApiKey` lives in `auth.ts` beside `mintApiKey`/`listApiKeys` instead of a new
+  `api-keys.ts`, because API keys were already managed there. The source scan asserts `mintApiKey`
+  is the client's only key-creating `POST`.
+- 2.15: `sendPlannedRequest` also refuses absolute, `//host`, relative and `.`/`..` paths, so a
+  stored plan can never send `X-Auth-Token` off the Admin API host. It is exposed as
+  `client.sendPlannedRequest`.
+- `client.http` is still public on `EdsClient`. Phase 4 must keep tools from writing through it
+  directly; 4.8's write-gate test covers that.
 
 ## Phase 3: Plan store (`packages/eds/src/confirm/`)
 
