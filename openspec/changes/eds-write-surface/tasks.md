@@ -85,14 +85,30 @@ suite 211/211; all `AGENTS.md` gates green. Recorded deviations and findings:
 
 ## Phase 3: Plan store (`packages/eds/src/confirm/`)
 
-- [ ] 3.1 RED: token is ≥ 32 random bytes, base64url, never derived from plan contents. GREEN: `plan-store.ts`.
-- [ ] 3.2 RED: expiry at 10 minutes under an injected clock. GREEN.
-- [ ] 3.3 RED: consume-once; second lookup reports `used`. GREEN.
-- [ ] 3.4 RED: 101st plan evicts expired then oldest. GREEN.
-- [ ] 3.5 RED: canonical JSON is key-order independent; SHA-256 fingerprint. GREEN: `fingerprint.ts`.
-- [ ] 3.6 RED: RFC 7386 appendix examples; `null` removes; arrays replaced; non-object patch rejected. GREEN: `merge-patch.ts`.
-- [ ] 3.7 RED: JSON Pointer diff lists exactly the changed keys with before/after. GREEN.
-- [ ] 3.8 RED: protected-site patterns — `*` wildcard, anchoring, case sensitivity, `.`/`+` literal. GREEN: `protected-sites.ts`.
+- [x] 3.1 RED: token is ≥ 32 random bytes, base64url, never derived from plan contents. GREEN: `plan-store.ts`.
+- [x] 3.2 RED: expiry at 10 minutes under an injected clock. GREEN.
+- [x] 3.3 RED: consume-once; second lookup reports `used`. GREEN.
+- [x] 3.4 RED: 101st plan evicts expired then oldest. GREEN.
+- [x] 3.5 RED: canonical JSON is key-order independent; SHA-256 fingerprint. GREEN: `fingerprint.ts`.
+- [x] 3.6 RED: RFC 7386 appendix examples; `null` removes; arrays replaced; non-object patch rejected. GREEN: `merge-patch.ts`.
+- [x] 3.7 RED: JSON Pointer diff lists exactly the changed keys with before/after. GREEN.
+- [x] 3.8 RED: protected-site patterns — `*` wildcard, anchoring, case sensitivity, `.`/`+` literal. GREEN: `protected-sites.ts`.
+
+**Phase 3 done** (84 tests in `src/confirm/`, eds suite 295/295, all gates green). Notes for Phase 4:
+
+- 3.1–3.4: `createPlanStore<T>({ now, randomBytes?, capacity? })` exposes `issue`, `peek` and
+  `consume`. `peek` does not consume: it is what the `confirmSite` check (Decision 6) uses before
+  `consume`. A consumed token stays in the map as `used` until it is evicted, after which it reports
+  `unknown-token`. It is still rejected either way. Eviction runs only when the store is full: first
+  every expired entry, then the oldest.
+- 3.6: `applyMergePatch` is full RFC 7386 (all 15 Appendix A cases). `mergeConfigPatch` adds the
+  object-only rule and throws `InvalidConfigPatchError`. A `__proto__` key in a parsed patch is
+  stored as data and never sets the prototype.
+- 3.7: `diffDocuments` returns `ConfigChange { pointer, before?, after? }` sorted by pointer, with
+  RFC 6901 escaping. Arrays and scalars are compared as whole values. `before` is omitted for an
+  added key and `after` for a removed one, which gives the spec's "from absent".
+- 3.8: `parseProtectedSites` and `matchesSitePattern` use a wildcard matcher, never a `RegExp`. The
+  RED included a naive `.*` regex, which hung on the `*a*a…*b` case; the test now bounds it at 100 ms.
 
 ## Phase 4: Tools (`packages/eds/src/tools/`, `mcp.ts`)
 
