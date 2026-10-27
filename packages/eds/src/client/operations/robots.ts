@@ -7,7 +7,7 @@
 import type { HttpClient } from "../http.js";
 import type { SiteConfigParams } from "./site-config.js";
 
-function robotsPath(params: SiteConfigParams): string {
+export function robotsPath(params: SiteConfigParams): string {
   return `/config/${params.org}/sites/${params.site}/robots.txt`;
 }
 

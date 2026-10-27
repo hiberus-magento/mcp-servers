@@ -28,6 +28,11 @@
             "name": "EDS_SITE",
             "required": false,
             "description": "Default site for `hiberus-eds` CLI commands that take one. Read by the CLI only — the MCP server never reads it, and a site is passed per tool call instead."
+          },
+          {
+            "name": "EDS_PROTECTED_SITES",
+            "required": false,
+            "description": "Comma-separated site-name patterns (`*` is the only wildcard; anchored, case-sensitive). A plan for a matching site makes eds_apply require the user to repeat the site name. Read once at server startup."
           }
         ]
       },
@@ -43,21 +48,9 @@
           "description": "Use this when you need status for several paths on a site at once instead of calling eds_get_status in a loop."
         },
         {
-          "name": "eds_set_live_state",
-          "readOnly": false,
-          "description": "Use this to publish or unpublish one or more paths on a site. Destructive: it changes what is publicly live.",
-          "unverified": "Never run against a live Edge Delivery Services site. The Admin API publishes content that already exists rather than creating it; the site this package was developed against keeps its content in AEM as a Cloud Service, and the package ships no preview operation, so there was no page that could be published safely. Its request shape is covered by unit tests and by the conformance suite."
-        },
-        {
           "name": "eds_get_site_config",
           "readOnly": true,
           "description": "Use this when you need a site's full effective configuration — the site document alone does not resolve inheritance."
-        },
-        {
-          "name": "eds_reindex",
-          "readOnly": false,
-          "description": "Use this to re-run indexing for specific paths, or — only with explicit double confirmation — the entire site.",
-          "unverified": "Never run against a live Edge Delivery Services site, at either scope."
         },
         {
           "name": "eds_get_audit_log",
@@ -70,15 +63,55 @@
           "description": "Use this to list a site's snapshots, or to inspect one by id."
         },
         {
-          "name": "eds_manage_snapshot",
-          "readOnly": false,
-          "description": "Use this to add paths to a snapshot, remove them, publish it, submit a review decision, or delete it.",
-          "unverified": "Partly run against a live Edge Delivery Services site: the add and delete verbs were exercised as a reversible pair. The publish, review and remove verbs were not."
-        },
-        {
           "name": "eds_get_job_status",
           "readOnly": true,
-          "description": "Use this to check on a specific job by its site/ref/topic/name address, e.g. one returned earlier by eds_set_live_state or eds_reindex."
+          "description": "Use this to check on a specific job by its site/ref/topic/name address, e.g. one returned by eds_apply when wait was not requested."
+        },
+        {
+          "name": "eds_list_sites",
+          "readOnly": true,
+          "description": "Use this to find which sites exist in the configured org.",
+          "unverified": "Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site."
+        },
+        {
+          "name": "eds_get_config_versions",
+          "readOnly": true,
+          "description": "Use this to see a site's configuration history before planning a version.restore.",
+          "unverified": "Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site."
+        },
+        {
+          "name": "eds_get_robots",
+          "readOnly": true,
+          "description": "Use this to read a site's robots.txt as text.",
+          "unverified": "Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site."
+        },
+        {
+          "name": "eds_get_code_status",
+          "readOnly": true,
+          "description": "Use this to check one code file's status; the repository is resolved from the site's configuration.",
+          "unverified": "Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site."
+        },
+        {
+          "name": "eds_list_jobs",
+          "readOnly": true,
+          "description": "Use this to list a site's jobs for one topic.",
+          "unverified": "Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site."
+        },
+        {
+          "name": "eds_list_api_keys",
+          "readOnly": true,
+          "description": "Use this to see the org's Admin API keys — metadata only. Creating and deleting keys is CLI-only."
+        },
+        {
+          "name": "eds_plan",
+          "readOnly": true,
+          "description": "Use this for any change to an EDS site. Changes nothing: returns exactly what would happen, a confirmation message for the user and a one-time token."
+        },
+        {
+          "name": "eds_apply",
+          "readOnly": false,
+          "description": "Use this only after the user explicitly confirms a plan from eds_plan. Takes only the plan's token and issues exactly the planned requests. Destructive.",
+          "unverified": "Of its 22 operation kinds, only snapshot.add and snapshot.delete (as the former eds_manage_snapshot) have run against a live Edge Delivery Services site. Every other kind is built from the Admin API contract and covered by unit tests only."
         }
       ]
     },

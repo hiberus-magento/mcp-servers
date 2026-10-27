@@ -26,6 +26,8 @@ import {
   createSite,
   deleteSite,
   getSiteConfig,
+  getSiteDocument,
+  siteExists,
   listConfigVersions,
   listSites,
   restoreConfigVersion,
@@ -69,6 +71,7 @@ export {
 export type { EdsClientDeps, HttpClient, HttpMethod, OptionalJsonBody, RequestContext, SendOptions } from "./http.js";
 export type { GetJobStatusOptions, JobBody, JobDescriptor, JobEnvelopeResult, JobLinks, JobList, JobPollDeps, JobProgress, JobState, ListJobsOptions, WaitForJobOptions } from "./jobs.js";
 export type { PlannedRequest } from "./planned-request.js";
+export { writeRequests, type BulkAddress, type ContentAddress } from "./write-requests.js";
 export type { CodePathParams } from "./operations/code.js";
 export type { SetRobotsOptions } from "./operations/robots.js";
 export type { FetchPageOptions, Page } from "./cursor.js";
@@ -138,6 +141,8 @@ export interface EdsClient {
   readonly operations: {
     readonly siteConfig: {
       readonly getSiteConfig: (params: SiteConfigParams) => ReturnType<typeof getSiteConfig>;
+      readonly getSiteDocument: (params: SiteConfigParams) => ReturnType<typeof getSiteDocument>;
+      readonly siteExists: (params: SiteConfigParams) => ReturnType<typeof siteExists>;
       readonly createSite: (params: SiteConfigParams, config: unknown) => ReturnType<typeof createSite>;
       readonly updateSiteConfig: (params: SiteConfigParams, config: unknown) => ReturnType<typeof updateSiteConfig>;
       readonly deleteSite: (params: SiteConfigParams) => ReturnType<typeof deleteSite>;
@@ -218,6 +223,8 @@ export function createEdsClient(deps: EdsClientDeps): EdsClient {
     operations: {
       siteConfig: {
         getSiteConfig: (params) => getSiteConfig(http, params),
+        getSiteDocument: (params) => getSiteDocument(http, params),
+        siteExists: (params) => siteExists(http, params),
         createSite: (params, config) => createSite(http, params, config),
         updateSiteConfig: (params, config) => updateSiteConfig(http, params, config),
         deleteSite: (params) => deleteSite(http, params),

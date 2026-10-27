@@ -39,19 +39,25 @@ npx -y --package @hiberus-magento/eds hiberus-eds-mcp           # the server
 
 - `eds_get_status` (read-only) — Use this when you need one path's current status across edit/preview/live/code/index on a single site — the smallest, cheapest status call.
 - `eds_get_status_bulk` (read-only) — Use this when you need status for several paths on a site at once instead of calling eds_get_status in a loop.
-- `eds_set_live_state` — Use this to publish or unpublish one or more paths on a site. Destructive: it changes what is publicly live. **Not verified against a live service** — Never run against a live Edge Delivery Services site. The Admin API publishes content that already exists rather than creating it; the site this package was developed against keeps its content in AEM as a Cloud Service, and the package ships no preview operation, so there was no page that could be published safely. Its request shape is covered by unit tests and by the conformance suite.
 - `eds_get_site_config` (read-only) — Use this when you need a site's full effective configuration — the site document alone does not resolve inheritance.
-- `eds_reindex` — Use this to re-run indexing for specific paths, or — only with explicit double confirmation — the entire site. **Not verified against a live service** — Never run against a live Edge Delivery Services site, at either scope.
 - `eds_get_audit_log` (read-only) — Use this to review recent changes to a site. Returns one page of entries plus a nextToken cursor.
 - `eds_get_snapshots` (read-only) — Use this to list a site's snapshots, or to inspect one by id.
-- `eds_manage_snapshot` — Use this to add paths to a snapshot, remove them, publish it, submit a review decision, or delete it. **Not verified against a live service** — Partly run against a live Edge Delivery Services site: the add and delete verbs were exercised as a reversible pair. The publish, review and remove verbs were not.
-- `eds_get_job_status` (read-only) — Use this to check on a specific job by its site/ref/topic/name address, e.g. one returned earlier by eds_set_live_state or eds_reindex.
+- `eds_get_job_status` (read-only) — Use this to check on a specific job by its site/ref/topic/name address, e.g. one returned by eds_apply when wait was not requested.
+- `eds_list_sites` (read-only) — Use this to find which sites exist in the configured org. **Not verified against a live service** — Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site.
+- `eds_get_config_versions` (read-only) — Use this to see a site's configuration history before planning a version.restore. **Not verified against a live service** — Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site.
+- `eds_get_robots` (read-only) — Use this to read a site's robots.txt as text. **Not verified against a live service** — Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site.
+- `eds_get_code_status` (read-only) — Use this to check one code file's status; the repository is resolved from the site's configuration. **Not verified against a live service** — Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site.
+- `eds_list_jobs` (read-only) — Use this to list a site's jobs for one topic. **Not verified against a live service** — Built from the Admin API contract and covered by unit tests, but never run against a live Edge Delivery Services site.
+- `eds_list_api_keys` (read-only) — Use this to see the org's Admin API keys — metadata only. Creating and deleting keys is CLI-only.
+- `eds_plan` (read-only) — Use this for any change to an EDS site. Changes nothing: returns exactly what would happen, a confirmation message for the user and a one-time token.
+- `eds_apply` — Use this only after the user explicitly confirms a plan from eds_plan. Takes only the plan's token and issues exactly the planned requests. Destructive. **Not verified against a live service** — Of its 22 operation kinds, only snapshot.add and snapshot.delete (as the former eds_manage_snapshot) have run against a live Edge Delivery Services site. Every other kind is built from the Admin API contract and covered by unit tests only.
 
 ## Environment
 
 - `EDS_ORG` (required) — The Edge Delivery Services organisation every eds_* tool addresses. The server resolves it on the first tool call and refuses the call without it; tools/list still works.
 - `EDS_TOKEN` (optional) — Admin API bearer. Every tool call needs one, but it may come from this variable OR from the credential file written by `hiberus-eds auth token set`, so neither source is required on its own.
 - `EDS_SITE` (optional) — Default site for `hiberus-eds` CLI commands that take one. Read by the CLI only — the MCP server never reads it, and a site is passed per tool call instead.
+- `EDS_PROTECTED_SITES` (optional) — Comma-separated site-name patterns (`*` is the only wildcard; anchored, case-sensitive). A plan for a matching site makes eds_apply require the user to repeat the site name. Read once at server startup.
 
 ## Configure in an MCP client
 

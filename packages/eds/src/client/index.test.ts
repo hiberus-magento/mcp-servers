@@ -17,6 +17,8 @@ const EXPECTED_VALUE_EXPORTS = [
   "JobTimeoutError",
   "EdsError",
   "SiteExistenceError",
+  // eds-write-surface Phase 4: `eds_plan` builds requests without sending them.
+  "writeRequests",
 ];
 
 describe("client/index.ts public surface", () => {
@@ -73,7 +75,7 @@ describe("client/index.ts public surface", () => {
     });
 
     const surface = {
-      siteConfig: ["createSite", "updateSiteConfig", "deleteSite", "listSites", "listConfigVersions", "restoreConfigVersion"],
+      siteConfig: ["getSiteDocument", "siteExists", "createSite", "updateSiteConfig", "deleteSite", "listSites", "listConfigVersions", "restoreConfigVersion"],
       robots: ["getRobots", "setRobots"],
       preview: ["previewPath", "unpreviewPath", "previewBulk"],
       live: ["setLiveState", "publishPath", "unpublishPath"],

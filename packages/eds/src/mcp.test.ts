@@ -1,197 +1,325 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
-// RED-first (tasks.md Phase 7): the nine-tool surface, its two hazard
-// gates, its annotations, and the missing-credential failure path — all
-// unit-testable without spawning a process, since `createEdsTools` (in
-// `./tools/eds-tools.ts`, see that file's header for why it is separate
-// from `mcp.ts`) is a pure function of an already-constructed `EdsClient`.
-// The stdio-guard installation is checked by a source scan of `mcp.ts`
-// itself, which — unlike the tool factory — DOES connect unconditionally at
-// import time and is therefore never imported by this test file.
-import { readFileSync } from "node:fs";
+// RED-first (tasks.md Phase 7; eds-write-surface tasks.md 4.15, 4.16): the
+// fourteen-tool surface, its annotations, the one write entry point, and the
+// missing-credential failure path — all unit-testable without spawning a
+// process, since `createEdsTools` (in `./tools/eds-tools.ts`, see that file's
+// header for why it is separate from `mcp.ts`) is a pure function of an
+// already-constructed `EdsClient`. The stdio-guard installation is checked by
+// a source scan of `mcp.ts` itself, which — unlike the tool factory — DOES
+// connect unconditionally at import time and is therefore never imported by
+// this test file. `tools/list` over the wire is `mcp.tools-list.test.ts`.
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { createFetchDouble } from "./testing/fetch-double.js";
-import { createEdsClient } from "./client/index.js";
-import { createEdsTools, edsReindexInput, nonEmptyPaths } from "./tools/eds-tools.js";
+import { createFetchDouble, type RouteTable } from "./testing/fetch-double.js";
+import { callKeys, createClientDouble, TEST_ORG } from "./testing/client-double.js";
+import { createEdsClient, type EdsClient } from "./client/index.js";
+import { createEdsTools, nonEmptyPaths, REQUIRES_USER_INTERACTION_META, type EdsMcpTool } from "./tools/eds-tools.js";
 import { createEdsTokenProvider } from "./credential-provider.js";
 
-function makeClient(routes: Record<string, unknown> = {}) {
-  const { fetch } = createFetchDouble(routes as never);
-  return createEdsClient({
-    fetch,
-    now: () => Date.now(),
-    sleep: async () => undefined,
-    tokenProvider: {
-      domain: "eds",
-      getToken: async () => ({ kind: "static" as const, value: "k" }),
-      invalidate: () => undefined,
-      describeRemedy: () => ({ domain: "eds", cliCommand: "hiberus-eds auth token set", envVar: "EDS_TOKEN", configPath: "/dev/null", reason: "not found" }),
-    },
-    baseUrl: "https://admin.hlx.page",
-    org: "acme-demo-org",
-  });
+const EU = "acme-demo-site-eu";
+const EU_DOC = `/config/${TEST_ORG}/sites/${EU}.json`;
+
+function makeClient(routes: Record<string, unknown> = {}): EdsClient {
+  return createClientDouble(routes as RouteTable).client;
 }
 
-const EXPECTED_TOOL_NAMES = [
-  "eds_get_status",
-  "eds_get_status_bulk",
-  "eds_set_live_state",
-  "eds_get_site_config",
-  "eds_reindex",
-  "eds_get_audit_log",
-  "eds_get_snapshots",
-  "eds_manage_snapshot",
-  "eds_get_job_status",
-] as const;
+function toolsOver(client: EdsClient, extra: { protectedSites?: readonly string[] } = {}): readonly EdsMcpTool[] {
+  return createEdsTools({ getRuntime: () => ({ client, org: TEST_ORG }), ...extra });
+}
 
-describe("createEdsTools — tools/list surface (tasks.md 7.10)", () => {
-  it("returns exactly the nine named tools and no others", () => {
-    const tools = createEdsTools({ getRuntime: () => ({ client: makeClient(), org: "acme-demo-org" }) });
-    expect(tools.map((t) => t.name).sort()).toEqual([...EXPECTED_TOOL_NAMES].sort());
-    expect(tools).toHaveLength(9);
+function tool(tools: readonly EdsMcpTool[], name: string): EdsMcpTool {
+  const found = tools.find((t) => t.name === name);
+  if (found === undefined) throw new Error(`${name} not found`);
+  return found;
+}
+
+async function call(tools: readonly EdsMcpTool[], name: string, args: unknown): Promise<unknown> {
+  const result = await tool(tools, name).invoke(args, {});
+  expect(result.isError, result.content[0]?.text).not.toBe(true);
+  return JSON.parse(result.content[0]?.text ?? "null");
+}
+
+const READ_TRIPLE = { readOnlyHint: true, destructiveHint: false, idempotentHint: true };
+const EXPECTED_ANNOTATIONS: Record<string, { readOnlyHint: boolean; destructiveHint: boolean; idempotentHint: boolean }> = {
+  eds_get_status: READ_TRIPLE,
+  eds_get_status_bulk: READ_TRIPLE,
+  eds_get_site_config: READ_TRIPLE,
+  eds_get_audit_log: READ_TRIPLE,
+  eds_get_snapshots: READ_TRIPLE,
+  eds_get_job_status: READ_TRIPLE,
+  eds_list_sites: READ_TRIPLE,
+  eds_get_config_versions: READ_TRIPLE,
+  eds_get_robots: READ_TRIPLE,
+  eds_get_code_status: READ_TRIPLE,
+  eds_list_jobs: READ_TRIPLE,
+  eds_list_api_keys: READ_TRIPLE,
+  eds_plan: READ_TRIPLE,
+  eds_apply: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+};
+
+describe("createEdsTools — tools/list surface (4.16)", () => {
+  it("returns exactly the fourteen named tools and no others", () => {
+    const names = toolsOver(makeClient()).map((t) => t.name);
+    expect([...names].sort()).toEqual(Object.keys(EXPECTED_ANNOTATIONS).sort());
+    expect(names).toHaveLength(14);
+  });
+
+  it.each(["eds_set_live_state", "eds_reindex", "eds_manage_snapshot"])("%s is removed", (name) => {
+    expect(toolsOver(makeClient()).some((t) => t.name === name)).toBe(false);
+  });
+
+  it("no tool creates or deletes an API key, or mints a token", () => {
+    const names = toolsOver(makeClient()).map((t) => t.name);
+    for (const fragment of ["key_create", "create_key", "key_delete", "delete_key", "mint"]) {
+      expect(names.some((name) => name.includes(fragment)), fragment).toBe(false);
+    }
   });
 });
 
-describe("createEdsTools — annotations (tasks.md 7.12)", () => {
-  const expected: Record<string, { readOnlyHint: boolean; destructiveHint: boolean; idempotentHint: boolean }> = {
-    eds_get_status: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    eds_get_status_bulk: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    eds_set_live_state: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
-    eds_get_site_config: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    eds_reindex: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-    eds_get_audit_log: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    eds_get_snapshots: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-    eds_manage_snapshot: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
-    eds_get_job_status: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-  };
-
+describe("createEdsTools — annotations (4.16)", () => {
   it("matches the documented readOnly/destructive/idempotent triple for every tool", () => {
-    const tools = createEdsTools({ getRuntime: () => ({ client: makeClient(), org: "acme-demo-org" }) });
-    for (const tool of tools) {
-      const want = expected[tool.name];
-      if (want === undefined) {
-        throw new Error(`no expected annotation entry for "${tool.name}"`);
-      }
-      expect(tool.annotations.readOnlyHint, `${tool.name}.readOnlyHint`).toBe(want.readOnlyHint);
-      expect(tool.annotations.destructiveHint, `${tool.name}.destructiveHint`).toBe(want.destructiveHint);
-      expect(tool.annotations.idempotentHint, `${tool.name}.idempotentHint`).toBe(want.idempotentHint);
+    for (const t of toolsOver(makeClient())) {
+      const want = EXPECTED_ANNOTATIONS[t.name];
+      if (want === undefined) throw new Error(`no expected annotation entry for "${t.name}"`);
+      expect(t.annotations.readOnlyHint, `${t.name}.readOnlyHint`).toBe(want.readOnlyHint);
+      expect(t.annotations.destructiveHint, `${t.name}.destructiveHint`).toBe(want.destructiveHint);
+      expect(t.annotations.idempotentHint, `${t.name}.idempotentHint`).toBe(want.idempotentHint);
     }
   });
 
   it("every description opens with 'Use this' (states WHEN to use it, not only what it does)", () => {
-    const tools = createEdsTools({ getRuntime: () => ({ client: makeClient(), org: "acme-demo-org" }) });
-    for (const tool of tools) {
-      expect(tool.description.startsWith("Use this"), `${tool.name}'s description: "${tool.description}"`).toBe(true);
+    for (const t of toolsOver(makeClient())) {
+      expect(t.description.startsWith("Use this"), `${t.name}'s description: "${t.description}"`).toBe(true);
+    }
+  });
+
+  it("only eds_apply carries requiresUserInteraction, as the JSON Boolean true (D3)", () => {
+    expect(REQUIRES_USER_INTERACTION_META).toEqual({ "anthropic/requiresUserInteraction": true });
+    for (const t of toolsOver(makeClient())) {
+      if (t.name === "eds_apply") {
+        expect(t.meta).toEqual({ "anthropic/requiresUserInteraction": true });
+      } else {
+        expect(t.meta?.["anthropic/requiresUserInteraction"], t.name).toBeUndefined();
+      }
     }
   });
 });
 
-describe("edsReindexInput — the full-site hazard gate (tasks.md 7.3)", () => {
-  it("rejects scope: full-site with confirmFullReindex omitted", () => {
-    const result = edsReindexInput.safeParse({ site: "acme-demo-site-eu", request: { scope: "full-site" } });
-    expect(result.success).toBe(false);
+describe("eds_apply is the only tool that writes (4.8 source half; eds-mcp spec, 'Read tools never write')", () => {
+  const toolsDir = fileURLToPath(new URL("./tools/", import.meta.url));
+  const sources = readdirSync(toolsDir)
+    .filter((file) => file.endsWith(".ts") && !file.includes(".test"))
+    .map((file) => ({ file, text: readFileSync(`${toolsDir}${file}`, "utf8") }));
+
+  it("only apply.ts calls sendPlannedRequest", () => {
+    expect(sources.filter((s) => s.text.includes("sendPlannedRequest(")).map((s) => s.file)).toEqual(["apply.ts"]);
   });
 
-  it("rejects scope: full-site with confirmFullReindex: false", () => {
-    const result = edsReindexInput.safeParse({
-      site: "acme-demo-site-eu",
-      request: { scope: "full-site", confirmFullReindex: false },
-    });
-    expect(result.success).toBe(false);
+  it("no tool module reaches past the client's operations into its raw http", () => {
+    expect(sources.filter((s) => /\.http\b/.test(s.text)).map((s) => s.file)).toEqual([]);
   });
 
-  it("rejects a stray field on the paths branch", () => {
-    const result = edsReindexInput.safeParse({
-      site: "acme-demo-site-eu",
-      request: { scope: "paths", paths: ["/a"], confirmFullReindex: true },
-    });
-    expect(result.success).toBe(false);
+  it("no tool module calls a typed client write", () => {
+    const WRITES = [
+      "createSite(",
+      "updateSiteConfig(",
+      "deleteSite(",
+      "restoreConfigVersion(",
+      "setRobots(",
+      "previewPath(",
+      "unpreviewPath(",
+      "previewBulk(",
+      "setLiveState(",
+      "publishPath(",
+      "unpublishPath(",
+      "reindex(",
+      "indexPath(",
+      "unindexPath(",
+      "purgeCache(",
+      "rebuildSitemap(",
+      "syncCode(",
+      "deleteCode(",
+      "stopJob(",
+      "mintApiKey(",
+      "deleteApiKey(",
+      "addToSnapshot(",
+      "removeFromSnapshot(",
+      "publishSnapshot(",
+      "reviewSnapshot(",
+      "deleteSnapshot(",
+    ];
+    for (const { file, text } of sources) {
+      for (const write of WRITES) expect(text.includes(write), `${file} calls ${write}`).toBe(false);
+    }
   });
 
-  it("accepts scope: full-site with confirmFullReindex: true", () => {
-    const result = edsReindexInput.safeParse({
-      site: "acme-demo-site-eu",
-      request: { scope: "full-site", confirmFullReindex: true },
-    });
-    expect(result.success).toBe(true);
-  });
+  it("every read tool, called with valid input, issues no write", async () => {
+    const reads = {
+      [`GET /status/${TEST_ORG}/${EU}/main/a`]: { status: 200, body: {} },
+      [`POST /status/${TEST_ORG}/${EU}/main/*`]: {
+        status: 200,
+        body: { job: { name: "j", topic: "status", state: "stopped", data: { phase: "completed", resources: [] } }, links: { self: "https://admin.hlx.page/job/x" } },
+      },
+      [`GET ${EU_DOC}`]: { status: 200, body: { code: { owner: "example-owner", repo: "example-repo" } } },
+      [`GET /config/${TEST_ORG}/sites/${EU}/cdn.json`]: { status: 404 },
+      [`GET /status/${TEST_ORG}/${EU}/main/`]: { status: 200, body: {} },
+      [`GET /log/${TEST_ORG}/${EU}/main`]: { status: 200, body: { entries: [] } },
+      [`GET /snapshot/${TEST_ORG}/${EU}/main`]: { status: 200, body: { snapshots: [] } },
+      [`GET /job/${TEST_ORG}/${EU}/main/live/job-demo`]: { status: 200, body: { job: { name: "job-demo", topic: "live", state: "completed" }, links: { self: "https://admin.hlx.page/job/x" } } },
+      [`GET /config/${TEST_ORG}/sites.json`]: { status: 200, body: { sites: [{ name: EU }] } },
+      [`GET /config/${TEST_ORG}/sites/${EU}/versions.json`]: { status: 200, body: { current: 1, versions: [] } },
+      [`GET /config/${TEST_ORG}/sites/${EU}/robots.txt`]: { status: 200, headers: { "content-type": "text/plain" }, body: "User-agent: *" },
+      [`GET /code/example-owner/example-repo/main/scripts/a.js`]: { status: 200, body: { code: { status: 200 } } },
+      [`GET /job/${TEST_ORG}/${EU}/main/live`]: { status: 200, body: { topic: "live", jobs: [], links: { self: "x" } } },
+      [`GET /config/${TEST_ORG}/apiKeys.json`]: { status: 200, body: {} },
+    };
+    const { client, calls } = createClientDouble(new Proxy(reads, { get: (target, key: string) => (target as Record<string, unknown>)[key] ?? { status: 200, body: {} } }) as RouteTable);
+    const tools = toolsOver(client);
+    const inputs: Record<string, unknown> = {
+      eds_get_status: { site: EU, path: "/a" },
+      eds_get_status_bulk: { site: EU, paths: ["/a"] },
+      eds_get_site_config: { site: EU },
+      eds_get_audit_log: { site: EU },
+      eds_get_snapshots: { site: EU },
+      eds_get_job_status: { site: EU, topic: "live", name: "job-demo" },
+      eds_list_sites: {},
+      eds_get_config_versions: { site: EU },
+      eds_get_robots: { site: EU },
+      eds_get_code_status: { site: EU, path: "/scripts/a.js" },
+      eds_list_jobs: { site: EU, topic: "live" },
+      eds_list_api_keys: {},
+      eds_plan: { site: EU, operation: { kind: "live.publish", paths: ["/a"] } },
+    };
 
-  it("accepts scope: paths with a non-empty paths array", () => {
-    const result = edsReindexInput.safeParse({ site: "acme-demo-site-eu", request: { scope: "paths", paths: ["/a"] } });
-    expect(result.success).toBe(true);
+    for (const [name, args] of Object.entries(inputs)) await tool(tools, name).invoke(args, {});
+
+    const BULK_STATUS = `POST /status/${TEST_ORG}/${EU}/main/*`;
+    expect(callKeys(calls).filter((key) => !key.startsWith("GET ") && key !== BULK_STATUS)).toEqual([]);
   });
 });
 
-describe("nonEmptyPaths — the bulk-write hazard gate (tasks.md 7.5)", () => {
-  it("rejects an omitted paths field for eds_get_status_bulk", () => {
-    const tools = createEdsTools({ getRuntime: () => ({ client: makeClient(), org: "acme-demo-org" }) });
-    const tool = tools.find((t) => t.name === "eds_get_status_bulk");
-    const result = tool?.inputSchema.safeParse({ site: "acme-demo-site-eu" });
-    expect(result?.success).toBe(false);
+describe("new read tools (4.15)", () => {
+  it("eds_list_sites lists the org's site names", async () => {
+    const tools = toolsOver(makeClient({ [`GET /config/${TEST_ORG}/sites.json`]: { status: 200, body: { sites: [{ name: EU }, { name: "acme-demo-site-us" }] } } }));
+    expect(await call(tools, "eds_list_sites", {})).toEqual({ sites: [EU, "acme-demo-site-us"] });
   });
 
-  it("rejects an empty paths array for eds_get_status_bulk", () => {
-    const tools = createEdsTools({ getRuntime: () => ({ client: makeClient(), org: "acme-demo-org" }) });
-    const tool = tools.find((t) => t.name === "eds_get_status_bulk");
-    const result = tool?.inputSchema.safeParse({ site: "acme-demo-site-eu", paths: [] });
-    expect(result?.success).toBe(false);
+  it("eds_get_config_versions returns the versions list", async () => {
+    const versions = { current: 3, versions: [{ version: 3, created: "2026-10-01T00:00:00Z", name: "demo" }] };
+    const tools = toolsOver(makeClient({ [`GET /config/${TEST_ORG}/sites/${EU}/versions.json`]: { status: 200, body: versions } }));
+    expect(await call(tools, "eds_get_config_versions", { site: EU })).toEqual(versions);
   });
 
-  it("rejects an omitted paths field for eds_set_live_state", () => {
-    const tools = createEdsTools({ getRuntime: () => ({ client: makeClient(), org: "acme-demo-org" }) });
-    const tool = tools.find((t) => t.name === "eds_set_live_state");
-    const result = tool?.inputSchema.safeParse({ site: "acme-demo-site-eu", state: "published" });
-    expect(result?.success).toBe(false);
+  it("eds_get_robots returns the text unparsed", async () => {
+    const tools = toolsOver(
+      makeClient({ [`GET /config/${TEST_ORG}/sites/${EU}/robots.txt`]: { status: 200, headers: { "content-type": "text/plain" }, body: "User-agent: *\nDisallow: /" } }),
+    );
+    expect(await call(tools, "eds_get_robots", { site: EU })).toEqual({ site: EU, content: "User-agent: *\nDisallow: /" });
   });
 
-  it("rejects an empty paths array for eds_set_live_state", () => {
-    const tools = createEdsTools({ getRuntime: () => ({ client: makeClient(), org: "acme-demo-org" }) });
-    const tool = tools.find((t) => t.name === "eds_set_live_state");
-    const result = tool?.inputSchema.safeParse({ site: "acme-demo-site-eu", state: "published", paths: [] });
-    expect(result?.success).toBe(false);
+  it("eds_get_code_status resolves the repository from the site, and takes no owner/repo", async () => {
+    const tools = toolsOver(
+      makeClient({
+        [`GET ${EU_DOC}`]: { status: 200, body: { code: { owner: "example-owner", repo: "example-repo" } } },
+        [`GET /code/example-owner/example-repo/main/scripts/a.js`]: { status: 200, body: { code: { status: 200 } } },
+      }),
+    );
+    expect(await call(tools, "eds_get_code_status", { site: EU, path: "/scripts/a.js" })).toEqual({
+      repository: "example-owner/example-repo",
+      status: { code: { status: 200 } },
+    });
+    expect(tool(tools, "eds_get_code_status").inputSchema.safeParse({ site: EU, path: "/a.js", owner: "other-owner" }).success).toBe(false);
   });
 
-  it("rejects an empty paths array on eds_reindex's paths branch", () => {
-    const result = edsReindexInput.safeParse({ site: "acme-demo-site-eu", request: { scope: "paths", paths: [] } });
-    expect(result.success).toBe(false);
+  it("eds_list_jobs lists a topic's jobs", async () => {
+    const list = { topic: "live", jobs: [{ name: "job-demo", state: "completed", time: "2026-10-01T00:00:00Z", href: "x" }], links: { self: "x" } };
+    const tools = toolsOver(makeClient({ [`GET /job/${TEST_ORG}/${EU}/main/live`]: { status: 200, body: list } }));
+    expect(await call(tools, "eds_list_jobs", { site: EU, topic: "live" })).toEqual(list);
+  });
+
+  it("eds_list_api_keys is org-level, rejects a site field, and returns metadata only", async () => {
+    const tools = toolsOver(
+      makeClient({
+        [`GET /config/${TEST_ORG}/apiKeys.json`]: {
+          status: 200,
+          body: { "opaque-key-id-demo": { id: "key-demo-1", roles: ["publish"], description: "demo", value: "secret-material-demo" } },
+        },
+      }),
+    );
+    expect(tool(tools, "eds_list_api_keys").inputSchema.safeParse({ site: EU }).success).toBe(false);
+    const keys = await call(tools, "eds_list_api_keys", {});
+    expect(keys).toEqual([{ id: "key-demo-1", roles: ["publish"], description: "demo" }]);
+    expect(JSON.stringify(keys)).not.toContain("secret-material-demo");
+    expect(JSON.stringify(keys)).not.toContain("opaque-key-id-demo");
+  });
+});
+
+describe("eds_plan → eds_apply through the tools", () => {
+  const DOC = { code: { owner: "example-owner", repo: "example-repo" }, a: 1 };
+
+  it("plans, then applies exactly the plan", async () => {
+    const { client, calls } = createClientDouble({
+      [`GET ${EU_DOC}`]: { status: 200, body: DOC },
+      [`GET /config/${TEST_ORG}/sites/${EU}/versions.json`]: { status: 200, body: { current: 4, versions: [] } },
+      [`POST ${EU_DOC}`]: { status: 200, body: { ...DOC, a: 2 } },
+    });
+    const tools = toolsOver(client);
+
+    const planned = (await call(tools, "eds_plan", { site: EU, operation: { kind: "config.patch", patch: { a: 2 } } })) as { token: string };
+    const applied = await call(tools, "eds_apply", { token: planned.token });
+
+    expect(applied).toMatchObject({ status: "applied", site: EU, kind: "config.patch", previousVersionId: "4" });
+    expect(callKeys(calls).filter((key) => key.startsWith("POST "))).toEqual([`POST ${EU_DOC}`]);
+  });
+
+  it("protectedSites from the config reaches the plan and the apply", async () => {
+    const { client } = createClientDouble({
+      [`GET ${EU_DOC}`]: { status: 200, body: DOC },
+      [`POST /live/${TEST_ORG}/${EU}/main/a`]: { status: 200, body: {} },
+    });
+    const tools = toolsOver(client, { protectedSites: ["*-eu"] });
+
+    const planned = (await call(tools, "eds_plan", { site: EU, operation: { kind: "live.publish", paths: ["/a"] } })) as { token: string; requiresConfirmSite: boolean };
+    expect(planned.requiresConfirmSite).toBe(true);
+    expect(await call(tools, "eds_apply", { token: planned.token })).toMatchObject({ status: "rejected", reason: "confirm-site-missing" });
+    expect(await call(tools, "eds_apply", { token: planned.token, confirmSite: EU })).toMatchObject({ status: "applied" });
+  });
+
+  it("eds_apply rejects extra operation fields at the schema level (4.12)", async () => {
+    const tools = toolsOver(makeClient());
+    await expect(tool(tools, "eds_apply").invoke({ token: "t", site: "acme-demo-site-us" }, {})).rejects.toThrow();
+  });
+
+  // The operator-facing half of the empty-body defect, carried over from
+  // `eds_manage_snapshot`: the snapshot really was deleted, and the old tool
+  // still answered `Unexpected end of JSON input`. Retrying a destructive
+  // operation on that basis acts on a false belief about the site.
+  it("a 204 with no body applies as done-with-no-content, never as a JSON parse failure", async () => {
+    const SNAPSHOT = `/snapshot/${TEST_ORG}/${EU}/main/launch-2026`;
+    const { client } = createClientDouble({ [`DELETE ${SNAPSHOT}`]: { status: 204, headers: { "content-type": "text/plain; charset=utf-8" } } });
+    const tools = toolsOver(client);
+
+    const planned = (await call(tools, "eds_plan", { site: EU, operation: { kind: "snapshot.delete", id: "launch-2026" } })) as { token: string };
+    const result = await tool(tools, "eds_apply").invoke({ token: planned.token }, {});
+
+    expect(result.isError).not.toBe(true);
+    expect(result.content[0]?.text).not.toContain("JSON input");
+    expect(JSON.parse(result.content[0]?.text ?? "{}")).toMatchObject({ status: "applied", responses: [null] });
+  });
+});
+
+describe("nonEmptyPaths — the bulk-status hazard gate (tasks.md 7.5)", () => {
+  it("rejects an omitted or empty paths field for eds_get_status_bulk", () => {
+    const bulk = tool(toolsOver(makeClient()), "eds_get_status_bulk");
+    expect(bulk.inputSchema.safeParse({ site: EU }).success).toBe(false);
+    expect(bulk.inputSchema.safeParse({ site: EU, paths: [] }).success).toBe(false);
   });
 
   it("nonEmptyPaths itself rejects [] and accepts a non-empty array", () => {
     expect(nonEmptyPaths.safeParse([]).success).toBe(false);
     expect(nonEmptyPaths.safeParse(["/a"]).success).toBe(true);
-  });
-});
-
-describe("CLI-only operations are absent from the MCP surface (tasks.md 8.3/8.4, eds-cli spec)", () => {
-  // eds-cli spec, "CLI-Only Operations Excluded from MCP": none of these
-  // twelve operations may have a corresponding MCP tool. "auth mint" is a
-  // CLI subcommand name, not a tool name — it is checked by substring
-  // absence below rather than as an exact tool-name match.
-  const CLI_ONLY_OPERATIONS = [
-    "site apply",
-    "site delete",
-    "site source set",
-    "key create",
-    "key delete",
-    "auth mint",
-    "code show",
-    "code sync",
-    "code delete",
-    "version restore",
-    "cache purge",
-    "robots show",
-    "sitemap rebuild",
-  ];
-
-  it("no eds_* tool corresponds to any CLI-only operation", () => {
-    const tools = createEdsTools({ getRuntime: () => ({ client: makeClient(), org: "acme-demo-org" }) });
-    const toolNames = tools.map((t) => t.name);
-    for (const operation of CLI_ONLY_OPERATIONS) {
-      const slug = operation.replace(/\s+/g, "_");
-      expect(toolNames.some((name) => name.includes(slug)), `unexpected tool for CLI-only operation "${operation}"`).toBe(false);
-    }
-    expect(toolNames).toHaveLength(9);
   });
 });
 
@@ -205,52 +333,26 @@ describe("missing credential — immediate actionable failure, never a hang (tas
       sleep: async () => undefined,
       tokenProvider: createEdsTokenProvider({ configDir: emptyConfigDir }),
       baseUrl: "https://admin.hlx.page",
-      org: "acme-demo-org",
+      org: TEST_ORG,
     });
-    const tools = createEdsTools({ getRuntime: () => ({ client, org: "acme-demo-org" }) });
-    const tool = tools.find((t) => t.name === "eds_get_status");
-    if (tool === undefined) {
-      throw new Error("eds_get_status not found");
-    }
 
-    const result = await tool.invoke({ site: "acme-demo-site-eu", path: "/" }, {});
+    const result = await tool(toolsOver(client), "eds_get_status").invoke({ site: EU, path: "/" }, {});
 
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toContain("hiberus-eds auth token set");
   });
 });
 
-// The operator-facing half of the empty-body defect: the snapshot really
-// was deleted at the service, and `eds_manage_snapshot` still answered
-// `isError: true, Unexpected end of JSON input`. An operator who retries a
-// destructive operation on that basis is acting on a false belief about
-// the state of their site, so the tool result is asserted, not only the
-// client call underneath it.
-describe("eds_manage_snapshot over a 204 with no body", () => {
-  const SNAPSHOT_PATH = "/snapshot/acme-demo-org/acme-demo-site-eu/main/launch-2026";
-
-  it("reports a successful delete as done-with-no-content, never as a JSON parse failure", async () => {
-    const client = makeClient({ [`DELETE ${SNAPSHOT_PATH}`]: { status: 204, headers: { "content-type": "text/plain; charset=utf-8" } } });
-    const tools = createEdsTools({ getRuntime: () => ({ client, org: "acme-demo-org" }) });
-    const tool = tools.find((t) => t.name === "eds_manage_snapshot");
-    if (tool === undefined) {
-      throw new Error("eds_manage_snapshot not found");
-    }
-
-    const result = await tool.invoke({ verb: "delete", site: "acme-demo-site-eu", id: "launch-2026" }, {});
-
-    const text = result.content[0]?.text ?? "";
-    expect(result.isError).not.toBe(true);
-    expect(text).not.toContain("JSON input");
-    expect(JSON.parse(text)).toEqual({ status: 204, hasContent: false });
-  });
-});
-
 describe("mcp.ts installs the stdout guard (tasks.md 7.16)", () => {
+  const source = readFileSync(fileURLToPath(new URL("./mcp.ts", import.meta.url)), "utf8");
+
   it("passes process.stdin and createStdioServer()'s private stdout into StdioServerTransport", () => {
-    const source = readFileSync(fileURLToPath(new URL("./mcp.ts", import.meta.url)), "utf8");
     expect(source).toContain("const { stdout } = createStdioServer();");
     expect(source).toContain("new StdioServerTransport(process.stdin, stdout)");
+  });
+
+  it("reads EDS_PROTECTED_SITES and passes it to the tools (4.11)", () => {
+    expect(source).toContain("parseProtectedSites(process.env.EDS_PROTECTED_SITES)");
   });
 });
 
@@ -258,7 +360,7 @@ describe("mcp.ts installs the stdout guard (tasks.md 7.16)", () => {
 // job the Admin API had already finished and discarded — observed live,
 // that poll answers 404. The results are inline in the POST response.
 describe("eds_get_status_bulk reads the finished job's results inline (observed live)", () => {
-  const BULK_POST_PATH = "/status/acme-demo-org/acme-demo-site-eu/main/*";
+  const BULK_POST_PATH = `/status/${TEST_ORG}/${EU}/main/*`;
   const COMPLETED_BULK_BODY = {
     job: {
       topic: "status",
@@ -274,7 +376,7 @@ describe("eds_get_status_bulk reads the finished job's results inline (observed 
         resources: [{ path: "/", previewLastModified: "Mon, 19 Oct 2026 10:00:00 GMT" }],
       },
     },
-    links: { self: "https://admin.hlx.page/job/acme-demo-org/acme-demo-site-eu/main/status/job-2026-10-20t00-00-00-000z" },
+    links: { self: `https://admin.hlx.page/job/${TEST_ORG}/${EU}/main/status/job-2026-10-20t00-00-00-000z` },
   };
 
   it("returns the per-path results and the absent path, issuing no job GET at all", async () => {
@@ -292,19 +394,15 @@ describe("eds_get_status_bulk reads the finished job's results inline (observed 
         describeRemedy: () => ({ domain: "eds", cliCommand: "hiberus-eds auth token set", envVar: "EDS_TOKEN", configPath: "/dev/null", reason: "not found" }),
       },
       baseUrl: "https://admin.hlx.page",
-      org: "acme-demo-org",
+      org: TEST_ORG,
     });
-    const tools = createEdsTools({ getRuntime: () => ({ client, org: "acme-demo-org" }) });
-    const tool = tools.find((t) => t.name === "eds_get_status_bulk");
-    if (tool === undefined) {
-      throw new Error("eds_get_status_bulk not found");
-    }
 
-    const result = await tool.invoke({ site: "acme-demo-site-eu", paths: ["/", "/drafts/test"] }, {});
+    const payload = (await call(toolsOver(client), "eds_get_status_bulk", { site: EU, paths: ["/", "/drafts/test"] })) as {
+      results?: { path: string }[];
+      missingPaths?: string[];
+    };
 
-    expect(result.isError).not.toBe(true);
-    expect(calls.map((call) => call.method)).toEqual(["POST"]);
-    const payload = JSON.parse(result.content[0]?.text ?? "{}") as { results?: { path: string }[]; missingPaths?: string[] };
+    expect(calls.map((c) => c.method)).toEqual(["POST"]);
     expect(payload.results?.map((entry) => entry.path)).toEqual(["/"]);
     expect(payload.missingPaths).toEqual(["/drafts/test"]);
   });

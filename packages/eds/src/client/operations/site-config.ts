@@ -11,7 +11,7 @@ import { sitePath } from "../paths.js";
 import { parseSiteList, type SiteListResult, type SiteListWire } from "../types.js";
 import { toWriteResult, type WriteResult } from "./write-result.js";
 
-function siteConfigPath(org: string, site: string): string {
+export function siteConfigPath(org: string, site: string): string {
   return `/config/${org}/sites/${site}.json`;
 }
 
@@ -96,7 +96,12 @@ export async function getSiteConfig(http: HttpClient, params: SiteConfigParams):
  * *asks* for a non-ok status: a 404 here is the answer "it does not exist",
  * not a failure. Every other status still becomes a named error.
  */
-async function siteExists(http: HttpClient, params: SiteConfigParams): Promise<boolean> {
+/** The site document alone — what `config.patch` diffs and fingerprints. `getSiteConfig` adds the CDN and effective config. */
+export async function getSiteDocument(http: HttpClient, params: SiteConfigParams): Promise<unknown> {
+  return http.readJson({ method: "GET", path: siteConfigPath(params.org, params.site), label: "the site document" });
+}
+
+export async function siteExists(http: HttpClient, params: SiteConfigParams): Promise<boolean> {
   const response = await http.send({ method: "GET", path: siteConfigPath(params.org, params.site), label: "the site document", expectedStatuses: [404] });
   return response.ok;
 }
