@@ -30,7 +30,7 @@ const operationSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("page.set-robots"),
       paths: plannedPaths,
-      /** `null` removes `cq:robotsTags`. */
+      /** Written to the page-metadata `robots` field; `null` removes it. */
       robots: z.array(z.enum(ALLOWED_ROBOTS_TOKENS as unknown as [string, ...string[]])).min(1).nullable(),
     })
     .strict(),

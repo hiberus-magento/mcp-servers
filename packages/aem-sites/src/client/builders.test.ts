@@ -60,15 +60,13 @@ describe("buildSetProperties", () => {
 });
 
 describe("buildSetRobots", () => {
-  it("writes cq:robotsTags as String[] or deletes it", () => {
+  it("writes the page-metadata robots text field, or deletes it", () => {
     expect(buildSetRobots(scope, PAGE, ["noindex", "nofollow"]).form).toEqual([
-      ["cq:robotsTags", "noindex"],
-      ["cq:robotsTags", "nofollow"],
-      ["cq:robotsTags@TypeHint", "String[]"],
+      ["robots", "noindex, nofollow"],
       ["_charset_", "utf-8"],
     ]);
     expect(buildSetRobots(scope, PAGE, null).form).toEqual([
-      ["cq:robotsTags@Delete", ""],
+      ["robots@Delete", ""],
       ["_charset_", "utf-8"],
     ]);
     expect(() => buildSetRobots(scope, PAGE, ["none"])).toThrow(InvalidPropertyValueError);

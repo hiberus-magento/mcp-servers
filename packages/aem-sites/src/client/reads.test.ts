@@ -60,15 +60,16 @@ describe("readPage", () => {
         body: {
           "jcr:primaryType": "cq:PageContent",
           "jcr:title": "Outdoor gear",
+          robots: "noindex, nofollow",
           "cq:robotsTags": ["noindex", "nofollow"],
-          "cq:template": "/conf/acme/settings/wcm/templates/page",
+          "cq:template": ["/conf/acme/settings/wcm/templates/page"],
           hideInNav: "true",
           acmeTeaser: "Hello",
           acmeInternalNote: "do not leak",
           "rep:policy": {},
-          "cq:lastReplicationAction": "Activate",
-          "cq:lastReplicated": "2026-10-01T10:00:00.000Z",
-          "cq:lastReplicationAction_preview": "Deactivate",
+          "cq:lastReplicationAction": "Deactivate",
+          "cq:lastReplicationAction_publish": "Activate",
+          "cq:lastReplicated_publish": "2026-10-01T10:00:00.000Z",
         },
       },
     });
@@ -77,12 +78,14 @@ describe("readPage", () => {
       path: PAGE,
       properties: {
         "jcr:title": "Outdoor gear",
-        "cq:template": "/conf/acme/settings/wcm/templates/page",
+        robots: "noindex, nofollow",
+        "cq:template": ["/conf/acme/settings/wcm/templates/page"],
         acmeTeaser: "Hello",
         "cq:robotsTags": ["noindex", "nofollow"],
         hideInNav: true,
       },
-      replication: { publish: { lastAction: "Activate", lastReplicated: "2026-10-01T10:00:00.000Z" }, preview: { lastAction: "Deactivate" } },
+      // The `_publish` copies win; AEM records nothing for the preview agent (observed on a live author).
+      replication: { publish: { lastAction: "Activate", lastReplicated: "2026-10-01T10:00:00.000Z" }, preview: "not-recorded-by-aem" },
     });
     expect(JSON.stringify(page)).not.toContain("do not leak");
   });
@@ -98,9 +101,9 @@ describe("readPage", () => {
 });
 
 describe("queryPublishedPages", () => {
-  it("asks for pages activated on publish or preview under a root", async () => {
+  it("asks for pages activated on the publish agent under a root", async () => {
     const { http, calls } = createAuthorDouble({
-      [`GET /bin/querybuilder.json?path=${encodeURIComponent(PAGE)}&path.self=true&type=cq%3APage&group.p.or=true&group.1_property=jcr%3Acontent%2Fcq%3AlastReplicationAction&group.1_property.value=Activate&group.2_property=jcr%3Acontent%2Fcq%3AlastReplicationAction_preview&group.2_property.value=Activate&p.limit=100`]:
+      [`GET /bin/querybuilder.json?path=${encodeURIComponent(PAGE)}&path.self=true&type=cq%3APage&group.p.or=true&group.1_property=jcr%3Acontent%2Fcq%3AlastReplicationAction&group.1_property.value=Activate&group.2_property=jcr%3Acontent%2Fcq%3AlastReplicationAction_publish&group.2_property.value=Activate&p.limit=100`]:
         { status: 200, body: { hits: [{ path: `${PAGE}/tents` }] } },
     });
     expect(await queryPublishedPages(http, PAGE)).toEqual([`${PAGE}/tents`]);

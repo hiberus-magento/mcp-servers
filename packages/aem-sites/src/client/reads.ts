@@ -94,6 +94,8 @@ export async function queryPages(http: AuthorHttp, options: QueryPagesOptions): 
 /** The page properties a caller may see. Everything else on `jcr:content` stays on the author. */
 const PAGE_FIELDS = [
   "jcr:title",
+  "robots",
+  "keywords",
   "jcr:description",
   "pageTitle",
   "navTitle",
@@ -113,9 +115,16 @@ export interface ReplicationState {
   readonly lastReplicatedBy?: string;
 }
 
+/**
+ * Observed on a live author (2026-10-28): AEM records replication to the
+ * publish agent on `jcr:content` (`cq:lastReplicationAction` and the
+ * `_publish`-suffixed copies) but records NOTHING for the preview agent, even
+ * after a successful activation to preview. Preview state is therefore not
+ * knowable from the author, and is reported as such rather than as "never".
+ */
 export interface PageReplication {
   readonly publish: ReplicationState;
-  readonly preview: ReplicationState;
+  readonly preview: "not-recorded-by-aem";
 }
 
 export interface PageDetails {
@@ -124,11 +133,12 @@ export interface PageDetails {
   readonly replication: PageReplication;
 }
 
-function replicationState(content: Record<string, unknown>, suffix: string): ReplicationState {
+function publishState(content: Record<string, unknown>): ReplicationState {
+  const pick = (base: string) => str(content, `${base}_publish`) ?? str(content, base);
   return {
-    ...present("lastAction", str(content, `cq:lastReplicationAction${suffix}`)),
-    ...present("lastReplicated", str(content, `cq:lastReplicated${suffix}`)),
-    ...present("lastReplicatedBy", str(content, `cq:lastReplicatedBy${suffix}`)),
+    ...present("lastAction", pick("cq:lastReplicationAction")),
+    ...present("lastReplicated", pick("cq:lastReplicated")),
+    ...present("lastReplicatedBy", pick("cq:lastReplicatedBy")),
   };
 }
 
@@ -155,7 +165,7 @@ export function projectPage(path: string, content: Record<string, unknown>, extr
   if (hide === true || hide === "true") {
     properties.hideInNav = true;
   }
-  return { path, properties, replication: { publish: replicationState(content, ""), preview: replicationState(content, "_preview") } };
+  return { path, properties, replication: { publish: publishState(content), preview: "not-recorded-by-aem" } };
 }
 
 /** `undefined` when there is no page at `path`. */
@@ -168,7 +178,7 @@ export async function readPage(http: AuthorHttp, path: string, extra: readonly s
   return projectPage(path, body, extra);
 }
 
-/** Paths at or below `root` whose publish or preview state is "activated". Bounded to 100 hits. */
+/** Paths at or below `root` activated on the publish agent (preview is not recorded by AEM). Bounded to 100 hits. */
 export async function queryPublishedPages(http: AuthorHttp, root: string): Promise<readonly string[]> {
   assertAemPath(root);
   const params = {
@@ -178,7 +188,7 @@ export async function queryPublishedPages(http: AuthorHttp, root: string): Promi
     "group.p.or": "true",
     "group.1_property": "jcr:content/cq:lastReplicationAction",
     "group.1_property.value": "Activate",
-    "group.2_property": "jcr:content/cq:lastReplicationAction_preview",
+    "group.2_property": "jcr:content/cq:lastReplicationAction_publish",
     "group.2_property.value": "Activate",
     "p.limit": "100",
   };

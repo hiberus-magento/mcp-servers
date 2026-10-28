@@ -104,14 +104,29 @@ export function buildSetProperties(scope: WriteScope, input: SetPropertiesInput)
   return { method: "POST", path: `${path}/jcr:content`, form, label: `page properties of ${path}` };
 }
 
-/** `tokens: null` removes `cq:robotsTags`. */
+/**
+ * Writes the `robots` text field of the EDS XWalk `page-metadata` model
+ * (e.g. "noindex, nofollow") — the field the page model declares on the
+ * author, observed 2026-10-28. `tokens: null` removes it.
+ */
 export function buildSetRobots(scope: WriteScope, path: string, tokens: readonly string[] | null): PlannedRequest {
   assertWritable(path, scope.roots);
   if (tokens === null) {
-    return { method: "POST", path: `${path}/jcr:content`, form: [["cq:robotsTags@Delete", ""], CHARSET], label: `robots of ${path}` };
+    return { method: "POST", path: `${path}/jcr:content`, form: [["robots@Delete", ""], CHARSET], label: `robots of ${path}` };
   }
   const valid = assertRobotsTokens(tokens);
-  return { method: "POST", path: `${path}/jcr:content`, form: [...valueFields("cq:robotsTags", valid), CHARSET], label: `robots of ${path}` };
+  return { method: "POST", path: `${path}/jcr:content`, form: [["robots", valid.join(", ")], CHARSET], label: `robots of ${path}` };
+}
+
+/** "noindex, nofollow" → ["noindex", "nofollow"]; undefined for an absent or empty value. */
+export function parseRobots(value: unknown): readonly string[] | undefined {
+  if (typeof value !== "string" || value.trim() === "") {
+    return undefined;
+  }
+  return value
+    .split(",")
+    .map((token) => token.trim().toLowerCase())
+    .filter((token) => token !== "");
 }
 
 // ---------------------------------------------------------------------------

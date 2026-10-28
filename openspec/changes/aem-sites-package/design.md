@@ -247,8 +247,15 @@ Decisions taken while implementing, recorded so they are not silent deviations:
 - **`page.move` does not adjust references** (`adjust` parameters of `movePage` are not field-proven);
   it sends `integrity=true`. Revisit after Phase 6.
 - **`page.unpublish` skips pages not activated on that agent**, and returns `no-changes` if none is.
-- **Preview replication state** is read from `cq:lastReplicationAction_preview` /
-  `cq:lastReplicated_preview`; unverified until Phase 6.
+- **Preview replication state is not recorded by AEM** (observed on the pre author, 2026-10-28: a
+  sheet activated to preview and publish carries `cq:lastReplication*` and `*_publish`, nothing for
+  preview). Publish state is read from `*_publish` falling back to the plain names; preview is reported
+  as `not-recorded-by-aem`, `page.unpublish` from preview is always sent, and `page.delete` can only
+  check the publish agent (it warns about preview).
+- **Per-page robots is the `robots` text field of the XWalk `page-metadata` model** (declared in the
+  storefront's `component-models.json` and in the page's `modelFields` on the author), not
+  `cq:robotsTags`. `page.set-robots` writes `robots = "noindex, nofollow"`; `robots` and `keywords`
+  join the built-in property allowlist. That EDS renders it is still to be checked on a live page.
 - **A failure mid-apply is reported, not rolled back**: `aem_apply` returns `failed` with the
   requests that succeeded and how many were not sent.
 - **The CLI's `plan`/`apply` run plan and apply in one process** (the plan store is in memory);
@@ -259,8 +266,8 @@ Decisions taken while implementing, recorded so they are not silent deviations:
 
 ## Open Questions
 
-1. Does the XWalk pipeline render `cq:robotsTags` as `<meta name="robots">`? (decides whether
-   `page.set-robots` loses its `unverified` marker or is removed in favour of the sheet).
+1. Does EDS render the page-metadata `robots` field as `<meta name="robots">` once published?
+   (`cq:robotsTags` is not the field XWalk uses — see Implementation notes.)
 2. Max pages per `aem_apply`: 100 (as `eds`) or lower given one request per page and agent?
 
 ### Resolved

@@ -19,6 +19,7 @@ import {
   buildSheetRow,
   InvalidOperationError,
   nextRowNode,
+  parseRobots,
   queryPublishedPages,
   readPage,
   readSheet,
@@ -47,7 +48,8 @@ export const EDS_LIVE_WARNING =
   "Publishing to the publish agent also publishes to Edge Delivery Services live (*.aem.live) on an EDS-connected author.";
 export const EDS_UNPUBLISH_WARNING = "Unpublishing from the publish agent removes the page from Edge Delivery Services live on an EDS-connected author.";
 export const ROBOTS_UNVERIFIED_WARNING =
-  "Not verified against a live service: whether the EDS pipeline renders cq:robotsTags as <meta name=\"robots\"> is unconfirmed. The site-wide route is a row in the EDS metadata sheet (sheet.upsert-row).";
+  "Writes the robots field of the EDS page-metadata model. That EDS renders it as <meta name=\"robots\"> once the page is published has not yet been verified on a live page; the site-wide route is a row in the EDS metadata sheet (sheet.upsert-row).";
+export const PREVIEW_UNKNOWN = "unknown (AEM does not record preview replication)";
 
 /** Pause between the preview and publish agents (field finding: publish right after preview answered 400). */
 export const AGENT_PAUSE_MS = 1_000;
@@ -206,8 +208,9 @@ function agents(target: "preview" | "publish" | "both"): readonly ReplicationAge
   return target === "both" ? ["preview", "publish"] : [target];
 }
 
-function stateOf(page: PageDetails, agent: ReplicationAgent): string | undefined {
-  return page.replication[agent].lastAction;
+/** Publish state as recorded; preview state is never recorded by AEM, so it is `undefined` = unknown. */
+function publishStateOf(page: PageDetails): string | undefined {
+  return page.replication.publish.lastAction;
 }
 
 function resolveColumn(columns: readonly string[], name: string): string {
@@ -250,14 +253,14 @@ async function draftSetRobots(ctx: Context, op: Extract<PlanOperation, { kind: "
   const changes: Change[] = [];
   for (const path of [...new Set(op.paths)]) {
     const page = await requirePage(ctx, path);
-    const current = page.properties["cq:robotsTags"] as readonly string[] | undefined;
+    const current = parseRobots(page.properties.robots);
     const unchanged = op.robots === null ? current === undefined : sameSet(current, op.robots);
     if (unchanged) {
       continue;
     }
     steps.push({ request: buildSetRobots(ctx.scope, path, op.robots) });
     checks.push(pageCheck(page));
-    changes.push({ path, what: "cq:robotsTags", before: current, after: op.robots ?? undefined });
+    changes.push({ path, what: "robots", before: page.properties.robots, after: op.robots === null ? undefined : op.robots.join(", ") });
   }
   const what = op.robots === null ? "Remove robots tags from" : `Set robots "${op.robots.join(", ")}" on`;
   return {
@@ -372,13 +375,15 @@ async function draftReplicate(ctx: Context, op: Extract<PlanOperation, { kind: "
   for (const [index, agent] of agents(op.target).entries()) {
     let first = true;
     for (const page of pages) {
-      if (!publish && stateOf(page, agent) !== "Activate") {
+      // Only the publish agent's state is known; an unpublish from preview is always sent.
+      if (!publish && agent === "publish" && publishStateOf(page) !== "Activate") {
         continue;
       }
       steps.push({ request: buildReplicate(ctx.scope, page.path, publish ? "Activate" : "Deactivate", agent), ...(index > 0 && first ? { pauseBeforeMs: AGENT_PAUSE_MS } : {}) });
       first = false;
       touched.add(page.path);
-      changes.push({ path: page.path, what: agent, before: stateOf(page, agent) ?? "never replicated", after: publish ? "Activate" : "Deactivate" });
+      const before = agent === "preview" ? PREVIEW_UNKNOWN : (publishStateOf(page) ?? "never replicated");
+      changes.push({ path: page.path, what: agent, before, after: publish ? "Activate" : "Deactivate" });
     }
   }
   const warnings = op.target !== "preview" ? [publish ? EDS_LIVE_WARNING : EDS_UNPUBLISH_WARNING] : [];
@@ -389,7 +394,7 @@ async function draftReplicate(ctx: Context, op: Extract<PlanOperation, { kind: "
     targets: paths,
     summary:
       steps.length === 0
-        ? `None of these pages is published on ${op.target}.`
+        ? "None of these pages is published on publish."
         : `${publish ? "Publish" : "Unpublish"} ${touched.size} page${touched.size === 1 ? "" : "s"} on ${agents(op.target).join(" then ")}.`,
     warnings,
   };
@@ -441,7 +446,7 @@ async function draftDelete(ctx: Context, op: Extract<PlanOperation, { kind: "pag
   if (published.length > 0) {
     throw new PlanRejection(
       "page-is-published",
-      `These pages are published on preview or publish and must be unpublished first (aem_plan page.unpublish): ${published.join(", ")}.`,
+      `${published.length === 100 ? "At least 100" : published.length} page(s) at or below ${op.path} are published on publish and must be unpublished first (aem_plan page.unpublish), e.g. ${published.slice(0, 10).join(", ")}${published.length > 10 ? ` and ${published.length - 10} more` : ""}.`,
     );
   }
   return {
@@ -450,6 +455,7 @@ async function draftDelete(ctx: Context, op: Extract<PlanOperation, { kind: "pag
     changes: [{ path: op.path, what: "page", before: page.properties["jcr:title"] ?? op.path }],
     targets: [op.path],
     summary: `Delete ${op.path} and every page below it.`,
+    warnings: [`Only publish-agent state can be checked; if any of these pages is on preview, unpublish it from preview first (preview state is ${PREVIEW_UNKNOWN}).`],
   };
 }
 

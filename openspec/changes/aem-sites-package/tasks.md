@@ -57,6 +57,8 @@ host — AEM Cloud author hosts carry program ids, so the bare vendor domain is 
 
 ## Phase 6: Live validation (non-production author)
 
+- [x] 6.0 Read-only run against the pre author (2026-10-28): auth probe, page listing, page, replication status, sheet, page tree; plans without apply for sheet.upsert-row (no-changes), page.set-robots, page.publish, and rejections (operator, outside roots, delete of a published tree). Found and fixed: preview state not recorded by AEM; robots lives in the page-metadata `robots` field.
+
 - [ ] 6.1 Site-wide noindex via `sheet.upsert-row` → `page.publish` → preview + publish `/metadata.json` with the eds server; check `<meta name="robots">` on `*.aem.page` and `*.aem.live`.
 - [ ] 6.2 Per-page `page.set-robots` → publish → check rendering (closes Open Question 1).
 - [ ] 6.3 `page.unpublish` removes the page from EDS live.

@@ -22,6 +22,7 @@ export {
   buildSheetRow,
   InvalidOperationError,
   nextRowNode,
+  parseRobots,
   SHEET_TEMPLATE,
   type PlannedRequest,
   type ReplicationAgent,

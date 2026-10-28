@@ -199,7 +199,7 @@ describe("plan contents", () => {
       kind: "page.set-properties",
       summary: `${PAGE} already has these properties.`,
     });
-    h.author.pages.set(PAGE, { ...h.author.pages.get(PAGE), "cq:robotsTags": ["nofollow", "noindex"] });
+    h.author.pages.set(PAGE, { ...h.author.pages.get(PAGE), robots: "nofollow, NoIndex" });
     expect((await h.plan({ kind: "page.set-robots", paths: [PAGE], robots: ["noindex", "nofollow"] })).status).toBe("no-changes");
   });
 
@@ -229,9 +229,12 @@ describe("plan contents", () => {
     expect(h.author.posts().map((r) => new URL(r.path, SYNTHETIC_AEM_AUTHOR).searchParams.get("type"))).toEqual(["preview", "preview", null, null]);
   });
 
-  it("page.unpublish skips pages that are not published on that agent", async () => {
+  it("page.unpublish skips pages not activated on publish, but always unpublishes from preview (state unknown)", async () => {
     const h = harness();
-    expect((await h.plan({ kind: "page.unpublish", paths: [OLD], target: "both" })).status).toBe("no-changes");
+    expect((await h.plan({ kind: "page.unpublish", paths: [OLD], target: "publish" })).status).toBe("no-changes");
+    const plan = planned(await h.plan({ kind: "page.unpublish", paths: [OLD], target: "both" }));
+    expect(plan.requests.map((r) => r.label)).toEqual([`unpublish ${OLD} (preview)`]);
+    expect(plan.changes[0]?.before).toContain("unknown");
   });
 
   it("reports a failure mid-apply with what was and was not sent", async () => {

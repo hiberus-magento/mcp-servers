@@ -36,6 +36,9 @@ export class InvalidExtraPropertyError extends Error {
 export const BUILTIN_PAGE_PROPERTIES: readonly string[] = [
   "jcr:title",
   "jcr:description",
+  // Fields of the EDS XWalk `page-metadata` model, stored on jcr:content.
+  "robots",
+  "keywords",
   "pageTitle",
   "navTitle",
   "hideInNav",
@@ -155,7 +158,7 @@ export function assertRobotsTokens(tokens: readonly string[]): readonly RobotsTo
   const allowed = new Set<string>(ROBOTS_TOKENS);
   const invalid = tokens.filter((token) => !allowed.has(token));
   if (invalid.length > 0 || tokens.length === 0) {
-    throw new InvalidPropertyValueError("cq:robotsTags", `expected one or more of ${ROBOTS_TOKENS.join(", ")}`);
+    throw new InvalidPropertyValueError("robots", `expected one or more of ${ROBOTS_TOKENS.join(", ")}`);
   }
   return [...new Set(tokens)] as RobotsToken[];
 }

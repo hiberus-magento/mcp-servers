@@ -51,7 +51,7 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
       const root = url.searchParams.get("path") ?? "";
       const activated = [...pages.entries()]
         .filter(([p]) => p === root || p.startsWith(`${root}/`))
-        .filter(([, body]) => body["cq:lastReplicationAction"] === "Activate" || body["cq:lastReplicationAction_preview"] === "Activate")
+        .filter(([, body]) => body["cq:lastReplicationAction"] === "Activate" || body["cq:lastReplicationAction_publish"] === "Activate")
         .map(([p]) => ({ path: p }));
       return json(200, { total: activated.length, hits: url.searchParams.has("group.p.or") ? activated : [] });
     }
