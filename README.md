@@ -36,6 +36,7 @@ nothing is resolved from the registry at run time.
 | [`@hiberus-magento/eds`](https://npmjs.com/package/@hiberus-magento/eds) | Edge Delivery Services (EDS) Admin API client — CLI and MCP server. | `0.1.1` · alpha | [README](./packages/eds/README.md) · [setup](./docs/eds-onboarding.md) |
 | [`@hiberus-magento/aco`](https://npmjs.com/package/@hiberus-magento/aco) | Adobe Commerce Optimizer (ACO) admin and Merchandising API client — CLI and MCP server. | `0.1.1` · alpha | [README](./packages/aco/README.md) · [setup](./docs/aco-onboarding.md) |
 | [`@hiberus-magento/magento-cloud`](https://npmjs.com/package/@hiberus-magento/magento-cloud) | Magento Cloud CLI wrapper — CLI and MCP server for read-only Magento Cloud project, environment, and database operations. | `0.1.1` · alpha | [README](./packages/magento-cloud/README.md) · [setup](./docs/magento-cloud-onboarding.md) |
+| [`@hiberus-magento/aem-sites`](https://npmjs.com/package/@hiberus-magento/aem-sites) | AEM as a Cloud Service Sites author client — CLI and MCP server for pages, page properties, sheets and replication behind plan/apply. | `0.0.0` · alpha | [README](./packages/aem-sites/README.md) · [setup](./docs/aem-sites-onboarding.md) |
 
 ## Quickstart
 

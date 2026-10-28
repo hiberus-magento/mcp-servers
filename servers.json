@@ -235,6 +235,115 @@
           "description": "Use this for a bounded, read-only diagnostic query against an environment's database — a size check, or a single guarded SELECT/SHOW/DESCRIBE/EXPLAIN statement."
         }
       ]
+    },
+    {
+      "id": "aem-sites",
+      "package": "@hiberus-magento/aem-sites",
+      "bin": "hiberus-aem-sites-mcp",
+      "version": "0.0.0",
+      "domain": "aem",
+      "status": "alpha",
+      "description": "AEM as a Cloud Service Sites author client — CLI and MCP server for pages, page properties, sheets and replication behind plan/apply.",
+      "tools": [
+        {
+          "name": "aem_list_environments",
+          "readOnly": true,
+          "description": "Use this first, or when you need to know which AEM author environments are configured, which are protected, the write roots, and whether each has a token stored (never the token).",
+          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+        },
+        {
+          "name": "aem_check_auth",
+          "readOnly": true,
+          "description": "Use this when a call failed with an auth error, or before a batch, to check that an environment's token is accepted by its author.",
+          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+        },
+        {
+          "name": "aem_list_pages",
+          "readOnly": true,
+          "description": "Use this to find the pages under a content root, paginated.",
+          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+        },
+        {
+          "name": "aem_get_page",
+          "readOnly": true,
+          "description": "Use this to read one page's properties and its replication state on preview and publish.",
+          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+        },
+        {
+          "name": "aem_get_replication_status",
+          "readOnly": true,
+          "description": "Use this to check whether up to 100 pages are published on preview and publish.",
+          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+        },
+        {
+          "name": "aem_get_sheet",
+          "readOnly": true,
+          "description": "Use this to read a sheet page's columns and rows, e.g. the EDS bulk metadata sheet.",
+          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+        },
+        {
+          "name": "aem_list_templates",
+          "readOnly": true,
+          "description": "Use this before planning page.create, to find template paths under a /conf root.",
+          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+        },
+        {
+          "name": "aem_get_page_tree",
+          "readOnly": true,
+          "description": "Use this when you need a page's component tree, depth 1–4.",
+          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+        },
+        {
+          "name": "aem_plan",
+          "readOnly": true,
+          "description": "Use this whenever you want to change anything on an AEM author; it returns exactly what would change and a one-time token, and never writes.",
+          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+        },
+        {
+          "name": "aem_apply",
+          "readOnly": false,
+          "description": "Use this only after the user explicitly confirms a plan from aem_plan; it sends exactly the planned requests and nothing else.",
+          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+        }
+      ],
+      "docs": "docs/aem-sites-onboarding.md",
+      "requires": {
+        "binaries": [
+          "hiberus-aem-sites"
+        ],
+        "env": [
+          {
+            "name": "AEM_AUTHORS",
+            "required": true,
+            "description": "Comma-separated <env>=<author origin> pairs, e.g. stage=https://author-p<program>-e<environment>.adobeaemcloud.com. Env names are lowercase letters and digits. The server resolves it on the first tool call and refuses the call without it; tools/list still works. A malformed value stops the server at startup. Each environment's bearer token comes from AEM_TOKEN_<ENV> (e.g. AEM_TOKEN_STAGE) or from the 0600 file written by `hiberus-aem-sites auth token set --env <env>`, re-read on every call."
+          },
+          {
+            "name": "AEM_WRITE_ROOTS",
+            "required": false,
+            "description": "Comma-separated page paths under /content/ (never /content/dam) that plans may write. Unset: every plan is rejected; reads still work."
+          },
+          {
+            "name": "AEM_EXTRA_PROPERTIES",
+            "required": false,
+            "description": "Exact page-property names, beyond the built-in allowlist, that page.set-properties may write and aem_get_page may read. Sling operators and structural properties are refused."
+          },
+          {
+            "name": "AEM_PROTECTED_ENVS",
+            "required": false,
+            "description": "Comma-separated environment names. A plan against one makes aem_apply require the user to type the env name."
+          },
+          {
+            "name": "AEM_PROTECTED_PATHS",
+            "required": false,
+            "description": "Comma-separated path patterns (`*` = one whole segment; a match protects everything below). Publishing them is blocked; other plans require the user to type the pattern."
+          },
+          {
+            "name": "AEM_ALLOW_PROTECTED_PUBLISH",
+            "required": false,
+            "description": "\"1\" allows page.publish on protected paths, still behind the typed confirmation. Default: blocked."
+          }
+        ]
+      }
     }
   ]
 }

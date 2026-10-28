@@ -1,0 +1,64 @@
+{
+  "name": "@hiberus-magento/aem-sites",
+  "version": "0.0.0",
+  "description": "MCP server and CLI for the Adobe Experience Manager (AEM) as a Cloud Service Sites author — pages, page properties, sheets and replication behind a plan/apply confirmation.",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "adobe",
+    "aem",
+    "aem-sites",
+    "aem-as-a-cloud-service",
+    "replication"
+  ],
+  "homepage": "https://github.com/hiberus-magento/mcp-servers/tree/main/packages/aem-sites#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hiberus-magento/mcp-servers.git",
+    "directory": "packages/aem-sites"
+  },
+  "bugs": {
+    "url": "https://github.com/hiberus-magento/mcp-servers/issues"
+  },
+  "author": "Hiberus",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "bin": {
+    "hiberus-aem-sites": "dist/cli.js",
+    "hiberus-aem-sites-mcp": "dist/mcp.js"
+  },
+  "files": [
+    "dist",
+    "!dist/metafile-*.json",
+    "LICENSE",
+    "README.md",
+    "THIRD-PARTY-NOTICES.txt"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "verify:package": "node ../../scripts/verify-bundle.mjs",
+    "prepack": "node -e \"require('node:fs').copyFileSync('../../LICENSE','./LICENSE')\""
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@hiberus-magento/mcp-core": "workspace:*",
+    "@hiberus-magento/mcp-testing": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "eslint": "10.10.0",
+    "tsup": "^8.5.1",
+    "typescript-eslint": "8.70.0",
+    "zod": "^4.5.4"
+  }
+}
