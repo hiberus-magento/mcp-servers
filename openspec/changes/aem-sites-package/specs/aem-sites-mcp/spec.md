@@ -114,7 +114,8 @@ rejected regardless of configuration.
 
 A plan whose env is in `AEM_PROTECTED_ENVS`, or whose targets match `AEM_PROTECTED_PATHS`, MUST set
 `requiresConfirmTarget: true`, and `aem_apply` MUST reject it unless `confirmTarget` equals the env
-name (protected env) or the matching path (protected path). `page.publish` targeting a protected
+name (protected env) or the matching protected pattern, e.g. `/content/*/en/internal` (protected path).
+`page.unpublish` on a protected path is allowed behind that confirmation. `page.publish` targeting a protected
 path MUST be rejected at plan time unless `AEM_ALLOW_PROTECTED_PUBLISH=1`.
 
 #### Scenario: Publishing a protected path is blocked

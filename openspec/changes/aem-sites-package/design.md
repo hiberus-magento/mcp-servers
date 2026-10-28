@@ -49,7 +49,7 @@ Operation kinds (Phase 1 = the immediate use case; Phase 2 = page lifecycle):
 | `page.unpublish` | 1 | `paths[]`, `target` | `cmd=Deactivate` |
 | `page.create` | 2 | `parentPath`, `name`, `title`, `template`, `properties?` | `wcmcommand createPage` (+ properties POST) |
 | `page.copy` | 2 | `srcPath`, `destParentPath`, `name?`, `deep` | `wcmcommand copyPage` |
-| `page.move` | 2 | `srcPath`, `destParentPath`, `name?`, `adjustReferences` | `wcmcommand movePage` |
+| `page.move` | 2 | `srcPath`, `destParentPath`, `destName?` | `wcmcommand movePage` (`integrity=true`; reference adjustment not offered, see Implementation notes) |
 | `page.delete` | 2 | `path` | `wcmcommand deletePage`, **refused at plan time if the page or a child is published** |
 
 `paths[]` is bounded to 100, like `plannedPaths` in `eds`.
@@ -123,7 +123,7 @@ is built**, so neither plan nor apply can produce a request that fails it:
   CLI's rule); anything else fails at startup. Every tool takes `env`.
 - `AEM_PROTECTED_ENVS` (env names) and `AEM_PROTECTED_PATHS` (anchored `*` patterns, e.g.
   `/content/*/en`): a plan touching either sets `requiresConfirmTarget`; `aem_apply` must echo the
-  env name (protected env) or the path (protected path) in `confirmTarget`.
+  env name (protected env) or the matching protected pattern(s) (protected path) in `confirmTarget`.
 - `page.publish` on a protected path is refused outright unless `AEM_ALLOW_PROTECTED_PUBLISH=1`
   — this is the "block publication through the agent" switch.
 
@@ -229,6 +229,33 @@ for every kind. Live validation is Phase 6, against a non-production author, res
 - `page.import-content` (Sling `:operation=import` of a JSON component tree) with a
   `sling:resourceType` allowlist; own change.
 - Publish with children (tree activation), scheduled publication, MSM rollout.
+
+## Implementation notes (2026-10-28)
+
+Decisions taken while implementing, recorded so they are not silent deviations:
+
+- **Manifest domain is `aem`**, not `aem-sites`: the repository derives a server's environment-variable
+  prefix from its `domain` (`scripts/manifest-env.mjs`), and the variables designed here are `AEM_*`.
+  Package name, bins and credential files keep `aem-sites`.
+- **`AEM_TOKEN_<ENV>` is not in `servers.json`'s `requires.env`**: the schema only accepts literal
+  names. It is documented inside `AEM_AUTHORS`'s description and in the onboarding doc.
+- **Reads are limited to `/content/` (never `/content/dam`)** even though they are not limited to the
+  write roots: a QueryBuilder read under `/home` or `/apps` would leak users or code.
+- **The protected-path confirmation is the matching pattern**, not each path, so a plan over many
+  pages under one protected tree needs one typed value. `page.unpublish` on a protected path is
+  allowed behind it — unpublishing is how publication is blocked.
+- **`page.move` does not adjust references** (`adjust` parameters of `movePage` are not field-proven);
+  it sends `integrity=true`. Revisit after Phase 6.
+- **`page.unpublish` skips pages not activated on that agent**, and returns `no-changes` if none is.
+- **Preview replication state** is read from `cq:lastReplicationAction_preview` /
+  `cq:lastReplicated_preview`; unverified until Phase 6.
+- **A failure mid-apply is reported, not rolled back**: `aem_apply` returns `failed` with the
+  requests that succeeded and how many were not sent.
+- **The CLI's `plan`/`apply` run plan and apply in one process** (the plan store is in memory);
+  `apply` without `--yes` only prints the plan.
+- **Shared fixtures**: `SYNTHETIC_AEM_AUTHOR(_2)` and `SYNTHETIC_AEM_CONTENT_ROOT` added to
+  `mcp-testing`, and the audit script accepts exactly the all-zero synthetic AEM hosts plus the bare
+  `adobeaemcloud.com`.
 
 ## Open Questions
 
