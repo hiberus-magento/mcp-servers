@@ -288,14 +288,12 @@
         {
           "name": "aem_plan",
           "readOnly": true,
-          "description": "Use this whenever you want to change anything on an AEM author; it returns exactly what would change and a one-time token, and never writes.",
-          "unverified": "page.set-properties, page.create, sheet.upsert-row and sheet.delete-row have not yet been applied on a live author; the other kinds were (2026-10-28)."
+          "description": "Use this whenever you want to change anything on an AEM author; it returns exactly what would change and a one-time token, and never writes."
         },
         {
           "name": "aem_apply",
           "readOnly": false,
-          "description": "Use this only after the user explicitly confirms a plan from aem_plan; it sends exactly the planned requests and nothing else.",
-          "unverified": "page.set-properties, page.create, sheet.upsert-row and sheet.delete-row have not yet been applied on a live author; the other kinds were (2026-10-28)."
+          "description": "Use this only after the user explicitly confirms a plan from aem_plan; it sends exactly the planned requests and nothing else."
         }
       ],
       "docs": "docs/aem-sites-onboarding.md",

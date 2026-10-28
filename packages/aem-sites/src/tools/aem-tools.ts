@@ -29,14 +29,6 @@ import { applyPlan } from "./apply.js";
 import { planOperation, type StoredPlan } from "./plan-builder.js";
 import { aemApplyInput, aemPlanInput, plannedPaths } from "./plan-schema.js";
 
-/**
- * Starts with `UNVERIFIED_MARKER` from `scripts/gen-readme.mjs`. Every read
- * tool and the write kinds named here were run against a live author on
- * 2026-10-28; only these kinds still carry the marker.
- */
-const PARTIALLY_UNVERIFIED =
-  "Not verified against a live service for page.set-properties, page.create, sheet.upsert-row and sheet.delete-row — those kinds have not yet been applied on a live author; page.set-robots, page.publish, page.unpublish, page.copy, page.move and page.delete were (2026-10-28).";
-
 export type AemMcpTool = Pick<RegisteredTool<z.ZodObject, unknown>, "name" | "description" | "inputSchema" | "annotations" | "invoke">;
 
 export interface AemRuntime {
@@ -199,7 +191,7 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
     description:
       "Use this whenever you want to change anything on an AEM author: page properties, robots (noindex), EDS metadata-sheet rows, publish/unpublish, or create/copy/move/delete pages. " +
       "It reads the current state and returns exactly what would change, a confirmationMessage to show the user and a one-time token — it never writes. " +
-      `Then call aem_apply only after the user explicitly confirms. ${PARTIALLY_UNVERIFIED}`,
+      `Then call aem_apply only after the user explicitly confirms.`,
     inputSchema: aemPlanInput,
     annotations: readTool,
     handler: async (args) => {
@@ -212,7 +204,7 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
     name: "aem_apply",
     description:
       "Use this only after the user's most recent message explicitly confirms a plan returned by aem_plan. Pass that plan's token, env and kind (and confirmTarget, typed by the user, when the plan requires it). " +
-      `It sends exactly the planned requests and nothing else; a stale, expired, reused or forged token writes nothing. Writes to the AEM author. ${PARTIALLY_UNVERIFIED}`,
+      `It sends exactly the planned requests and nothing else; a stale, expired, reused or forged token writes nothing. Writes to the AEM author.`,
     inputSchema: aemApplyInput,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
     handler: async (args) => {

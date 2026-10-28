@@ -47,7 +47,22 @@ over the sheet.
 4. **Replication action without a date** (inherited by a page created as a copy) made a
    never-published page look published. An action without its date is now ignored.
 
-## Not yet run live
+## Second run (same day): the remaining kinds
 
-`page.set-properties`, `page.create`, `sheet.upsert-row`, `sheet.delete-row` (applied). Their
-tools keep the "Not verified against a live service" marker for those kinds.
+| Step | Author |
+|---|---|
+| `page.set-properties` (`keywords`, `jcr:description`) | both written, HTTP 200; other properties untouched |
+| `page.create` child page + `robots` | page created from the template, property set (200 + 200) |
+| `sheet.upsert-row` on a new sheet | sheet created from the metadata template, columns, row (200 + 200 + 201) |
+| `sheet.upsert-row` again (`url`/`robots` lower-case) | existing columns matched case-insensitively; cell updated |
+| `sheet.delete-row` | row removed |
+| `page.delete` ×2, `page.set-properties` remove | test pages gone; test page back to its earlier properties |
+
+5. **Read-after-write lag**: reading the sheet immediately after the row was created (201)
+   returned it without rows; a few seconds later the row was there. Plans read the author, so a
+   plan made right after a write can see the earlier state. Documented in the README; the 409s
+   the field CLI saw after creating a sheet are the write-side face of the same lag.
+
+All tools now ship without the "Not verified against a live service" marker. The EDS metadata
+sheet route was exercised on a test sheet only (not published), since the site's real sheet
+already had its row.

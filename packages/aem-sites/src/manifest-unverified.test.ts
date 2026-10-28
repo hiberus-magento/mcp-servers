@@ -40,9 +40,9 @@ const shippedTools = createAemTools({
 });
 
 describe("servers.json's unverified tools and the shipped tool descriptions agree", () => {
-  it("marks at least one tool unverified, so the cases below are not vacuous", () => {
-    expect(unverifiedNames.length).toBeGreaterThan(0);
-  });
+  // Every aem-sites tool was run against a live author (verify-report.md), so
+  // the set may be empty; the last case still catches a description that
+  // claims to be unverified while servers.json is silent.
 
   it("names only tools the server actually ships", () => {
     const shippedNames = shippedTools.map((tool) => tool.name);
