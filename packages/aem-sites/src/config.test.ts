@@ -14,6 +14,7 @@ describe("parseConfig", () => {
       AEM_PROTECTED_ENVS: "prod",
       AEM_PROTECTED_PATHS: "/content/*/en/internal",
       AEM_ALLOW_PROTECTED_PUBLISH: "1",
+      AEM_EXTRA_ROLLOUT_CONFIGS: "/apps/msm/acme/sync",
     });
     expect([...config.authors.entries()]).toEqual([
       ["stage", SYNTHETIC_AEM_AUTHOR],
@@ -25,6 +26,7 @@ describe("parseConfig", () => {
       protectedEnvs: ["prod"],
       protectedPaths: ["/content/*/en/internal"],
       allowProtectedPublish: true,
+      extraRolloutConfigs: ["/apps/msm/acme/sync"],
     });
     expect(originFor(config, "prod")).toBe(PROD);
     expect(() => originFor(config, "qa")).toThrow(/Unknown environment/);

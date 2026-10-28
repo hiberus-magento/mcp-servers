@@ -160,3 +160,46 @@ export function protectedPatternFor(path: string, patterns: readonly string[]): 
   }
   return undefined;
 }
+
+export class InvalidRolloutConfigError extends Error {
+  constructor(config: string, reason: string) {
+    super(`Rollout config "${config}" ${reason}.`);
+    this.name = "InvalidRolloutConfigError";
+  }
+}
+
+/** The MSM rollout configs AEM ships (observed on a live author, 2026-10-28). */
+export const BUILTIN_ROLLOUT_CONFIGS: readonly string[] = [
+  "/libs/msm/wcm/rolloutconfigs/default",
+  "/libs/msm/wcm/rolloutconfigs/pushonmodify",
+  "/libs/msm/wcm/rolloutconfigs/activate",
+  "/libs/msm/wcm/rolloutconfigs/deactivate",
+];
+
+/** `AEM_EXTRA_ROLLOUT_CONFIGS`: a project's own rollout configs, exact paths under /apps/msm or /conf. */
+export function parseRolloutConfigs(raw: string | undefined): readonly string[] {
+  if (raw === undefined || raw.trim() === "") {
+    return [];
+  }
+  const configs: string[] = [];
+  for (const entry of raw.split(",")) {
+    const config = entry.trim();
+    if (config === "") {
+      continue;
+    }
+    if (!PAGE_PATH.test(config) || !(config.startsWith("/apps/msm/") || config.startsWith("/conf/"))) {
+      throw new InvalidRolloutConfigError(config, "is not a page-path-shaped node under /apps/msm/ or /conf/");
+    }
+    if (!configs.includes(config)) {
+      configs.push(config);
+    }
+  }
+  return configs;
+}
+
+export function assertRolloutConfig(config: string, extra: readonly string[]): string {
+  if (!BUILTIN_ROLLOUT_CONFIGS.includes(config) && !extra.includes(config)) {
+    throw new InvalidRolloutConfigError(config, `is not allowed; use one of ${[...BUILTIN_ROLLOUT_CONFIGS, ...extra].join(", ")}`);
+  }
+  return config;
+}

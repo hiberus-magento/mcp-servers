@@ -93,7 +93,7 @@ describe("reads", () => {
 
   it("a read answered by the login page comes back as an auth answer, not a crash", async () => {
     const page = `${SYNTHETIC_ROOT}/en`;
-    const { call } = toolsOver({ [`GET ${page}/jcr:content.json`]: { status: 302, headers: { location: "https://login.example-domain.invalid" } } });
+    const { call } = toolsOver({ [`GET ${page}/jcr:content.1.json`]: { status: 302, headers: { location: "https://login.example-domain.invalid" } } });
     expect(await call("aem_get_page", { env: "stage", path: page })).toMatchObject({ status: "auth-error", reason: "redirected-to-login" });
   });
 });

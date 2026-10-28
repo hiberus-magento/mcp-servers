@@ -10,6 +10,8 @@ import {
   parseWriteRoots,
   PathOutsideWriteRootsError,
   protectedPatternFor,
+  InvalidRolloutConfigError,
+  parseRolloutConfigs,
 } from "./paths.js";
 
 const ROOT = "/content/acme-demo-site-eu";
@@ -105,5 +107,13 @@ describe("protected path patterns", () => {
   it("refuses a pattern with a partial wildcard or a dot", () => {
     expect(() => parsePathPatterns("/content/acme*")).toThrow(InvalidPathPatternError);
     expect(() => parsePathPatterns("/content/a.b")).toThrow(InvalidPathPatternError);
+  });
+});
+
+describe("rollout configs", () => {
+  it("parses project configs under /apps/msm or /conf only", () => {
+    expect(parseRolloutConfigs(" /apps/msm/acme/sync, /conf/acme/msm/x ")).toEqual(["/apps/msm/acme/sync", "/conf/acme/msm/x"]);
+    expect(() => parseRolloutConfigs("/apps/acme/sync")).toThrow(InvalidRolloutConfigError);
+    expect(() => parseRolloutConfigs("/content/x")).toThrow(InvalidRolloutConfigError);
   });
 });

@@ -243,7 +243,7 @@
       "version": "0.0.0",
       "domain": "aem",
       "status": "alpha",
-      "description": "AEM as a Cloud Service Sites author client — CLI and MCP server for pages, page properties, sheets and replication behind plan/apply.",
+      "description": "AEM as a Cloud Service Sites author client — CLI and MCP server for pages, page properties, sheets, replication, Live Copies and page locks behind plan/apply.",
       "tools": [
         {
           "name": "aem_list_environments",
@@ -288,7 +288,7 @@
         {
           "name": "aem_plan",
           "readOnly": true,
-          "description": "Use this whenever you want to change anything on an AEM author; it returns exactly what would change and a one-time token, and never writes."
+          "description": "Use this whenever you want to change anything on an AEM author — including creating a Live Copy or locking a page; it returns exactly what would change and a one-time token, and never writes."
         },
         {
           "name": "aem_apply",
@@ -331,6 +331,11 @@
             "name": "AEM_ALLOW_PROTECTED_PUBLISH",
             "required": false,
             "description": "\"1\" allows page.publish on protected paths, still behind the typed confirmation. Default: blocked."
+          },
+          {
+            "name": "AEM_EXTRA_ROLLOUT_CONFIGS",
+            "required": false,
+            "description": "Comma-separated MSM rollout config paths under /apps/msm/ or /conf/ that livecopy.create may use, beyond AEM's built-in default, pushonmodify, activate and deactivate."
           }
         ]
       }

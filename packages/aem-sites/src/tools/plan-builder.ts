@@ -7,9 +7,11 @@
 // writes: every client call here is a read, and the writes are only BUILT.
 import {
   buildCopyPage,
+  buildCreateLiveCopy,
   buildCreatePage,
   buildCreateSheet,
   buildDeletePage,
+  buildLockPage,
   buildMovePage,
   buildReplicate,
   buildSetProperties,
@@ -21,6 +23,7 @@ import {
   nextRowNode,
   parseRobots,
   queryPublishedPages,
+  readCurrentUser,
   readPage,
   readSheet,
   type AemClient,
@@ -33,7 +36,15 @@ import {
 import { AemConfigError, type AemConfig } from "../config.js";
 import { fingerprint } from "../confirm/fingerprint.js";
 import type { PlanStore } from "../confirm/plan-store.js";
-import { assertWritable, InvalidAemPathError, PathOutsideWriteRootsError, protectedPatternFor } from "../guard/paths.js";
+import {
+  assertWritable,
+  BUILTIN_ROLLOUT_CONFIGS,
+  InvalidAemPathError,
+  InvalidRolloutConfigError,
+  PathNotReadableError,
+  PathOutsideWriteRootsError,
+  protectedPatternFor,
+} from "../guard/paths.js";
 import { ForbiddenPropertyNameError, InvalidPropertyValueError, assertSheetColumn } from "../guard/properties.js";
 import type { AemPlanInput, OperationKind, PlanOperation } from "./plan-schema.js";
 
@@ -92,6 +103,7 @@ export type PlanRejectionReason =
   | "already-exists"
   | "page-is-published"
   | "protected-path-publish"
+  | "locked-by-other"
   | "invalid-operation";
 
 export type PlanResult =
@@ -138,7 +150,7 @@ export function rejectionFor(error: unknown): PlanRejection | undefined {
   if (error instanceof PathOutsideWriteRootsError) {
     return new PlanRejection("path-outside-write-roots", error.message);
   }
-  if (error instanceof InvalidAemPathError) {
+  if (error instanceof InvalidAemPathError || error instanceof PathNotReadableError) {
     return new PlanRejection("invalid-path", error.message);
   }
   if (error instanceof ForbiddenPropertyNameError) {
@@ -150,7 +162,7 @@ export function rejectionFor(error: unknown): PlanRejection | undefined {
   if (error instanceof AemConfigError) {
     return new PlanRejection("unknown-env", error.message);
   }
-  if (error instanceof InvalidOperationError) {
+  if (error instanceof InvalidOperationError || error instanceof InvalidRolloutConfigError) {
     return new PlanRejection("invalid-operation", error.message);
   }
   return undefined;
@@ -168,6 +180,11 @@ interface Draft {
 }
 
 type Context = { readonly client: AemClient; readonly scope: WriteScope; readonly config: AemConfig };
+
+export const LIVE_COPY_NOTE =
+  "A Live Copy inherits its content from the source: editing an inherited component requires an author to cancel inheritance, and a rollout from the source overwrites inherited content. The new page is not published.";
+export const LOCK_NOTE =
+  "A lock stops OTHER users from editing this page and the pages below it; the lock owner — the user this server's token belongs to — can still edit. It does not change permissions.";
 
 function leafOf(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1);
@@ -459,6 +476,57 @@ async function draftDelete(ctx: Context, op: Extract<PlanOperation, { kind: "pag
   };
 }
 
+async function draftLiveCopy(ctx: Context, op: Extract<PlanOperation, { kind: "livecopy.create" }>): Promise<Draft> {
+  const rolloutConfigs = op.rolloutConfigs ?? [BUILTIN_ROLLOUT_CONFIGS[0] as string];
+  const dest = `${op.destParentPath}/${op.name}`;
+  const request = buildCreateLiveCopy(ctx.scope, {
+    srcPath: op.srcPath,
+    destParentPath: op.destParentPath,
+    name: op.name,
+    title: op.title,
+    rolloutConfigs,
+    shallow: op.shallow ?? false,
+  });
+  await requirePage(ctx, op.srcPath);
+  await requirePage(ctx, op.destParentPath);
+  await requireAbsent(ctx, dest);
+  return {
+    steps: [{ request }],
+    checks: [
+      { kind: "page-present", path: op.srcPath },
+      { kind: "page-present", path: op.destParentPath },
+      { kind: "page-absent", path: dest },
+    ],
+    changes: [{ path: dest, what: "Live Copy", after: { master: op.srcPath, title: op.title, rolloutConfigs, includeSubpages: !(op.shallow ?? false) } }],
+    targets: [dest],
+    summary: `Create ${dest} as a Live Copy of ${op.srcPath}${op.shallow === true ? " (this page only)" : ""}.`,
+    warnings: [LIVE_COPY_NOTE],
+  };
+}
+
+async function draftLock(ctx: Context, op: Extract<PlanOperation, { kind: "page.lock" | "page.unlock" }>): Promise<Draft> {
+  const lock = op.kind === "page.lock";
+  const request = buildLockPage(ctx.scope, op.path, lock);
+  const page = await requirePage(ctx, op.path);
+  const owner = page.properties["jcr:lockOwner"] as string | undefined;
+  const me = await readCurrentUser(ctx.client.http);
+  if (owner !== undefined && owner !== me) {
+    throw new PlanRejection("locked-by-other", `${op.path} is locked by ${owner}; only that user (or an administrator, in the Sites console) can unlock it.`);
+  }
+  const done = lock ? owner === me : owner === undefined;
+  if (done) {
+    return { steps: [], checks: [], changes: [], targets: [op.path], summary: lock ? `${op.path} is already locked by ${me}.` : `${op.path} is not locked.` };
+  }
+  return {
+    steps: [{ request }],
+    checks: [pageCheck(page)],
+    changes: [{ path: op.path, what: "lock owner", before: owner, after: lock ? me : undefined }],
+    targets: [op.path],
+    summary: `${lock ? "Lock" : "Unlock"} ${op.path}${lock ? ` as ${me}` : ""}.`,
+    warnings: lock ? [LOCK_NOTE] : [],
+  };
+}
+
 function draftFor(ctx: Context, op: PlanOperation): Promise<Draft> {
   switch (op.kind) {
     case "page.set-properties":
@@ -479,6 +547,11 @@ function draftFor(ctx: Context, op: PlanOperation): Promise<Draft> {
       return draftCopyOrMove(ctx, op);
     case "page.delete":
       return draftDelete(ctx, op);
+    case "livecopy.create":
+      return draftLiveCopy(ctx, op);
+    case "page.lock":
+    case "page.unlock":
+      return draftLock(ctx, op);
   }
 }
 
@@ -519,7 +592,7 @@ export async function planOperation(deps: PlanDeps, input: AemPlanInput): Promis
     }
     const ctx: Context = {
       client: deps.clientFor(input.env),
-      scope: { roots: deps.config.writeRoots, extraProperties: deps.config.extraProperties },
+      scope: { roots: deps.config.writeRoots, extraProperties: deps.config.extraProperties, extraRolloutConfigs: deps.config.extraRolloutConfigs },
       config: deps.config,
     };
     const draft = await draftFor(ctx, input.operation);

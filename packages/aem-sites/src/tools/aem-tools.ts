@@ -189,7 +189,7 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
   const plan = defineTool({
     name: "aem_plan",
     description:
-      "Use this whenever you want to change anything on an AEM author: page properties, robots (noindex), EDS metadata-sheet rows, publish/unpublish, or create/copy/move/delete pages. " +
+      "Use this whenever you want to change anything on an AEM author: page properties, robots (noindex), EDS metadata-sheet rows, publish/unpublish, create/copy/move/delete pages, create a Live Copy (MSM), or lock/unlock a page. " +
       "It reads the current state and returns exactly what would change, a confirmationMessage to show the user and a one-time token — it never writes. " +
       `Then call aem_apply only after the user explicitly confirms.`,
     inputSchema: aemPlanInput,

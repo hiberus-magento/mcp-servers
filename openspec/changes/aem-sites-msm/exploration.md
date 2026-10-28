@@ -53,3 +53,11 @@ success and does not parse the body.
 Not yet explored: rollout and sync (`cq:LiveSyncConfig` exists; the console's rollout action
 endpoint was not looked up), suspending / detaching a Live Copy, and how the async operation
 reports failure for a deep source with many pages.
+
+## Validation through the MCP (after implementation, 2026-10-28)
+
+`page.lock` on the spike's Live Copy set `jcr:lockOwner` to the token's user and `aem_get_page`
+showed it; `page.unlock` cleared it. `livecopy.create` of the test page under a new name produced a
+page that `aem_get_page` reports as `liveCopy { master, rolloutConfigs: [default], deep: true }`;
+`page.delete` removed it. A second `livecopy.create` onto an existing name was rejected at plan time
+(`already-exists`).

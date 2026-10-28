@@ -17,6 +17,7 @@ const EN = `${SYNTHETIC_ROOT}/en`;
 const FR = `${SYNTHETIC_ROOT}/fr`;
 const PAGE = `${EN}/outdoor-gear`;
 const OLD = `${EN}/old`;
+const LOCKED = `${EN}/locked`;
 const SHEET = `${SYNTHETIC_ROOT}/metadata`;
 const FR_SHEET = `${FR}/metadata`;
 const TTL = 1_000;
@@ -26,6 +27,7 @@ function seed(author: FakeAuthor): void {
   author.pages.set(FR, { "jcr:title": "FR" });
   author.pages.set(PAGE, { "jcr:title": "Outdoor gear", "cq:lastReplicationAction": "Activate", "cq:lastModified": "1" });
   author.pages.set(OLD, { "jcr:title": "Old" });
+  author.pages.set(LOCKED, { "jcr:title": "Locked", "jcr:lockOwner": author.currentUser.id });
   author.sheets.set(FR_SHEET, {
     "jcr:primaryType": "cq:PageContent",
     columns: ["url", "Robots"],
@@ -111,6 +113,18 @@ const CASES: Record<OperationKind, { readonly operation: PlanOperation; readonly
   "page.delete": {
     operation: { kind: "page.delete", path: OLD },
     stale: (a) => a.pages.set(OLD, { "jcr:title": "Old, edited" }),
+  },
+  "livecopy.create": {
+    operation: { kind: "livecopy.create", srcPath: PAGE, destParentPath: FR, name: "gear-lc", title: "Gear LC" },
+    stale: (a) => a.pages.set(`${FR}/gear-lc`, {}),
+  },
+  "page.lock": {
+    operation: { kind: "page.lock", path: OLD },
+    stale: (a) => a.pages.set(OLD, { "jcr:title": "Old", "jcr:lockOwner": "someone-else" }),
+  },
+  "page.unlock": {
+    operation: { kind: "page.unlock", path: LOCKED },
+    stale: (a) => a.pages.set(LOCKED, { ...a.pages.get(LOCKED), "cq:lastModified": "2" }),
   },
 };
 
@@ -316,5 +330,47 @@ describe("page.delete", () => {
     const h = harness();
     expect(await h.plan({ kind: "page.delete", path: EN })).toMatchObject({ status: "rejected", reason: "page-is-published", message: expect.stringContaining(PAGE) });
     expect(h.author.posts()).toEqual([]);
+  });
+});
+
+describe("Live Copies and locks", () => {
+  it("livecopy.create defaults to the Standard rollout config and explains inheritance", async () => {
+    const h = harness();
+    const plan = planned(await h.plan(CASES["livecopy.create"].operation));
+    expect(plan.changes[0]?.after).toMatchObject({ master: PAGE, rolloutConfigs: ["/libs/msm/wcm/rolloutconfigs/default"], includeSubpages: true });
+    expect(plan.warnings.join(" ")).toContain("cancel inheritance");
+    await h.apply({ token: plan.token, env: "stage", kind: "livecopy.create" });
+    expect(h.author.posts()[0]?.body).toContain("cmd=createLiveCopy");
+  });
+
+  it("livecopy.create refuses a taken name, an unknown rollout config and a destination outside the roots", async () => {
+    const h = harness();
+    expect(await h.plan({ kind: "livecopy.create", srcPath: PAGE, destParentPath: EN, name: "old", title: "x" })).toMatchObject({ reason: "already-exists" });
+    expect(await h.plan({ kind: "livecopy.create", srcPath: PAGE, destParentPath: FR, name: "x", title: "x", rolloutConfigs: ["/apps/acme/x"] })).toMatchObject({
+      reason: "invalid-operation",
+    });
+    expect(await h.plan({ kind: "livecopy.create", srcPath: PAGE, destParentPath: "/content/acme-demo-site-us/fr", name: "x", title: "x" })).toMatchObject({
+      reason: "path-outside-write-roots",
+    });
+  });
+
+  it("page.lock records the token's user and says the owner can still edit", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "page.lock", path: OLD }));
+    expect(plan.changes).toEqual([{ path: OLD, what: "lock owner", before: undefined, after: h.author.currentUser.id }]);
+    expect(plan.warnings.join(" ")).toContain("can still edit");
+  });
+
+  it("locking a page already locked by the token's user is a no-op; by someone else, a rejection", async () => {
+    const h = harness();
+    expect((await h.plan({ kind: "page.lock", path: LOCKED })).status).toBe("no-changes");
+    h.author.pages.set(OLD, { "jcr:title": "Old", "jcr:lockOwner": "someone-else" });
+    expect(await h.plan({ kind: "page.lock", path: OLD })).toMatchObject({ status: "rejected", reason: "locked-by-other" });
+    expect(await h.plan({ kind: "page.unlock", path: OLD })).toMatchObject({ status: "rejected", reason: "locked-by-other", message: expect.stringContaining("someone-else") });
+  });
+
+  it("unlocking a page that is not locked is a no-op", async () => {
+    const h = harness();
+    expect((await h.plan({ kind: "page.unlock", path: OLD })).status).toBe("no-changes");
   });
 });

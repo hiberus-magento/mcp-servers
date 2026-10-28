@@ -8,7 +8,7 @@
 // The only Sling POST operators that ever appear in a request are emitted
 // here as constants — `@TypeHint`, `@Delete` and `:operation=delete` — next
 // to names that already passed `assertWritableProperty`/`assertSheetColumn`.
-import { assertAemPath, assertWritable } from "../guard/paths.js";
+import { assertAemPath, assertReadable, assertRolloutConfig, assertWritable } from "../guard/paths.js";
 import { assertPropertyValue, assertRobotsTokens, assertSheetColumn, assertWritableProperty, type PropertyValue } from "../guard/properties.js";
 import type { FormFields } from "./http.js";
 
@@ -32,6 +32,8 @@ export interface PlannedRequest {
 export interface WriteScope {
   readonly roots: readonly string[];
   readonly extraProperties: readonly string[];
+  /** Rollout configs beyond AEM's four built-in ones (`AEM_EXTRA_ROLLOUT_CONFIGS`). */
+  readonly extraRolloutConfigs?: readonly string[];
 }
 
 const CHARSET: readonly [string, string] = ["_charset_", "utf-8"];
@@ -261,4 +263,59 @@ export function buildDeletePage(scope: WriteScope, path: string): PlannedRequest
     throw new InvalidOperationError(`${path} is a write root; deleting a whole root is not offered.`);
   }
   return { method: "POST", path: WCM_COMMAND, form: [["cmd", "deletePage"], CHARSET, ["path", path], ["force", "false"]], label: `delete ${path}` };
+}
+
+// ---------------------------------------------------------------------------
+// MSM and locks (aem-sites-msm exploration.md: the Sites console's own requests)
+// ---------------------------------------------------------------------------
+
+export interface CreateLiveCopyInput {
+  /** Any readable page: the source need not be inside the write roots, only the copy. */
+  readonly srcPath: string;
+  readonly destParentPath: string;
+  readonly name: string;
+  readonly title: string;
+  readonly rolloutConfigs: readonly string[];
+  /** Exclude sub-pages of the source. */
+  readonly shallow: boolean;
+}
+
+export function buildCreateLiveCopy(scope: WriteScope, input: CreateLiveCopyInput): PlannedRequest {
+  assertReadable(input.srcPath);
+  assertWritable(input.destParentPath, scope.roots);
+  assertSegment(input.name, "page name");
+  if (input.rolloutConfigs.length === 0) {
+    throw new InvalidOperationError("A Live Copy needs at least one rollout config.");
+  }
+  const configs = [...new Set(input.rolloutConfigs)].map((config) => assertRolloutConfig(config, scope.extraRolloutConfigs ?? []));
+  const dest = `${input.destParentPath}/${input.name}`;
+  if (`${dest}/`.startsWith(`${input.srcPath}/`) || `${input.srcPath}/`.startsWith(`${dest}/`)) {
+    throw new InvalidOperationError(`A Live Copy cannot be created inside its own source, or above it (${input.srcPath} → ${dest}).`);
+  }
+  return {
+    method: "POST",
+    path: WCM_COMMAND,
+    form: [
+      ["cmd", "createLiveCopy"],
+      ["operation", "asyncCreateLiveCopy"],
+      CHARSET,
+      ["srcPath", input.srcPath],
+      ["destPath", input.destParentPath],
+      ["label", input.name],
+      ["title", input.title],
+      ["shallow", String(input.shallow)],
+      ...configs.map((config) => ["cq:rolloutConfigs", config] as const),
+    ],
+    label: `create the Live Copy ${dest} of ${input.srcPath}`,
+  };
+}
+
+export function buildLockPage(scope: WriteScope, path: string, lock: boolean): PlannedRequest {
+  assertWritable(path, scope.roots);
+  return {
+    method: "POST",
+    path: WCM_COMMAND,
+    form: [["cmd", lock ? "lockPage" : "unlockPage"], CHARSET, ["path", path]],
+    label: `${lock ? "lock" : "unlock"} ${path}`,
+  };
 }

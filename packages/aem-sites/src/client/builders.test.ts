@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import { SYNTHETIC_ROOT } from "../testing/author-double.js";
 import { InvalidAemPathError, PathOutsideWriteRootsError } from "../guard/paths.js";
 import { ForbiddenPropertyNameError, InvalidPropertyValueError } from "../guard/properties.js";
+import { InvalidRolloutConfigError } from "../guard/paths.js";
 import {
   buildCopyPage,
+  buildCreateLiveCopy,
+  buildLockPage,
   buildCreatePage,
   buildCreateSheet,
   buildDeletePage,
@@ -172,5 +175,51 @@ describe("page lifecycle builders", () => {
       ["force", "false"],
     ]);
     expect(() => buildDeletePage(scope, SYNTHETIC_ROOT)).toThrow(/write root/);
+  });
+});
+
+describe("MSM and lock builders", () => {
+  const LC = { srcPath: PAGE, destParentPath: SYNTHETIC_ROOT, name: "prueba", title: "Prueba", rolloutConfigs: ["/libs/msm/wcm/rolloutconfigs/default"], shallow: false };
+
+  it("creates a Live Copy with the Sites console's own fields", () => {
+    expect(buildCreateLiveCopy(scope, LC)).toEqual({
+      method: "POST",
+      path: "/bin/wcmcommand",
+      form: [
+        ["cmd", "createLiveCopy"],
+        ["operation", "asyncCreateLiveCopy"],
+        ["_charset_", "utf-8"],
+        ["srcPath", PAGE],
+        ["destPath", SYNTHETIC_ROOT],
+        ["label", "prueba"],
+        ["title", "Prueba"],
+        ["shallow", "false"],
+        ["cq:rolloutConfigs", "/libs/msm/wcm/rolloutconfigs/default"],
+      ],
+      label: `create the Live Copy ${SYNTHETIC_ROOT}/prueba of ${PAGE}`,
+    });
+  });
+
+  it("accepts a source outside the write roots but never a destination", () => {
+    expect(buildCreateLiveCopy(scope, { ...LC, srcPath: "/content/acme-demo-site-us/en" }).form).toContainEqual(["srcPath", "/content/acme-demo-site-us/en"]);
+    expect(() => buildCreateLiveCopy(scope, { ...LC, destParentPath: OUTSIDE })).toThrow(PathOutsideWriteRootsError);
+    expect(() => buildCreateLiveCopy(scope, { ...LC, srcPath: "/apps/acme" })).toThrow(/reads are limited/);
+  });
+
+  it("refuses unknown rollout configs, none at all, and a copy inside its own source", () => {
+    expect(() => buildCreateLiveCopy(scope, { ...LC, rolloutConfigs: ["/apps/acme/evil"] })).toThrow(InvalidRolloutConfigError);
+    expect(() => buildCreateLiveCopy(scope, { ...LC, rolloutConfigs: [] })).toThrow(/at least one rollout config/);
+    expect(() => buildCreateLiveCopy(scope, { ...LC, destParentPath: PAGE })).toThrow(/inside its own source/);
+    expect(() => buildCreateLiveCopy({ ...scope, extraRolloutConfigs: ["/apps/msm/acme/sync"] }, { ...LC, rolloutConfigs: ["/apps/msm/acme/sync"] }).form).not.toThrow();
+  });
+
+  it("locks and unlocks only inside the roots", () => {
+    expect(buildLockPage(scope, PAGE, true).form).toEqual([
+      ["cmd", "lockPage"],
+      ["_charset_", "utf-8"],
+      ["path", PAGE],
+    ]);
+    expect(buildLockPage(scope, PAGE, false).form[0]).toEqual(["cmd", "unlockPage"]);
+    expect(() => buildLockPage(scope, OUTSIDE, true)).toThrow(PathOutsideWriteRootsError);
   });
 });

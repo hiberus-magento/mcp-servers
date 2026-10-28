@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { createAuthorDouble, SYNTHETIC_ROOT } from "../testing/author-double.js";
 import { InvalidAemPathError } from "../guard/paths.js";
-import { listTemplates, probeAuth, queryPages, queryPublishedPages, readPage, readPageTree, readSheet } from "./reads.js";
+import { listTemplates, probeAuth, queryPages, queryPublishedPages, readCurrentUser, readPage, readPageTree, readSheet } from "./reads.js";
 
 const PAGE = `${SYNTHETIC_ROOT}/en/outdoor-gear`;
 const SHEET = `${SYNTHETIC_ROOT}/metadata`;
@@ -56,7 +56,7 @@ describe("queryPages", () => {
 describe("readPage", () => {
   it("projects allowlisted properties, replication state and declared extras only", async () => {
     const { http } = createAuthorDouble({
-      [`GET ${PAGE}/jcr:content.json`]: {
+      [`GET ${PAGE}/jcr:content.1.json`]: {
         status: 200,
         body: {
           "jcr:primaryType": "cq:PageContent",
@@ -93,15 +93,15 @@ describe("readPage", () => {
 
   it("ignores a replication action with no date (inherited by a page created as a copy)", async () => {
     const { http } = createAuthorDouble({
-      [`GET ${PAGE}/jcr:content.json`]: { status: 200, body: { "jcr:primaryType": "cq:PageContent", "cq:lastReplicationAction_publish": "Activate" } },
+      [`GET ${PAGE}/jcr:content.1.json`]: { status: 200, body: { "jcr:primaryType": "cq:PageContent", "cq:lastReplicationAction_publish": "Activate" } },
     });
     expect((await readPage(http, PAGE))?.replication.publish).toEqual({});
   });
 
   it("returns undefined for a missing page or a node that is not a page", async () => {
     const { http } = createAuthorDouble({
-      [`GET ${PAGE}/jcr:content.json`]: { status: 404 },
-      [`GET ${SYNTHETIC_ROOT}/x/jcr:content.json`]: { status: 200, body: { "jcr:primaryType": "nt:unstructured" } },
+      [`GET ${PAGE}/jcr:content.1.json`]: { status: 404 },
+      [`GET ${SYNTHETIC_ROOT}/x/jcr:content.1.json`]: { status: 200, body: { "jcr:primaryType": "nt:unstructured" } },
     });
     expect(await readPage(http, PAGE)).toBeUndefined();
     expect(await readPage(http, `${SYNTHETIC_ROOT}/x`)).toBeUndefined();
@@ -198,5 +198,25 @@ describe("listTemplates and probeAuth", () => {
     });
     expect(await probeAuth(http, SYNTHETIC_ROOT)).toEqual({ status: 200 });
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe("Live Copy info and the current user", () => {
+  it("reports a Live Copy root from its cq:LiveSyncConfig child", async () => {
+    const { http } = createAuthorDouble({
+      [`GET ${PAGE}/jcr:content.1.json`]: {
+        status: 200,
+        body: {
+          "jcr:primaryType": "cq:PageContent",
+          "cq:LiveSyncConfig": { "jcr:primaryType": "cq:LiveCopy", "cq:master": `${SYNTHETIC_ROOT}/en/master`, "cq:rolloutConfigs": ["/libs/msm/wcm/rolloutconfigs/default"], "cq:isDeep": true },
+        },
+      },
+    });
+    expect((await readPage(http, PAGE))?.liveCopy).toEqual({ master: `${SYNTHETIC_ROOT}/en/master`, rolloutConfigs: ["/libs/msm/wcm/rolloutconfigs/default"], deep: true });
+  });
+
+  it("reads the token's user id", async () => {
+    const { http } = createAuthorDouble({ "GET /libs/granite/security/currentuser.json": { status: 200, body: { authorizableId: "demo-user", home: "/home/users/x" } } });
+    expect(await readCurrentUser(http)).toBe("demo-user");
   });
 });

@@ -40,7 +40,16 @@ than what the user was shown.
 
 Operation kinds: `page.set-properties`, `page.set-robots`, `sheet.upsert-row`,
 `sheet.delete-row`, `page.publish`, `page.unpublish`, `page.create`,
-`page.copy`, `page.move`, `page.delete`.
+`page.copy`, `page.move`, `page.delete`, `livecopy.create`, `page.lock`,
+`page.unlock`.
+
+**Live Copies and locks.** `livecopy.create` makes an MSM Live Copy (Standard
+rollout config unless told otherwise; the source may be any readable page, the
+copy must be inside the write roots). Its components are inherited: editing one
+needs an author to cancel inheritance. `page.lock` stops *other* users from
+editing a page; the lock owner is the token's user, who can still edit, and
+`page.unlock` only releases that user's own locks. Neither changes permissions:
+"nobody can edit" is an ACL, which this server does not touch.
 
 **Blocking indexing.** Per page: `page.set-robots` with `["noindex",
 "nofollow"]`. Site-wide: `sheet.upsert-row` on the site's `metadata` sheet
@@ -64,7 +73,7 @@ through this server, not what an editor can do in the Sites console.
 - `aem_get_sheet` (read-only) — Use this to read a sheet page's columns and rows, e.g. the EDS bulk metadata sheet.
 - `aem_list_templates` (read-only) — Use this before planning page.create, to find template paths under a /conf root.
 - `aem_get_page_tree` (read-only) — Use this when you need a page's component tree, depth 1–4.
-- `aem_plan` (read-only) — Use this whenever you want to change anything on an AEM author; it returns exactly what would change and a one-time token, and never writes.
+- `aem_plan` (read-only) — Use this whenever you want to change anything on an AEM author — including creating a Live Copy or locking a page; it returns exactly what would change and a one-time token, and never writes.
 - `aem_apply` — Use this only after the user explicitly confirms a plan from aem_plan; it sends exactly the planned requests and nothing else.
 
 ## Environment
@@ -75,6 +84,7 @@ through this server, not what an editor can do in the Sites console.
 - `AEM_PROTECTED_ENVS` (optional) — Comma-separated environment names. A plan against one makes aem_apply require the user to type the env name.
 - `AEM_PROTECTED_PATHS` (optional) — Comma-separated path patterns (`*` = one whole segment; a match protects everything below). Publishing them is blocked; other plans require the user to type the pattern.
 - `AEM_ALLOW_PROTECTED_PUBLISH` (optional) — "1" allows page.publish on protected paths, still behind the typed confirmation. Default: blocked.
+- `AEM_EXTRA_ROLLOUT_CONFIGS` (optional) — Comma-separated MSM rollout config paths under /apps/msm/ or /conf/ that livecopy.create may use, beyond AEM's built-in default, pushonmodify, activate and deactivate.
 
 ## Configure in an MCP client
 

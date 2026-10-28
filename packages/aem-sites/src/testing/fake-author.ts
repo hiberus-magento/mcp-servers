@@ -21,6 +21,8 @@ export interface FakeAuthor {
   readonly sleeps: number[];
   /** Status for POSTs whose path starts with the key; default 200. */
   readonly postStatus: Map<string, number>;
+  /** The user `currentuser.json` reports for the token. */
+  readonly currentUser: { id: string };
   readonly client: AemClient;
   posts(): RecordedRequest[];
 }
@@ -34,6 +36,7 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
   const requests: RecordedRequest[] = [];
   const sleeps: number[] = [];
   const postStatus = new Map<string, number>();
+  const currentUser = { id: "demo-user@example-domain.invalid" };
 
   const fetch = (async (input: URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(input.toString());
@@ -55,7 +58,15 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
         .map(([p]) => ({ path: p }));
       return json(200, { total: activated.length, hits: url.searchParams.has("group.p.or") ? activated : [] });
     }
-    const page = /^(.*)\/jcr:content\.json$/.exec(url.pathname);
+    if (url.pathname === "/libs/granite/security/currentuser.json") {
+      return json(200, { authorizableId: currentUser.id, name: "Demo user" });
+    }
+    // Sheets and pages are both read as jcr:content.1.json; sheets are looked up first.
+    const sheetHit = /^(.*)\/jcr:content\.1\.json$/.exec(url.pathname);
+    if (sheetHit?.[1] !== undefined && sheets.has(sheetHit[1])) {
+      return json(200, sheets.get(sheetHit[1]));
+    }
+    const page = /^(.*)\/jcr:content\.1\.json$/.exec(url.pathname);
     if (page?.[1] !== undefined) {
       const body = pages.get(page[1]);
       if (body === undefined) {
@@ -64,11 +75,6 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
       // A recorded action always comes with its date on a real author.
       const dated = typeof body["cq:lastReplicationAction"] === "string" && body["cq:lastReplicated"] === undefined ? { "cq:lastReplicated": "2026-10-01" } : {};
       return json(200, { "jcr:primaryType": "cq:PageContent", ...dated, ...body });
-    }
-    const sheet = /^(.*)\/jcr:content\.1\.json$/.exec(url.pathname);
-    if (sheet?.[1] !== undefined) {
-      const body = sheets.get(sheet[1]);
-      return body === undefined ? json(404) : json(200, body);
     }
     return json(404);
   }) as unknown as typeof globalThis.fetch;
@@ -83,5 +89,5 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
     origin,
   });
 
-  return { pages, sheets, requests, sleeps, postStatus, client, posts: () => requests.filter((r) => r.method === "POST") };
+  return { pages, sheets, requests, sleeps, postStatus, currentUser, client, posts: () => requests.filter((r) => r.method === "POST") };
 }

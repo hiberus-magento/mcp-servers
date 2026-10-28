@@ -7,7 +7,7 @@
 // halfway through a plan.
 import { assertAuthorOrigin } from "./client/index.js";
 import { assertEnvName } from "./credential-provider.js";
-import { parsePathPatterns, parseWriteRoots } from "./guard/paths.js";
+import { parsePathPatterns, parseRolloutConfigs, parseWriteRoots } from "./guard/paths.js";
 import { parseExtraProperties } from "./guard/properties.js";
 
 // The `*_ENV_VAR` naming is what `scripts/manifest-env.mjs` reads to check
@@ -18,6 +18,7 @@ export const EXTRA_PROPERTIES_ENV_VAR = "AEM_EXTRA_PROPERTIES";
 export const PROTECTED_ENVS_ENV_VAR = "AEM_PROTECTED_ENVS";
 export const PROTECTED_PATHS_ENV_VAR = "AEM_PROTECTED_PATHS";
 export const ALLOW_PROTECTED_PUBLISH_ENV_VAR = "AEM_ALLOW_PROTECTED_PUBLISH";
+export const EXTRA_ROLLOUT_CONFIGS_ENV_VAR = "AEM_EXTRA_ROLLOUT_CONFIGS";
 
 export interface AemConfig {
   /** Environment name → author origin, in declaration order. */
@@ -27,6 +28,8 @@ export interface AemConfig {
   readonly protectedEnvs: readonly string[];
   readonly protectedPaths: readonly string[];
   readonly allowProtectedPublish: boolean;
+  /** Rollout configs beyond AEM's built-in four that `livecopy.create` may use. */
+  readonly extraRolloutConfigs: readonly string[];
 }
 
 export class AemConfigError extends Error {
@@ -103,6 +106,7 @@ export function parseConfig(env: EnvRecord): AemConfig {
     protectedEnvs,
     protectedPaths: wrap("AEM_PROTECTED_PATHS", () => parsePathPatterns(env[PROTECTED_PATHS_ENV_VAR])),
     allowProtectedPublish: allow === "1",
+    extraRolloutConfigs: wrap("AEM_EXTRA_ROLLOUT_CONFIGS", () => parseRolloutConfigs(env[EXTRA_ROLLOUT_CONFIGS_ENV_VAR])),
   };
 }
 

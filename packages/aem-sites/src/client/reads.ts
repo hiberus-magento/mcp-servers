@@ -140,10 +140,18 @@ export interface PageReplication {
   readonly preview: "not-recorded-by-aem";
 }
 
+export interface LiveCopyInfo {
+  readonly master: string;
+  readonly rolloutConfigs: readonly string[];
+  readonly deep: boolean;
+}
+
 export interface PageDetails {
   readonly path: string;
   readonly properties: Readonly<Record<string, string | boolean | readonly string[]>>;
   readonly replication: PageReplication;
+  /** Present when the page is the root of a Live Copy (`jcr:content/cq:LiveSyncConfig`). */
+  readonly liveCopy?: LiveCopyInfo;
 }
 
 /**
@@ -186,13 +194,20 @@ export function projectPage(path: string, content: Record<string, unknown>, extr
   if (hide === true || hide === "true") {
     properties.hideInNav = true;
   }
-  return { path, properties, replication: { publish: publishState(content), preview: "not-recorded-by-aem" } };
+  const sync = content["cq:LiveSyncConfig"];
+  const master = isRecord(sync) ? str(sync, "cq:master") : undefined;
+  const liveCopy =
+    isRecord(sync) && master !== undefined
+      ? { liveCopy: { master, rolloutConfigs: strList(sync, "cq:rolloutConfigs") ?? [], deep: sync["cq:isDeep"] === true || sync["cq:isDeep"] === "true" } }
+      : {};
+  return { path, properties, replication: { publish: publishState(content), preview: "not-recorded-by-aem" }, ...liveCopy };
 }
 
 /** `undefined` when there is no page at `path`. */
 export async function readPage(http: AuthorHttp, path: string, extra: readonly string[] = []): Promise<PageDetails | undefined> {
   assertAemPath(path);
-  const { status, body } = await http.readJson({ method: "GET", path: `${path}/jcr:content.json`, label: `the page ${path}`, expectedStatuses: [404] });
+  // Depth 1 so a Live Copy's `cq:LiveSyncConfig` child is visible; nothing else from children is projected.
+  const { status, body } = await http.readJson({ method: "GET", path: `${path}/jcr:content.1.json`, label: `the page ${path}`, expectedStatuses: [404] });
   if (status === 404 || !isRecord(body) || body["jcr:primaryType"] !== "cq:PageContent") {
     return undefined;
   }
@@ -346,4 +361,17 @@ export async function readPageTree(http: AuthorHttp, path: string, depth: number
 export async function probeAuth(http: AuthorHttp, root: string): Promise<{ readonly status: number }> {
   const { status } = await http.readJson({ method: "GET", path: query({ path: root, type: "cq:Page", "p.limit": "1" }), label: "the QueryBuilder probe" });
   return { status };
+}
+
+// ---------------------------------------------------------------------------
+// Who the token is (the lock owner a page.lock records)
+// ---------------------------------------------------------------------------
+
+export async function readCurrentUser(http: AuthorHttp): Promise<string> {
+  const { body } = await http.readJson({ method: "GET", path: "/libs/granite/security/currentuser.json", label: "the current user" });
+  const id = isRecord(body) ? str(body, "authorizableId") : undefined;
+  if (id === undefined || id === "") {
+    throw new Error("The author did not say which user this token belongs to (currentuser.json without authorizableId).");
+  }
+  return id;
 }

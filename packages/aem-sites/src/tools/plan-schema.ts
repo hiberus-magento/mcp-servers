@@ -67,6 +67,21 @@ const operationSchema = z.discriminatedUnion("kind", [
     .strict(),
   z.object({ kind: z.literal("page.move"), srcPath: z.string().min(1), destParentPath: z.string().min(1), destName: z.string().min(1).optional() }).strict(),
   z.object({ kind: z.literal("page.delete"), path: z.string().min(1) }).strict(),
+  z
+    .object({
+      kind: z.literal("livecopy.create"),
+      srcPath: z.string().min(1),
+      destParentPath: z.string().min(1),
+      name: z.string().min(1),
+      title: z.string().min(1),
+      /** Defaults to AEM's Standard rollout config. */
+      rolloutConfigs: z.array(z.string().min(1)).min(1).max(10).optional(),
+      /** Exclude the source's sub-pages. */
+      shallow: z.boolean().optional(),
+    })
+    .strict(),
+  z.object({ kind: z.literal("page.lock"), path: z.string().min(1) }).strict(),
+  z.object({ kind: z.literal("page.unlock"), path: z.string().min(1) }).strict(),
 ]);
 
 export type PlanOperation = z.infer<typeof operationSchema>;

@@ -86,6 +86,15 @@ Per page instead: `page.set-robots` with `["noindex", "nofollow"]`, then
 `page.publish`. Whether the EDS pipeline renders `cq:robotsTags` is not yet
 verified; the sheet route is the one proven in the field.
 
+## Recipe — a Live Copy that authors should not edit
+
+1. `aem_plan` `livecopy.create` with `srcPath`, `destParentPath`, `name`, `title`
+   (rollout config defaults to AEM's Standard one) → confirm → `aem_apply`.
+2. Optionally `aem_plan` `page.lock` on the new page → confirm → apply. Other
+   users cannot edit it; the token's user still can.
+3. If nobody at all may edit it, an administrator removes edit permissions in
+   AEM's security console. This server does not change ACLs.
+
 ## Using the CLI instead of an agent
 
 ```sh
