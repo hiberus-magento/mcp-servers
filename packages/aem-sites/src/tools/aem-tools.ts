@@ -29,9 +29,13 @@ import { applyPlan } from "./apply.js";
 import { planOperation, type StoredPlan } from "./plan-builder.js";
 import { aemApplyInput, aemPlanInput, plannedPaths } from "./plan-schema.js";
 
-/** Must match `UNVERIFIED_MARKER` in `scripts/gen-readme.mjs`. */
-const UNVERIFIED =
-  "Not verified against a live service — this package has not yet been run against a real AEM author; the endpoints it uses were exercised by the project's field CLI, not by this code.";
+/**
+ * Starts with `UNVERIFIED_MARKER` from `scripts/gen-readme.mjs`. Every read
+ * tool and the write kinds named here were run against a live author on
+ * 2026-10-28; only these kinds still carry the marker.
+ */
+const PARTIALLY_UNVERIFIED =
+  "Not verified against a live service for page.set-properties, page.create, sheet.upsert-row and sheet.delete-row — those kinds have not yet been applied on a live author; page.set-robots, page.publish, page.unpublish, page.copy, page.move and page.delete were (2026-10-28).";
 
 export type AemMcpTool = Pick<RegisteredTool<z.ZodObject, unknown>, "name" | "description" | "inputSchema" | "annotations" | "invoke">;
 
@@ -71,7 +75,7 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
 
   const listEnvironments = defineTool({
     name: "aem_list_environments",
-    description: `Use this first, or when you need to know which AEM author environments are configured, which are protected, the write roots, and whether each environment has a token stored (never the token). Read-only. ${UNVERIFIED}`,
+    description: `Use this first, or when you need to know which AEM author environments are configured, which are protected, the write roots, and whether each environment has a token stored (never the token). Read-only.`,
     inputSchema: z.object({}).strict(),
     annotations: readTool,
     handler: async () => {
@@ -94,7 +98,7 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
 
   const checkAuth = defineTool({
     name: "aem_check_auth",
-    description: `Use this when a call failed with an auth error, or before a batch of work, to check that an environment's token is accepted by its author (the same QueryBuilder probe the field CLI uses). Returns ok, token-expired-or-invalid, forbidden, redirected-to-login or no-token. Read-only. ${UNVERIFIED}`,
+    description: `Use this when a call failed with an auth error, or before a batch of work, to check that an environment's token is accepted by its author (the same QueryBuilder probe the field CLI uses). Returns ok, token-expired-or-invalid, forbidden, redirected-to-login or no-token. Read-only.`,
     inputSchema: z.object({ env }).strict(),
     annotations: readTool,
     handler: async (args) => {
@@ -117,7 +121,7 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
 
   const listPages = defineTool({
     name: "aem_list_pages",
-    description: `Use this to find the pages under a content root (paginated: limit ≤ 200, offset; childrenOnly for direct children). Returns paths, titles and last-modified dates. Read-only. ${UNVERIFIED}`,
+    description: `Use this to find the pages under a content root (paginated: limit ≤ 200, offset; childrenOnly for direct children). Returns paths, titles and last-modified dates. Read-only.`,
     inputSchema: z
       .object({
         env,
@@ -141,7 +145,7 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
 
   const getPage = defineTool({
     name: "aem_get_page",
-    description: `Use this to read one page's properties (title, description, robots, tags, template, lock) and its replication state on preview and publish. Read-only. ${UNVERIFIED}`,
+    description: `Use this to read one page's properties (title, description, robots, tags, template, lock) and its replication state on preview and publish. Read-only.`,
     inputSchema: z.object({ env, path: z.string().min(1) }).strict(),
     annotations: readTool,
     handler: async (args) =>
@@ -150,7 +154,7 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
 
   const getReplicationStatus = defineTool({
     name: "aem_get_replication_status",
-    description: `Use this to check whether up to 100 pages are published on preview and publish, instead of calling aem_get_page in a loop. Read-only. ${UNVERIFIED}`,
+    description: `Use this to check whether up to 100 pages are published on preview and publish, instead of calling aem_get_page in a loop. Read-only.`,
     inputSchema: z.object({ env, paths: plannedPaths }).strict(),
     annotations: readTool,
     handler: async (args) =>
@@ -167,7 +171,7 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
 
   const getSheet = defineTool({
     name: "aem_get_sheet",
-    description: `Use this to read a sheet page's columns and rows — for example the EDS bulk metadata sheet whose "/**" row can carry Robots: noindex for a whole site. Read-only. ${UNVERIFIED}`,
+    description: `Use this to read a sheet page's columns and rows — for example the EDS bulk metadata sheet whose "/**" row can carry Robots: noindex for a whole site. Read-only.`,
     inputSchema: z.object({ env, path: z.string().min(1) }).strict(),
     annotations: readTool,
     handler: async (args) => withAuthAnswer(async () => (await readSheet(client(args.env).http, assertReadable(args.path))) ?? { path: args.path, exists: false }),
@@ -175,7 +179,7 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
 
   const listTemplatesTool = defineTool({
     name: "aem_list_templates",
-    description: `Use this before planning page.create, to find template paths under a /conf root. Read-only. ${UNVERIFIED}`,
+    description: `Use this before planning page.create, to find template paths under a /conf root. Read-only.`,
     inputSchema: z.object({ env, confRoot: z.string().min(1) }).strict(),
     annotations: readTool,
     handler: async (args) => withAuthAnswer(async () => ({ templates: await listTemplates(client(args.env).http, args.confRoot) })),
@@ -183,7 +187,7 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
 
   const getPageTree = defineTool({
     name: "aem_get_page_tree",
-    description: `Use this when you need a page's component tree (blocks, sections, authored text), depth 1–4. Access-control and bookkeeping properties are omitted. Read-only. ${UNVERIFIED}`,
+    description: `Use this when you need a page's component tree (blocks, sections, authored text), depth 1–4. Access-control and bookkeeping properties are omitted. Read-only.`,
     inputSchema: z.object({ env, path: z.string().min(1), depth: z.number().int().min(1).max(4).optional() }).strict(),
     annotations: readTool,
     handler: async (args) =>
@@ -195,7 +199,7 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
     description:
       "Use this whenever you want to change anything on an AEM author: page properties, robots (noindex), EDS metadata-sheet rows, publish/unpublish, or create/copy/move/delete pages. " +
       "It reads the current state and returns exactly what would change, a confirmationMessage to show the user and a one-time token — it never writes. " +
-      `Then call aem_apply only after the user explicitly confirms. ${UNVERIFIED}`,
+      `Then call aem_apply only after the user explicitly confirms. ${PARTIALLY_UNVERIFIED}`,
     inputSchema: aemPlanInput,
     annotations: readTool,
     handler: async (args) => {
@@ -208,7 +212,7 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
     name: "aem_apply",
     description:
       "Use this only after the user's most recent message explicitly confirms a plan returned by aem_plan. Pass that plan's token, env and kind (and confirmTarget, typed by the user, when the plan requires it). " +
-      `It sends exactly the planned requests and nothing else; a stale, expired, reused or forged token writes nothing. Writes to the AEM author. ${UNVERIFIED}`,
+      `It sends exactly the planned requests and nothing else; a stale, expired, reused or forged token writes nothing. Writes to the AEM author. ${PARTIALLY_UNVERIFIED}`,
     inputSchema: aemApplyInput,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
     handler: async (args) => {

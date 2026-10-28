@@ -31,6 +31,16 @@ function present<K extends string, V>(key: K, value: V | undefined): { readonly 
   return value !== undefined ? ({ [key]: value } as { [P in K]: V }) : {};
 }
 
+/**
+ * QueryBuilder's `path` predicate with `path.self=true` matches by string
+ * prefix on this author (observed 2026-10-28: a query on `…/youth-tee` also
+ * returned the sibling `…/youth-tee-colors-outside-the-lines`). Every hit
+ * is therefore re-checked here: the root itself or a real descendant only.
+ */
+function underRoot(path: string, root: string): boolean {
+  return path === root || path.startsWith(`${root}/`);
+}
+
 function query(params: Record<string, string>): string {
   return `${QUERY_BUILDER}?${new URLSearchParams(params).toString()}`;
 }
@@ -84,7 +94,9 @@ export async function queryPages(http: AuthorHttp, options: QueryPagesOptions): 
   const pages = hits
     .map((hit): PageHit | undefined => {
       const path = str(hit, "path");
-      return path === undefined ? undefined : { path, ...present("title", str(hit, "title")), ...present("lastModified", str(hit, "lastModified")) };
+      return path === undefined || !underRoot(path, root)
+        ? undefined
+        : { path, ...present("title", str(hit, "title")), ...present("lastModified", str(hit, "lastModified")) };
     })
     .filter((hit): hit is PageHit => hit !== undefined);
   const total = typeof source.total === "number" ? source.total : pages.length;
@@ -94,6 +106,7 @@ export async function queryPages(http: AuthorHttp, options: QueryPagesOptions): 
 /** The page properties a caller may see. Everything else on `jcr:content` stays on the author. */
 const PAGE_FIELDS = [
   "jcr:title",
+  "description",
   "robots",
   "keywords",
   "jcr:description",
@@ -133,13 +146,21 @@ export interface PageDetails {
   readonly replication: PageReplication;
 }
 
+/**
+ * The plain `cq:lastReplication*` trio wins; the `_publish` copies are used
+ * only when the plain ones are absent. An action with no replication date is
+ * ignored: a page created as a copy keeps `cq:lastReplicationAction_publish`
+ * from its source without ever having been replicated (observed 2026-10-28).
+ */
 function publishState(content: Record<string, unknown>): ReplicationState {
-  const pick = (base: string) => str(content, `${base}_publish`) ?? str(content, base);
-  return {
-    ...present("lastAction", pick("cq:lastReplicationAction")),
-    ...present("lastReplicated", pick("cq:lastReplicated")),
-    ...present("lastReplicatedBy", pick("cq:lastReplicatedBy")),
-  };
+  for (const suffix of ["", "_publish"]) {
+    const action = str(content, `cq:lastReplicationAction${suffix}`);
+    const date = str(content, `cq:lastReplicated${suffix}`);
+    if (action !== undefined && date !== undefined) {
+      return { lastAction: action, lastReplicated: date, ...present("lastReplicatedBy", str(content, `cq:lastReplicatedBy${suffix}`)) };
+    }
+  }
+  return {};
 }
 
 /** `extra` names `AEM_EXTRA_PROPERTIES`: a project's own page properties are readable once declared. */
@@ -194,7 +215,7 @@ export async function queryPublishedPages(http: AuthorHttp, root: string): Promi
   };
   const { body } = await http.readJson({ method: "GET", path: query(params), label: `the published pages under ${root}` });
   const hits = isRecord(body) && Array.isArray(body.hits) ? body.hits.filter(isRecord) : [];
-  return hits.map((hit) => str(hit, "path")).filter((path): path is string => path !== undefined);
+  return hits.map((hit) => str(hit, "path")).filter((path): path is string => path !== undefined && underRoot(path, root));
 }
 
 // ---------------------------------------------------------------------------

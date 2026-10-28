@@ -58,7 +58,12 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
     const page = /^(.*)\/jcr:content\.json$/.exec(url.pathname);
     if (page?.[1] !== undefined) {
       const body = pages.get(page[1]);
-      return body === undefined ? json(404) : json(200, { "jcr:primaryType": "cq:PageContent", ...body });
+      if (body === undefined) {
+        return json(404);
+      }
+      // A recorded action always comes with its date on a real author.
+      const dated = typeof body["cq:lastReplicationAction"] === "string" && body["cq:lastReplicated"] === undefined ? { "cq:lastReplicated": "2026-10-01" } : {};
+      return json(200, { "jcr:primaryType": "cq:PageContent", ...dated, ...body });
     }
     const sheet = /^(.*)\/jcr:content\.1\.json$/.exec(url.pathname);
     if (sheet?.[1] !== undefined) {

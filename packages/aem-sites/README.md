@@ -56,16 +56,16 @@ through this server, not what an editor can do in the Sites console.
 
 ## Tools
 
-- `aem_list_environments` (read-only) — Use this first, or when you need to know which AEM author environments are configured, which are protected, the write roots, and whether each has a token stored (never the token). **Not verified against a live service** — Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package.
-- `aem_check_auth` (read-only) — Use this when a call failed with an auth error, or before a batch, to check that an environment's token is accepted by its author. **Not verified against a live service** — Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package.
-- `aem_list_pages` (read-only) — Use this to find the pages under a content root, paginated. **Not verified against a live service** — Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package.
-- `aem_get_page` (read-only) — Use this to read one page's properties and its replication state on preview and publish. **Not verified against a live service** — Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package.
-- `aem_get_replication_status` (read-only) — Use this to check whether up to 100 pages are published on preview and publish. **Not verified against a live service** — Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package.
-- `aem_get_sheet` (read-only) — Use this to read a sheet page's columns and rows, e.g. the EDS bulk metadata sheet. **Not verified against a live service** — Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package.
-- `aem_list_templates` (read-only) — Use this before planning page.create, to find template paths under a /conf root. **Not verified against a live service** — Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package.
-- `aem_get_page_tree` (read-only) — Use this when you need a page's component tree, depth 1–4. **Not verified against a live service** — Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package.
-- `aem_plan` (read-only) — Use this whenever you want to change anything on an AEM author; it returns exactly what would change and a one-time token, and never writes. **Not verified against a live service** — Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package.
-- `aem_apply` — Use this only after the user explicitly confirms a plan from aem_plan; it sends exactly the planned requests and nothing else. **Not verified against a live service** — Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package.
+- `aem_list_environments` (read-only) — Use this first, or when you need to know which AEM author environments are configured, which are protected, the write roots, and whether each has a token stored (never the token).
+- `aem_check_auth` (read-only) — Use this when a call failed with an auth error, or before a batch, to check that an environment's token is accepted by its author.
+- `aem_list_pages` (read-only) — Use this to find the pages under a content root, paginated.
+- `aem_get_page` (read-only) — Use this to read one page's properties and its replication state on preview and publish.
+- `aem_get_replication_status` (read-only) — Use this to check whether up to 100 pages are published on preview and publish.
+- `aem_get_sheet` (read-only) — Use this to read a sheet page's columns and rows, e.g. the EDS bulk metadata sheet.
+- `aem_list_templates` (read-only) — Use this before planning page.create, to find template paths under a /conf root.
+- `aem_get_page_tree` (read-only) — Use this when you need a page's component tree, depth 1–4.
+- `aem_plan` (read-only) — Use this whenever you want to change anything on an AEM author; it returns exactly what would change and a one-time token, and never writes. **Not verified against a live service** — page.set-properties, page.create, sheet.upsert-row and sheet.delete-row have not yet been applied on a live author; the other kinds were (2026-10-28).
+- `aem_apply` — Use this only after the user explicitly confirms a plan from aem_plan; it sends exactly the planned requests and nothing else. **Not verified against a live service** — page.set-properties, page.create, sheet.upsert-row and sheet.delete-row have not yet been applied on a live author; the other kinds were (2026-10-28).
 
 ## Environment
 
@@ -136,10 +136,16 @@ OSGi, `/apps`, `/libs`, `/conf` and Package Manager are out of scope.
 
 ## Verification status
 
-Every tool above carries **Not verified against a live service**: this package
-has not yet been run against a real AEM author. The endpoints it uses were
-exercised against a real author by the project's field CLI; this code is
-covered by unit tests and by the shared conformance suite.
+Run against a live AEM as a Cloud Service author connected to Edge Delivery
+Services on 2026-10-28: every read tool, and `aem_plan` / `aem_apply` for
+`page.set-robots`, `page.publish`, `page.unpublish`, `page.copy`, `page.move`
+and `page.delete`. Publishing made the page answer 200 on `*.aem.page` and
+`*.aem.live` with the page's own `<meta name="robots">` (it takes precedence
+over the EDS metadata sheet); unpublishing returned both to 404.
+
+`aem_plan` and `aem_apply` still carry **Not verified against a live service**
+for `page.set-properties`, `page.create`, `sheet.upsert-row` and
+`sheet.delete-row`, which have not been applied on a live author yet.
 
 ## Documentation
 

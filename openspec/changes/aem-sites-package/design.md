@@ -266,9 +266,7 @@ Decisions taken while implementing, recorded so they are not silent deviations:
 
 ## Open Questions
 
-1. Does EDS render the page-metadata `robots` field as `<meta name="robots">` once published?
-   (`cq:robotsTags` is not the field XWalk uses — see Implementation notes.)
-2. Max pages per `aem_apply`: 100 (as `eds`) or lower given one request per page and agent?
+1. Max pages per `aem_apply`: 100 (as `eds`) or lower given one request per page and agent?
 
 ### Resolved
 
@@ -277,5 +275,8 @@ Decisions taken while implementing, recorded so they are not silent deviations:
   take down what is already out. No author code (replication preprocessor, workflow) and no
   "never publish" flag honoured by the Sites console. Editors publishing from the console are
   not restricted by design.
+- **2026-10-28 — Per-page robots.** EDS renders the page-metadata `robots` field as
+  `<meta name="robots">`, and it takes precedence over the site's `metadata` sheet row (see
+  verify-report.md).
 - **2026-10-27 — Authentication.** Bearer token per environment only, as the field CLI does
   (D6). Service credentials / OAuth server-to-server are out of scope.

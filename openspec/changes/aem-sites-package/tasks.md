@@ -18,7 +18,7 @@ host — AEM Cloud author hosts carry program ids, so the bare vendor domain is 
 
 - [x] 0.1 Branch `feat/aem-sites-package` from `main`.
 - [x] 0.2 `pnpm install && pnpm build && pnpm test` green.
-- [ ] 0.3 (moved to Phase 6, with the live tests — decided 2026-10-28) Spike (no code merged): confirm against a non-production author — `Deactivate`, `copyPage`/`movePage`/`deletePage`, `cq:robotsTags` rendering in EDS. Record in `exploration.md`; update the `unverified` markers.
+- [x] 0.3 (done in Phase 6, 2026-10-28) Spike (no code merged): confirm against a non-production author — `Deactivate`, `copyPage`/`movePage`/`deletePage`, `cq:robotsTags` rendering in EDS. Record in `exploration.md`; update the `unverified` markers.
 
 ## Phase 1: Scaffold
 
@@ -59,8 +59,8 @@ host — AEM Cloud author hosts carry program ids, so the bare vendor domain is 
 
 - [x] 6.0 Read-only run against the pre author (2026-10-28): auth probe, page listing, page, replication status, sheet, page tree; plans without apply for sheet.upsert-row (no-changes), page.set-robots, page.publish, and rejections (operator, outside roots, delete of a published tree). Found and fixed: preview state not recorded by AEM; robots lives in the page-metadata `robots` field.
 
-- [ ] 6.1 Site-wide noindex via `sheet.upsert-row` → `page.publish` → preview + publish `/metadata.json` with the eds server; check `<meta name="robots">` on `*.aem.page` and `*.aem.live`.
-- [ ] 6.2 Per-page `page.set-robots` → publish → check rendering (closes Open Question 1).
-- [ ] 6.3 `page.unpublish` removes the page from EDS live.
-- [ ] 6.4 Create → copy → move → unpublish → delete round trip.
-- [ ] 6.5 `verify-report.md`; drop `unverified` markers that passed.
+- [ ] 6.1 (read-only part done: the sheet row exists and a re-plan is `no-changes`; applying a new row not yet done) Site-wide noindex via `sheet.upsert-row` → `page.publish` → preview + publish `/metadata.json` with the eds server; check `<meta name="robots">` on `*.aem.page` and `*.aem.live`.
+- [x] 6.2 Per-page `page.set-robots` → publish → check rendering (closes Open Question 1).
+- [x] 6.3 `page.unpublish` removes the page from EDS live.
+- [x] 6.4 Copy → move → delete round trip (create not applied: the test page was created by hand).
+- [x] 6.5 `verify-report.md`; drop `unverified` markers that passed.

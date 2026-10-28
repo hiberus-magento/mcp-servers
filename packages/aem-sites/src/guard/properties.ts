@@ -37,6 +37,7 @@ export const BUILTIN_PAGE_PROPERTIES: readonly string[] = [
   "jcr:title",
   "jcr:description",
   // Fields of the EDS XWalk `page-metadata` model, stored on jcr:content.
+  "description",
   "robots",
   "keywords",
   "pageTitle",

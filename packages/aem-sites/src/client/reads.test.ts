@@ -18,6 +18,7 @@ describe("queryPages", () => {
           hits: [
             { path: SYNTHETIC_ROOT, title: "EU", lastModified: "2026-10-01", excerpt: "x", acmeSecret: "s" },
             { path: `${SYNTHETIC_ROOT}/en`, name: "en" },
+            { path: `${SYNTHETIC_ROOT}-sibling`, title: "QueryBuilder matches by prefix" },
             { title: "no path" },
           ],
         },
@@ -90,6 +91,13 @@ describe("readPage", () => {
     expect(JSON.stringify(page)).not.toContain("do not leak");
   });
 
+  it("ignores a replication action with no date (inherited by a page created as a copy)", async () => {
+    const { http } = createAuthorDouble({
+      [`GET ${PAGE}/jcr:content.json`]: { status: 200, body: { "jcr:primaryType": "cq:PageContent", "cq:lastReplicationAction_publish": "Activate" } },
+    });
+    expect((await readPage(http, PAGE))?.replication.publish).toEqual({});
+  });
+
   it("returns undefined for a missing page or a node that is not a page", async () => {
     const { http } = createAuthorDouble({
       [`GET ${PAGE}/jcr:content.json`]: { status: 404 },
@@ -104,7 +112,7 @@ describe("queryPublishedPages", () => {
   it("asks for pages activated on the publish agent under a root", async () => {
     const { http, calls } = createAuthorDouble({
       [`GET /bin/querybuilder.json?path=${encodeURIComponent(PAGE)}&path.self=true&type=cq%3APage&group.p.or=true&group.1_property=jcr%3Acontent%2Fcq%3AlastReplicationAction&group.1_property.value=Activate&group.2_property=jcr%3Acontent%2Fcq%3AlastReplicationAction_publish&group.2_property.value=Activate&p.limit=100`]:
-        { status: 200, body: { hits: [{ path: `${PAGE}/tents` }] } },
+        { status: 200, body: { hits: [{ path: `${PAGE}/tents` }, { path: `${PAGE}-colors` }] } },
     });
     expect(await queryPublishedPages(http, PAGE)).toEqual([`${PAGE}/tents`]);
     expect(calls).toHaveLength(1);

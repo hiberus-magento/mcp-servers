@@ -248,62 +248,54 @@
         {
           "name": "aem_list_environments",
           "readOnly": true,
-          "description": "Use this first, or when you need to know which AEM author environments are configured, which are protected, the write roots, and whether each has a token stored (never the token).",
-          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+          "description": "Use this first, or when you need to know which AEM author environments are configured, which are protected, the write roots, and whether each has a token stored (never the token)."
         },
         {
           "name": "aem_check_auth",
           "readOnly": true,
-          "description": "Use this when a call failed with an auth error, or before a batch, to check that an environment's token is accepted by its author.",
-          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+          "description": "Use this when a call failed with an auth error, or before a batch, to check that an environment's token is accepted by its author."
         },
         {
           "name": "aem_list_pages",
           "readOnly": true,
-          "description": "Use this to find the pages under a content root, paginated.",
-          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+          "description": "Use this to find the pages under a content root, paginated."
         },
         {
           "name": "aem_get_page",
           "readOnly": true,
-          "description": "Use this to read one page's properties and its replication state on preview and publish.",
-          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+          "description": "Use this to read one page's properties and its replication state on preview and publish."
         },
         {
           "name": "aem_get_replication_status",
           "readOnly": true,
-          "description": "Use this to check whether up to 100 pages are published on preview and publish.",
-          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+          "description": "Use this to check whether up to 100 pages are published on preview and publish."
         },
         {
           "name": "aem_get_sheet",
           "readOnly": true,
-          "description": "Use this to read a sheet page's columns and rows, e.g. the EDS bulk metadata sheet.",
-          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+          "description": "Use this to read a sheet page's columns and rows, e.g. the EDS bulk metadata sheet."
         },
         {
           "name": "aem_list_templates",
           "readOnly": true,
-          "description": "Use this before planning page.create, to find template paths under a /conf root.",
-          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+          "description": "Use this before planning page.create, to find template paths under a /conf root."
         },
         {
           "name": "aem_get_page_tree",
           "readOnly": true,
-          "description": "Use this when you need a page's component tree, depth 1–4.",
-          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+          "description": "Use this when you need a page's component tree, depth 1–4."
         },
         {
           "name": "aem_plan",
           "readOnly": true,
           "description": "Use this whenever you want to change anything on an AEM author; it returns exactly what would change and a one-time token, and never writes.",
-          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+          "unverified": "page.set-properties, page.create, sheet.upsert-row and sheet.delete-row have not yet been applied on a live author; the other kinds were (2026-10-28)."
         },
         {
           "name": "aem_apply",
           "readOnly": false,
           "description": "Use this only after the user explicitly confirms a plan from aem_plan; it sends exactly the planned requests and nothing else.",
-          "unverified": "Not yet run against a live AEM author; the endpoints it uses were exercised by the project's field CLI, not by this package."
+          "unverified": "page.set-properties, page.create, sheet.upsert-row and sheet.delete-row have not yet been applied on a live author; the other kinds were (2026-10-28)."
         }
       ],
       "docs": "docs/aem-sites-onboarding.md",
