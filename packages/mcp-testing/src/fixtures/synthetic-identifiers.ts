@@ -45,3 +45,11 @@ export const SYNTHETIC_MC_TOKEN = "mc-demo-token" as const;
 export const SYNTHETIC_MC_HOST = `demo-host.${SYNTHETIC_DOMAIN}` as const;
 
 export type SyntheticMcEnvironmentId = (typeof SYNTHETIC_MC_ENVIRONMENT_IDS)[number];
+
+// aem-sites-package additions: AEM as a Cloud Service author hosts carry the
+// program and environment ids in the hostname, so the synthetic ones use an
+// all-zero program. `scripts/audit-synthetic-identifiers.mjs` accepts exactly
+// these hosts and flags any other `*.adobeaemcloud.com` subdomain.
+export const SYNTHETIC_AEM_AUTHOR = "https://author-p00000-e00001.adobeaemcloud.com" as const;
+export const SYNTHETIC_AEM_AUTHOR_2 = "https://author-p00000-e00002.adobeaemcloud.com" as const;
+export const SYNTHETIC_AEM_CONTENT_ROOT = `/content/${SYNTHETIC_SITES[0]}` as const;
