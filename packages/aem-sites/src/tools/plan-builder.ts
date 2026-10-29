@@ -24,6 +24,7 @@ import {
   nextRowNode,
   parseRobots,
   queryPublishedPages,
+  confExists,
   readComponent,
   readCurrentUser,
   readPage,
@@ -65,6 +66,8 @@ export const EDS_UNPUBLISH_WARNING = "Unpublishing from the publish agent remove
 export const ROBOTS_UNVERIFIED_WARNING =
   "Writes the robots field of the EDS page-metadata model. That EDS renders it as <meta name=\"robots\"> once the page is published has not yet been verified on a live page; the site-wide route is a row in the EDS metadata sheet (sheet.upsert-row).";
 export const PREVIEW_UNKNOWN = "unknown (AEM does not record preview replication)";
+export const CONF_WARNING =
+  "cq:conf decides which /conf tree the page and every page below it use: the Edge Delivery Services site the author publishes them to, and their editable templates.";
 export const FORCE_DELETE_WARNING =
   "Forced: the author deletes these pages even when other pages or Live Copies reference them; those references are left broken.";
 export const DELETE_REFERENCED_HINT =
@@ -256,6 +259,10 @@ async function draftSetProperties(ctx: Context, op: Extract<PlanOperation, { kin
   // Validate the whole request first, so a forbidden name is rejected before any read.
   buildSetProperties(ctx.scope, { path: op.path, ...(op.set !== undefined ? { set: op.set } : {}), ...(op.remove !== undefined ? { remove: op.remove } : {}) });
   const page = await requirePage(ctx, op.path);
+  const conf = op.set?.["cq:conf"];
+  if (typeof conf === "string" && !(await confExists(ctx.client.http, conf))) {
+    throw new PlanRejection("not-found", `There is no configuration at ${conf}.`);
+  }
   const set: Record<string, unknown> = {};
   const changes: Change[] = [];
   for (const [name, value] of Object.entries(op.set ?? {})) {
@@ -272,7 +279,14 @@ async function draftSetProperties(ctx: Context, op: Extract<PlanOperation, { kin
     return { steps: [], checks: [], changes, targets: [op.path], summary: `${op.path} already has these properties.` };
   }
   const request = buildSetProperties(ctx.scope, { path: op.path, set, remove });
-  return { steps: [{ request }], checks: [pageCheck(page)], changes, targets: [op.path], summary: `Change ${changes.length} page propert${changes.length === 1 ? "y" : "ies"} of ${op.path}.` };
+  return {
+    steps: [{ request }],
+    checks: [pageCheck(page)],
+    changes,
+    targets: [op.path],
+    summary: `Change ${changes.length} page propert${changes.length === 1 ? "y" : "ies"} of ${op.path}.`,
+    ...(changes.some((change) => change.what === "cq:conf") ? { warnings: [CONF_WARNING] } : {}),
+  };
 }
 
 async function draftSetComponentProperties(ctx: Context, op: Extract<PlanOperation, { kind: "component.set-properties" }>): Promise<Draft> {

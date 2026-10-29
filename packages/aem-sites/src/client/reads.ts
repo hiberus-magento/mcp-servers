@@ -115,6 +115,7 @@ const PAGE_FIELDS = [
   "cq:canonicalUrl",
   "sling:alias",
   "cq:redirectTarget",
+  "cq:conf",
   "cq:template",
   "cq:lastModified",
   "cq:lastModifiedBy",
@@ -347,6 +348,12 @@ export interface ComponentDetails {
 }
 
 /** One component node's own fields (`<path>.json`, depth 0), or `undefined` when it does not exist. */
+/** Whether a configuration node exists (`cq:conf` targets); its content is not read. */
+export async function confExists(http: AuthorHttp, path: string): Promise<boolean> {
+  const { status } = await http.readJson({ method: "GET", path: `${path}.json`, label: `the configuration ${path}`, expectedStatuses: [404] });
+  return status !== 404;
+}
+
 export async function readComponent(http: AuthorHttp, path: string): Promise<ComponentDetails | undefined> {
   const { status, body } = await http.readJson({ method: "GET", path: `${path}.json`, label: `the component ${path}`, expectedStatuses: [404] });
   if (status === 404 || !isRecord(body)) {

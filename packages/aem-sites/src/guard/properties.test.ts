@@ -72,6 +72,19 @@ describe("parseExtraProperties", () => {
   }
 });
 
+describe("cq:conf", () => {
+  it("is a built-in page property", () => {
+    expect(assertWritableProperty("cq:conf", [])).toBe("cq:conf");
+  });
+
+  it("takes only a plain path under /conf/", () => {
+    expect(assertPropertyValue("cq:conf", "/conf/acme-demo-site/us")).toBe("/conf/acme-demo-site/us");
+    for (const bad of ["/content/acme", "/conf", "/conf/", "/conf/acme/../../apps", "/conf/acme/", "conf/acme", "/conf/acme.json", ["/conf/acme"], true]) {
+      expect(() => assertPropertyValue("cq:conf", bad)).toThrow(InvalidPropertyValueError);
+    }
+  });
+});
+
 describe("assertPropertyValue", () => {
   it("accepts strings, booleans, finite numbers and string lists", () => {
     expect(assertPropertyValue("a", "x")).toBe("x");

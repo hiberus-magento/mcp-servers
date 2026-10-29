@@ -19,6 +19,8 @@ export interface FakeAuthor {
   readonly sheets: Map<string, Record<string, unknown>>;
   /** Component nodes by path (`<page>/jcr:content/…`), read as `<path>.json`. */
   readonly components: Map<string, Record<string, unknown>>;
+  /** Configuration nodes under /conf, read as `<path>.json`. */
+  readonly confs: Set<string>;
   readonly requests: RecordedRequest[];
   readonly sleeps: number[];
   /** Status for POSTs whose path starts with the key; default 200. */
@@ -36,6 +38,7 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
   const pages = new Map<string, Record<string, unknown>>();
   const sheets = new Map<string, Record<string, unknown>>();
   const components = new Map<string, Record<string, unknown>>();
+  const confs = new Set<string>();
   const requests: RecordedRequest[] = [];
   const sleeps: number[] = [];
   const postStatus = new Map<string, number>();
@@ -79,6 +82,10 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
       const dated = typeof body["cq:lastReplicationAction"] === "string" && body["cq:lastReplicated"] === undefined ? { "cq:lastReplicated": "2026-10-01" } : {};
       return json(200, { "jcr:primaryType": "cq:PageContent", ...dated, ...body });
     }
+    const conf = /^(\/conf\/.*)\.json$/.exec(url.pathname);
+    if (conf?.[1] !== undefined) {
+      return confs.has(conf[1]) ? json(200, { "jcr:primaryType": "sling:Folder" }) : json(404);
+    }
     const component = /^(.*\/jcr:content\/.*)\.json$/.exec(url.pathname);
     if (component?.[1] !== undefined) {
       const body = components.get(component[1]);
@@ -97,5 +104,5 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
     origin,
   });
 
-  return { pages, sheets, components, requests, sleeps, postStatus, currentUser, client, posts: () => requests.filter((r) => r.method === "POST") };
+  return { pages, sheets, components, confs, requests, sleeps, postStatus, currentUser, client, posts: () => requests.filter((r) => r.method === "POST") };
 }

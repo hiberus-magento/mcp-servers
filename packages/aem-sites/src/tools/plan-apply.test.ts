@@ -230,6 +230,22 @@ describe("plan contents", () => {
     expect((await h.plan({ kind: "page.set-robots", paths: [PAGE], robots: ["noindex", "nofollow"] })).status).toBe("no-changes");
   });
 
+  it("page.set-properties sets cq:conf to an existing configuration and says what it decides", async () => {
+    const h = harness();
+    h.author.confs.add("/conf/acme-demo-site/us");
+    const plan = planned(await h.plan({ kind: "page.set-properties", path: OLD, set: { "cq:conf": "/conf/acme-demo-site/us" } }));
+    expect(plan.changes).toEqual([{ path: OLD, what: "cq:conf", before: undefined, after: "/conf/acme-demo-site/us" }]);
+    expect(plan.warnings.join(" ")).toContain("Edge Delivery Services site");
+    await h.apply({ token: plan.token, env: "stage", kind: "page.set-properties" });
+    expect(h.author.posts()[0]?.body).toContain(`cq%3Aconf=${encodeURIComponent("/conf/acme-demo-site/us")}`);
+  });
+
+  it("page.set-properties refuses a cq:conf that does not exist", async () => {
+    const h = harness();
+    expect(await h.plan({ kind: "page.set-properties", path: OLD, set: { "cq:conf": "/conf/acme-demo-site/missing" } })).toMatchObject({ status: "rejected", reason: "not-found" });
+    expect(h.author.posts()).toEqual([]);
+  });
+
   it("component.set-properties sends only the changed fields to the node and warns about rollouts", async () => {
     const h = harness();
     const plan = planned(

@@ -110,6 +110,20 @@ rejected regardless of configuration.
 - WHEN `aem_plan` is called
 - THEN it is rejected with `forbidden-property-name`
 
+### Requirement: Cloud Configuration
+
+`cq:conf` MUST be in the built-in allowlist. Its value MUST be a plain path below `/conf`
+(segments of letters, digits, `_` and `-`), otherwise `invalid-value`; the plan MUST read that
+node and reject `not-found` when it does not exist, and MUST warn that `cq:conf` decides the Edge
+Delivery Services site and the templates of the page and every page below it.
+
+#### Scenario: Rebinding a recreated store to its site
+
+- GIVEN a store page recreated without `cq:conf`, so it inherits the configuration of its parent
+- WHEN `page.set-properties` sets `cq:conf` to the store's existing `/conf/<site>/<store>`
+- THEN the plan shows the change and the warning, and its apply writes `cq:conf`
+- AND a `cq:conf` naming a missing node is rejected with `not-found` before any write
+
 ### Requirement: Protected Environments and Paths
 
 A plan whose env is in `AEM_PROTECTED_ENVS`, or whose targets match `AEM_PROTECTED_PATHS`, MUST set

@@ -48,6 +48,8 @@ export const BUILTIN_PAGE_PROPERTIES: readonly string[] = [
   "cq:canonicalUrl",
   "sling:alias",
   "cq:redirectTarget",
+  // Cloud Configuration: which /conf tree (templates, Edge Delivery Services site) the subtree uses.
+  "cq:conf",
 ];
 
 /** Structural, security or bookkeeping properties: never writable, never configurable. */
@@ -156,7 +158,13 @@ export function assertWritableComponentProperty(name: string): string {
   return name;
 }
 
+/** A plain configuration path below /conf: segments of letters, digits, '_' and '-'. */
+const CONF_PATH = /^\/conf(?:\/[A-Za-z0-9_-]+)+$/;
+
 export function assertPropertyValue(name: string, value: unknown): PropertyValue {
+  if (name === "cq:conf" && (typeof value !== "string" || !CONF_PATH.test(value))) {
+    throw new InvalidPropertyValueError(name, "expected a configuration path such as /conf/<site>/<store>");
+  }
   if (typeof value === "string") {
     if (value.length > MAX_STRING_LENGTH) {
       throw new InvalidPropertyValueError(name, `longer than ${MAX_STRING_LENGTH} characters`);

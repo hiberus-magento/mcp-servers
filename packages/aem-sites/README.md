@@ -163,7 +163,9 @@ There is no tool that sends a request to a caller-supplied URL or with
 caller-supplied form field names. Writes are limited to `AEM_WRITE_ROOTS`, page
 properties to a closed allowlist, and Sling POST operators (`@MoveFrom`,
 `@CopyFrom`, `:operation`, …) are refused in any name. Assets, users, ACLs,
-OSGi, `/apps`, `/libs`, `/conf` and Package Manager are out of scope.
+OSGi, `/apps`, `/libs`, `/conf` and Package Manager are out of scope; a page's
+`cq:conf` may point at an existing `/conf` node, but nothing under `/conf` is
+written.
 
 ## Verification status
 

@@ -38,6 +38,7 @@ export {
   probeAuth,
   queryPages,
   queryPublishedPages,
+  confExists,
   readComponent,
   readCurrentUser,
   readPage,
