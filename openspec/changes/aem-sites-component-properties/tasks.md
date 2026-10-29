@@ -18,4 +18,6 @@
 
 ## Phase 4: Live validation
 
-- [ ] 4.1 Through the MCP on a non-production author: set one block field, read it back, remove it, read it back.
+- [x] 4.1 Through the MCP on a non-production author: set one block field, read it back, remove it, read it back.
+  - 2026-10-29, a non-production author, local build of `local/mcp-integration`. On the cart block of a template page (`<root>/templates/cart/jcr:content/root/section/block`): set `checkout-url` and `start-shopping-url` (apply 200), and on the mini-cart template's block set `cart-url`, `checkout-url` and `start-shopping-url` (apply 200); `aem_get_page_tree` read the new values back. Set the test field `zz-mcp-check` (apply 200, read back), then removed it with `remove` (apply 200, read back: absent, other fields unchanged).
+  - Observed: after a write, AEM rewrites the node's `modelFields` from the current XWalk model (typed entries such as `checkout-url@text`, plus fields added to the model since the block was inserted). The request only carries the planned fields and `_charset_`, so this is the author, not the builder; the plan does not list it.
