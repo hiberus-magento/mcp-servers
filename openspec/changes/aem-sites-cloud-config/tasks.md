@@ -15,4 +15,5 @@
 
 ## Phase 4: Live validation
 
-- [ ] 4.1 On a non-production author: set `cq:conf` on a recreated store, read it back, publish a page below it.
+- [x] 4.1 On a non-production author: set `cq:conf` on a recreated store, read it back, publish a page below it.
+  - 2026-10-29, a non-production author: before, every publish below three recreated store pages answered 400 (no permissions on an unrelated site). `page.set-properties` with `cq:conf` (existing `/conf/<site>/<store>` nodes) applied 200 on each, `aem_get_page` reads it back, and the following publishes below them answered 200 and reached the expected Edge Delivery Services site.
