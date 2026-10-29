@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createFetchDouble } from "../testing/fetch-double.js";
 import { createHttpClient } from "./http.js";
-import { fetchJobEnvelope, getJobStatus, waitForJob } from "./jobs.js";
+import { fetchJobEnvelope, getJobStatus, listJobs, stopJob, waitForJob } from "./jobs.js";
 
 const RUNNING_FIXTURE = JSON.parse(
   readFileSync(fileURLToPath(new URL("../../fixtures/job.202.running.json", import.meta.url)), "utf8"),
@@ -183,5 +183,26 @@ describe("job success source discipline", () => {
 
     scan(clientDir);
     expect(violations).toEqual([]);
+  });
+});
+
+// RED-first (eds-write-surface tasks.md 2.11): list a topic's jobs, and stop
+// one by topic and name — success is any 2xx (eds-client spec, "Job Listing
+// and Stopping"; "Job Success Is Any 2xx").
+describe("listJobs", () => {
+  it("reads the topic's job list", async () => {
+    const list = { topic: "publish", jobs: [{ name: "job-demo-1", state: "running", time: "2026-01-01T00:00:00Z", href: "https://admin.hlx.page/job/x" }], links: { self: "s" } };
+    const { http } = makeHttp({ "GET /job/acme-demo-org/acme-demo-site-eu/main/publish": { status: 200, body: list } });
+
+    await expect(listJobs(http, { org: "acme-demo-org", site: "acme-demo-site-eu", topic: "publish" })).resolves.toEqual(list);
+  });
+});
+
+describe("stopJob", () => {
+  it("DELETEs the job by topic and name and accepts a 202", async () => {
+    const { http, calls } = makeHttp({ "DELETE /job/acme-demo-org/acme-demo-site-eu/main/publish/job-demo-1": { status: 202 } });
+
+    await expect(stopJob(http, { org: "acme-demo-org", site: "acme-demo-site-eu", topic: "publish", name: "job-demo-1" })).resolves.toEqual({ hasResponse: false });
+    expect(calls.map((call) => call.method)).toEqual(["DELETE"]);
   });
 });

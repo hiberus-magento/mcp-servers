@@ -27,7 +27,8 @@ export type EdsErrorKind =
   | "admin-api-status"
   | "admin-api-auth"
   | "admin-api-empty-body"
-  | "admin-api-malformed-body";
+  | "admin-api-malformed-body"
+  | "site-existence";
 
 export abstract class EdsError extends Error {
   abstract readonly kind: EdsErrorKind;
@@ -312,5 +313,36 @@ export class JobTimeoutError extends EdsError {
     this.name = "JobTimeoutError";
     this.self = options.self;
     this.progress = options.progress;
+  }
+}
+
+export interface SiteExistenceErrorOptions {
+  readonly site: string;
+  /** What the write required: `absent` to create, `present` to update. */
+  readonly expected: "absent" | "present";
+}
+
+/**
+ * Thrown by `createSite` / `updateSiteConfig` when the existence `GET`
+ * contradicts the write: creating a site that exists, or updating one that
+ * does not. Neither falls through to the other operation — a create that
+ * silently became an update (or the reverse) is the defect the split fixed.
+ */
+export class SiteExistenceError extends EdsError {
+  readonly kind = "site-existence" as const;
+  readonly site: string;
+  readonly expected: "absent" | "present";
+  readonly remedy: string;
+
+  constructor(options: SiteExistenceErrorOptions) {
+    super(
+      options.expected === "absent"
+        ? `Site "${options.site}" already exists; it was not created. Update its configuration instead.`
+        : `Site "${options.site}" does not exist; its configuration was not updated. Create it first.`,
+    );
+    this.name = "SiteExistenceError";
+    this.site = options.site;
+    this.expected = options.expected;
+    this.remedy = options.expected === "absent" ? "Update the existing site's configuration instead of creating it." : "Create the site before updating its configuration.";
   }
 }

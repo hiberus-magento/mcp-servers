@@ -16,6 +16,9 @@ const EXPECTED_VALUE_EXPORTS = [
   "GatewayError",
   "JobTimeoutError",
   "EdsError",
+  "SiteExistenceError",
+  // eds-write-surface Phase 4: `eds_plan` builds requests without sending them.
+  "writeRequests",
 ];
 
 describe("client/index.ts public surface", () => {
@@ -50,5 +53,47 @@ describe("client/index.ts public surface", () => {
     expect(client.auth.mintApiKey).toBeTypeOf("function");
     expect(client.auth.listApiKeys).toBeTypeOf("function");
     expect(client.operations.snapshots.listSnapshots).toBeTypeOf("function");
+  });
+
+  // RED-first (eds-write-surface tasks.md 2.13): every operation this change
+  // adds is reachable through `createEdsClient`, since adapters may import
+  // nothing else from `client/`.
+  it("exposes every eds-write-surface operation on the assembled client", async () => {
+    const { createFetchDouble } = await import("../testing/fetch-double.js");
+    const client = clientIndex.createEdsClient({
+      fetch: createFetchDouble({}).fetch,
+      now: () => Date.now(),
+      sleep: async () => undefined,
+      tokenProvider: {
+        domain: "eds",
+        getToken: async () => ({ kind: "static" as const, value: "k" }),
+        invalidate: () => undefined,
+        describeRemedy: () => ({ domain: "eds", cliCommand: "hiberus-eds auth token set", envVar: "EDS_TOKEN", configPath: "/dev/null", reason: "not found" }),
+      },
+      baseUrl: "https://admin.hlx.page",
+      org: "acme-demo-org",
+    });
+
+    const surface = {
+      siteConfig: ["getSiteDocument", "siteExists", "createSite", "updateSiteConfig", "deleteSite", "listSites", "listConfigVersions", "restoreConfigVersion"],
+      robots: ["getRobots", "setRobots"],
+      preview: ["previewPath", "unpreviewPath", "previewBulk"],
+      live: ["setLiveState", "publishPath", "unpublishPath"],
+      indexOps: ["reindex", "indexPath", "unindexPath"],
+      cache: ["purgeCache"],
+      sitemap: ["rebuildSitemap"],
+      code: ["getCodeStatus", "syncCode", "deleteCode"],
+    } as const;
+    const operations = client.operations as unknown as Record<string, Record<string, unknown>>;
+    for (const [group, names] of Object.entries(surface)) {
+      for (const name of names) {
+        expect(operations[group]?.[name], `${group}.${name}`).toBeTypeOf("function");
+      }
+    }
+    expect(client.jobs.listJobs).toBeTypeOf("function");
+    expect(client.jobs.stopJob).toBeTypeOf("function");
+    expect(client.auth.deleteApiKey).toBeTypeOf("function");
+    expect(client.sendPlannedRequest).toBeTypeOf("function");
+    expect("putSiteConfig" in operations.siteConfig!).toBe(false);
   });
 });
