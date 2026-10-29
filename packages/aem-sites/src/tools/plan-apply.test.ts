@@ -395,6 +395,27 @@ describe("page.delete", () => {
     expect(await h.plan({ kind: "page.delete", path: EN, force: true })).toMatchObject({ status: "rejected", reason: "page-is-published" });
   });
 
+  it("allowPublished deletes pages the author still marks as published, listing them in a warning", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "page.delete", path: EN, allowPublished: true, force: true }));
+    expect(plan.summary).toContain("published");
+    expect(plan.warnings.join(" ")).toContain(PAGE);
+    expect(plan.warnings.join(" ")).toContain("orphan");
+    await h.apply({ token: plan.token, env: "stage", kind: "page.delete" });
+    expect(h.author.posts()[0]?.body).toContain(`path=${encodeURIComponent(EN)}`);
+  });
+
+  it("allowPublished on a page with nothing published adds no warning", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "page.delete", path: OLD, allowPublished: true }));
+    expect(plan.warnings.join(" ")).not.toContain("orphan");
+  });
+
+  it("the published rejection names allowPublished only as the way out when the unpublish is refused", async () => {
+    const h = harness();
+    expect(await h.plan({ kind: "page.delete", path: EN })).toMatchObject({ message: expect.stringContaining("allowPublished: true") });
+  });
+
   it("an unforced delete refused with 412 names the references and the way out", async () => {
     const h = harness();
     const plan = planned(await h.plan({ kind: "page.delete", path: OLD }));

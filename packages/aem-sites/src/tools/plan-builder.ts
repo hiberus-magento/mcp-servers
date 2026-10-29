@@ -509,20 +509,27 @@ async function draftDelete(ctx: Context, op: Extract<PlanOperation, { kind: "pag
   const request = buildDeletePage(ctx.scope, op.path, { force });
   const page = await requirePage(ctx, op.path);
   const published = await queryPublishedPages(ctx.client.http, op.path);
-  if (published.length > 0) {
+  const publishedList = `${published.length === 100 ? "At least 100" : published.length} page(s) at or below ${op.path} are published on publish`;
+  const publishedSample = `${published.slice(0, 10).join(", ")}${published.length > 10 ? ` and ${published.length - 10} more` : ""}`;
+  if (published.length > 0 && op.allowPublished !== true) {
     throw new PlanRejection(
       "page-is-published",
-      `${published.length === 100 ? "At least 100" : published.length} page(s) at or below ${op.path} are published on publish and must be unpublished first (aem_plan page.unpublish), e.g. ${published.slice(0, 10).join(", ")}${published.length > 10 ? ` and ${published.length - 10} more` : ""}.`,
+      `${publishedList} and must be unpublished first (aem_plan page.unpublish), e.g. ${publishedSample}. Only if the author refuses that unpublish, plan page.delete again with allowPublished: true and show the user that plan.`,
     );
   }
   const previewWarning = `Only publish-agent state can be checked; if any of these pages is on preview, unpublish it from preview first (preview state is ${PREVIEW_UNKNOWN}).`;
+  const publishedWarning =
+    published.length > 0
+      ? [`${publishedList}: ${publishedSample}. They are deleted without being unpublished; if they are really live, they stay orphaned on publish (and Edge Delivery Services live).`]
+      : [];
+  const qualifiers = [...(force ? ["with force (references ignored)"] : []), ...(published.length > 0 ? ["including pages still marked as published"] : [])];
   return {
     steps: [force ? { request } : { request, hints: { 412: DELETE_REFERENCED_HINT } }],
     checks: [pageCheck(page)],
     changes: [{ path: op.path, what: "page", before: page.properties["jcr:title"] ?? op.path }],
     targets: [op.path],
-    summary: force ? `Delete ${op.path} and every page below it, with force (references ignored).` : `Delete ${op.path} and every page below it.`,
-    warnings: force ? [FORCE_DELETE_WARNING, previewWarning] : [previewWarning],
+    summary: `Delete ${op.path} and every page below it${qualifiers.length > 0 ? `, ${qualifiers.join(", ")}` : ""}.`,
+    warnings: [...publishedWarning, ...(force ? [FORCE_DELETE_WARNING] : []), previewWarning],
   };
 }
 

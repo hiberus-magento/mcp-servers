@@ -25,6 +25,13 @@ and a language master answered 412 with no way forward through the MCP.
     action is `Activate`.
 - A delete without `force` that fails with 412 names the cause and the way out (plan again with
   `force: true`).
+- `page.delete` takes an optional `allowPublished: boolean` for pages the author still marks as
+  published but refuses to unpublish. Observed on 2026-10-29: a language master path that no Edge
+  Delivery Services site maps answered every unpublish with 400 ("the technical account is
+  missing the following permissions" on an unrelated site), so its two pages marked `Activate`
+  blocked the delete of the whole tree. The plan lists them and warns that pages really live stay
+  orphaned on publish; the rejection without it names it only as the fallback after a refused
+  unpublish.
 - Every error built from an author response keeps the message of Sling's HTML status page
   (`<div id="Message">`), when there is one, instead of dropping the whole body as HTML. A login
   page still fails as an authentication error.
@@ -32,7 +39,7 @@ and a language master answered 412 with no way forward through the MCP.
 ### Out of Scope
 
 - Listing the references of a page at plan time (`reference.json`); not explored yet.
-- Deleting published pages, or pages whose unpublish is refused by the author.
+- Deleting published pages without an explicit `allowPublished: true` in the plan.
 
 ## Recorded decision this change modifies
 
@@ -44,6 +51,7 @@ does not take. `force` becomes a field `page.delete` takes; the scenario moves t
 | Risk | Mitigation |
 |---|---|
 | A forced delete breaks links in pages that stay | Opt-in per plan, stated in the summary and in a warning the user confirms |
+| An agent skips the unpublish with `allowPublished` | The rejection offers it only after a refused unpublish; the plan names every page left orphaned |
 | An agent forces by default | `force` is never implied; the 412 hint is the only place that suggests it, after a refused delete |
 | A status page leaks something sensitive | Only the text of `#Message`, whitespace-collapsed and capped at the existing detail length |
 

@@ -49,7 +49,11 @@ delete a page that other pages or Live Copies reference, and for a subtree the
 links between its own pages count. `force: true` is the Sites console's *Force
 Delete*: the plan says so and warns that those references are left broken. It
 never lifts the published-content check. A 412 without `force` names that way
-out.
+out. When the author refuses to unpublish a page (for example, Edge Delivery
+Services answers that its technical account has no rights on the site the path
+maps to), `allowPublished: true` deletes it anyway: the plan lists the pages
+still marked as published and warns that, if they are really live, they stay
+orphaned on publish.
 
 **Component fields.** `component.set-properties` edits the fields of one
 existing component node — for example a block's configured link — at

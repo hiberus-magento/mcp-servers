@@ -113,8 +113,9 @@ describe("aem_plan input schema", () => {
     await expect(plan?.invoke({ env: "stage", operation: { kind: "page.lock", path: `${SYNTHETIC_ROOT}/en`, force: true } }, {})).rejects.toThrow();
   });
 
-  it("takes force on page.delete, and only a boolean", async () => {
+  it("takes force and allowPublished on page.delete, and only as booleans", async () => {
     await expect(plan?.invoke({ env: "stage", operation: { kind: "page.delete", path: `${SYNTHETIC_ROOT}/en`, force: "yes" } }, {})).rejects.toThrow();
+    await expect(plan?.invoke({ env: "stage", operation: { kind: "page.delete", path: `${SYNTHETIC_ROOT}/en`, allowPublished: "yes" } }, {})).rejects.toThrow();
   });
 
   it("rejects more than 100 paths", async () => {

@@ -81,6 +81,8 @@ const operationSchema = z.discriminatedUnion("kind", [
       path: z.string().min(1),
       /** The Sites console's Force Delete: delete even when other pages or Live Copies reference it. */
       force: z.boolean().optional(),
+      /** Delete even when the author still marks pages of the subtree as published (their unpublish was refused). */
+      allowPublished: z.boolean().optional(),
     })
     .strict(),
   z

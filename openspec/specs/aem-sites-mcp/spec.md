@@ -128,14 +128,22 @@ path MUST be rejected at plan time unless `AEM_ALLOW_PROTECTED_PUBLISH=1`.
 
 `page.delete` MUST be rejected at plan time if the page or any descendant is activated on the
 publish agent, naming up to ten of them and the count, so the user can plan `page.unpublish`
-first, with or without `force`. Because AEM does not record preview state, the plan MUST warn
-that pages on preview cannot be checked.
+first, with or without `force`. The rejection MUST name `allowPublished: true` only as the way
+out when that unpublish is refused. With `allowPublished: true` the plan MUST proceed, say so in
+its summary and warn, naming the pages, that pages really live stay orphaned on publish. Because
+AEM does not record preview state, the plan MUST warn that pages on preview cannot be checked.
 
 #### Scenario: Deleting a live page
 
 - GIVEN a page whose last replication action on `publish` is `Activate`
 - WHEN `aem_plan` is called with `page.delete` on it, with or without `force: true`
 - THEN it is rejected with `page-is-published`, naming the published paths
+
+#### Scenario: The author refuses the unpublish
+
+- GIVEN a page marked `Activate` whose `page.unpublish` the author answers with 400
+- WHEN `aem_plan` is called with `page.delete` and `allowPublished: true`
+- THEN the plan lists the page in an orphan warning and its apply deletes it
 
 ### Requirement: Forced Delete
 
