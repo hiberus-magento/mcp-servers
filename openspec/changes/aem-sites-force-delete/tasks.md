@@ -20,4 +20,5 @@
 
 - [x] 4.1 Through the MCP on a non-production author: a subtree that answers 412 without `force` deleted with `force: true`.
   - 2026-10-29, a non-production author: three store folders and a language master (hundreds of pages) answered 412 without `force`; planned again with `force: true`, each delete answered 200 and a listing of the parent no longer shows them. A refused unpublish now reads "HTTP 400: Error: The technical account is missing the following permissions … for path …" instead of a bare 400.
-- [ ] 4.2 Through the MCP on a non-production author: a subtree with pages marked `Activate` whose unpublish is refused deleted with `allowPublished: true`.
+- [x] 4.2 Through the MCP on a non-production author: a subtree with pages marked `Activate` whose unpublish is refused deleted with `allowPublished: true`.
+  - 2026-10-29, a non-production author: a language master with two pages marked `Activate` whose unpublish Edge Delivery Services refused (400, no site maps the path); the plan without `allowPublished` was rejected and named the fallback, the plan with it listed both pages in the orphan warning, and the forced delete answered 200.
