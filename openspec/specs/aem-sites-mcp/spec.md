@@ -110,6 +110,35 @@ rejected regardless of configuration.
 - WHEN `aem_plan` is called
 - THEN it is rejected with `forbidden-property-name`
 
+### Requirement: Batches
+
+`batch` MUST take 1–300 operations of the other kinds (never a batch) and MUST, at plan time, run
+every builder guard and the protected-publish rule on each, rejecting with the operation's number
+and without reading or writing; protected targets MUST require the typed confirmation as any plan.
+Its confirmation MUST list every operation and warn that requests are planned when applied. The
+token MUST live 60 minutes. Apply MUST plan each operation against the current state when its turn
+comes, send its requests, skip one with nothing to change, and stop at the first rejection or failed
+request, reporting per operation and how many did not run.
+
+#### Scenario: A store rebuilt under one confirmation
+
+- GIVEN a batch that creates a page and then sets its properties
+- WHEN it is planned
+- THEN one confirmation lists both, and nothing is read or written
+- AND on apply the second operation is planned after the first created the page
+
+### Requirement: Tree Publish
+
+`page.publish-tree` MUST publish every page at or below `root` (re-checking `${root}/`, since
+QueryBuilder matches by prefix), in chunks of at most 100 pages per agent, with the same checks,
+warnings and protected-path rule as `page.publish`.
+
+#### Scenario: A sibling sharing the prefix
+
+- GIVEN `/en` and `/en-gb`
+- WHEN `page.publish-tree` is planned for `/en`
+- THEN no page of `/en-gb` is published
+
 ### Requirement: Cloud Configuration
 
 `cq:conf` MUST be in the built-in allowlist. Its value MUST be a plain path below `/conf`
@@ -208,8 +237,8 @@ follow a redirect.
 ### Requirement: Operation Kinds
 
 `aem_plan`'s `operation.kind` MUST be one of: `page.set-properties`, `component.set-properties`, `page.set-robots`,
-`sheet.upsert-row`, `sheet.delete-row`, `page.publish`, `page.unpublish`, `page.create`,
-`page.copy`, `page.move`, `page.delete`, `livecopy.create`, `page.lock`, `page.unlock`. Each branch
+`sheet.upsert-row`, `sheet.delete-row`, `page.publish`, `page.publish-tree`, `page.unpublish`, `page.create`,
+`page.copy`, `page.move`, `page.delete`, `livecopy.create`, `page.lock`, `page.unlock`, `batch`. Each branch
 is strict: a field a kind does not take is a schema rejection. Every kind MUST pass the same token
 matrix (forged, expired, reused, stale, echo mismatch) before any write.
 

@@ -10,8 +10,8 @@ import { AemError, readComponent, readPage, readSheet, type AemClient } from "..
 import type { AemConfig } from "../config.js";
 import { fingerprint } from "../confirm/fingerprint.js";
 import type { PlanStore } from "../confirm/plan-store.js";
-import type { PlannedStep, StateCheck, StoredPlan } from "./plan-builder.js";
-import type { AemApplyInput, OperationKind } from "./plan-schema.js";
+import { draftBatchOperation, rejectionFor, type PlannedStep, type StateCheck, type StoredPlan } from "./plan-builder.js";
+import type { AemApplyInput, OperationKind, SinglePlanOperation } from "./plan-schema.js";
 
 export type ApplyRejectionReason =
   | "unknown-token"
@@ -28,8 +28,29 @@ export interface StepResult {
   readonly status: number;
 }
 
+/** One operation of a batch: what it did, without echoing every request. */
+export interface BatchOperationResult {
+  readonly index: number;
+  readonly kind: SinglePlanOperation["kind"];
+  readonly summary: string;
+  readonly sent: number;
+  readonly ok: number;
+  /** The operation found nothing to change. */
+  readonly skipped?: boolean;
+}
+
 export type ApplyResult =
   | { readonly status: "rejected"; readonly reason: ApplyRejectionReason; readonly message: string }
+  | { readonly status: "applied"; readonly env: string; readonly kind: "batch"; readonly operations: readonly BatchOperationResult[] }
+  | {
+      readonly status: "failed";
+      readonly env: string;
+      readonly kind: "batch";
+      /** Operations that completed before the failure; they are NOT rolled back. */
+      readonly operations: readonly BatchOperationResult[];
+      readonly failed: { readonly index: number; readonly kind: SinglePlanOperation["kind"]; readonly message: string; readonly sent: number };
+      readonly notRun: number;
+    }
   | { readonly status: "applied"; readonly env: string; readonly kind: OperationKind; readonly results: readonly StepResult[] }
   | {
       readonly status: "failed";
@@ -114,6 +135,9 @@ export async function applyPlan(deps: ApplyDeps, input: AemApplyInput): Promise<
   }
 
   deps.store.consume(input.token);
+  if (plan.batch !== undefined) {
+    return applyBatch(deps, plan.env, plan.batch);
+  }
   const completed: StepResult[] = [];
   for (const [index, step] of plan.steps.entries()) {
     if (step.pauseBeforeMs !== undefined) {
@@ -134,4 +158,49 @@ export async function applyPlan(deps: ApplyDeps, input: AemApplyInput): Promise<
     }
   }
   return { status: "applied", env: plan.env, kind: plan.kind, results: completed };
+}
+
+/**
+ * Runs an approved batch: each operation is planned against the author's
+ * state when its turn comes (so it can depend on what earlier ones created)
+ * and its requests are sent at once. The first rejection or failed request
+ * stops the batch.
+ */
+async function applyBatch(deps: ApplyDeps, env: string, operations: readonly SinglePlanOperation[]): Promise<ApplyResult> {
+  const client = deps.clientFor(env);
+  const done: BatchOperationResult[] = [];
+  for (const [position, op] of operations.entries()) {
+    const index = position + 1;
+    let draft;
+    try {
+      draft = await draftBatchOperation(deps, env, op);
+    } catch (error) {
+      const rejection = rejectionFor(error);
+      if (rejection === undefined) {
+        throw error;
+      }
+      return { status: "failed", env, kind: "batch", operations: done, failed: { index, kind: op.kind, message: `${rejection.reason}: ${rejection.message}`, sent: 0 }, notRun: operations.length - index };
+    }
+    let ok = 0;
+    for (const step of draft.steps) {
+      if (step.pauseBeforeMs !== undefined) {
+        await deps.sleep(step.pauseBeforeMs);
+      }
+      try {
+        await client.execute(step.request);
+        ok += 1;
+      } catch (error) {
+        return {
+          status: "failed",
+          env,
+          kind: "batch",
+          operations: done,
+          failed: { index, kind: op.kind, message: `${step.request.label}: ${failureMessage(error, step.hints)}`, sent: ok + 1 },
+          notRun: operations.length - index,
+        };
+      }
+    }
+    done.push({ index, kind: op.kind, summary: draft.summary, sent: draft.steps.length, ok, ...(draft.steps.length === 0 ? { skipped: true } : {}) });
+  }
+  return { status: "applied", env, kind: "batch", operations: done };
 }

@@ -20,7 +20,8 @@ interface Entry<T> {
 }
 
 export interface PlanStore<T> {
-  put(plan: T): { readonly token: string; readonly expiresAt: number };
+  /** `ttlMs` overrides the store's default for this plan only (a batch takes longer to review and apply). */
+  put(plan: T, options?: { readonly ttlMs?: number }): { readonly token: string; readonly expiresAt: number };
   /** Looks a token up without consuming it, so a rejected echo does not burn the plan. */
   get(token: string): PlanLookup<T>;
   /** Consumes the token. Called only once every check before the first write has passed. */
@@ -36,17 +37,17 @@ export function createPlanStore<T>(options: { readonly now: () => number; readon
   const sweep = (): void => {
     const now = options.now();
     for (const [token, entry] of plans) {
-      if (entry.expiresAt <= now - ttl) {
+      if (entry.expiresAt <= now) {
         plans.delete(token);
       }
     }
   };
 
   return {
-    put(plan) {
+    put(plan, putOptions) {
       sweep();
       const token = randomToken();
-      const expiresAt = options.now() + ttl;
+      const expiresAt = options.now() + (putOptions?.ttlMs ?? ttl);
       plans.set(token, { plan, expiresAt });
       return { token, expiresAt };
     },

@@ -118,6 +118,11 @@ describe("aem_plan input schema", () => {
     await expect(plan?.invoke({ env: "stage", operation: { kind: "page.delete", path: `${SYNTHETIC_ROOT}/en`, allowPublished: "yes" } }, {})).rejects.toThrow();
   });
 
+  it("rejects a batch inside a batch and an empty batch", async () => {
+    await expect(plan?.invoke({ env: "stage", operation: { kind: "batch", operations: [{ kind: "batch", operations: [] }] } }, {})).rejects.toThrow();
+    await expect(plan?.invoke({ env: "stage", operation: { kind: "batch", operations: [] } }, {})).rejects.toThrow();
+  });
+
   it("rejects more than 100 paths", async () => {
     const paths = Array.from({ length: 101 }, (_, i) => `${SYNTHETIC_ROOT}/p${i}`);
     await expect(plan?.invoke({ env: "stage", operation: { kind: "page.publish", paths, target: "publish" } }, {})).rejects.toThrow();

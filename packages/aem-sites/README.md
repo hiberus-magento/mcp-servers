@@ -40,8 +40,18 @@ than what the user was shown.
 
 Operation kinds: `page.set-properties`, `component.set-properties`,
 `page.set-robots`, `sheet.upsert-row`, `sheet.delete-row`, `page.publish`,
-`page.unpublish`, `page.create`, `page.copy`, `page.move`, `page.delete`,
-`livecopy.create`, `page.lock`, `page.unlock`.
+`page.publish-tree`, `page.unpublish`, `page.create`, `page.copy`, `page.move`,
+`page.delete`, `livecopy.create`, `page.lock`, `page.unlock`, `batch`.
+
+**Batches.** `kind: "batch"` takes up to 300 operations of any other kind and
+returns one confirmation listing them, under a token that lives 60 minutes.
+Plan time runs only the guards (write roots, path grammar, property names,
+operators, protected paths): an operation may depend on pages an earlier one
+creates, so each is planned against the author's state when its turn comes,
+and applied at once. The first rejection or failed request stops the batch;
+nothing before it is rolled back. The result lists each operation with its
+request counts. `page.publish-tree` publishes every page at or below a root,
+listed when it is planned.
 
 **Deleting.** `page.delete` refuses a page that is, or has a descendant that
 is, activated on publish: unpublish it first. The author also refuses (412) to

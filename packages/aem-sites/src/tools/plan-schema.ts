@@ -17,7 +17,7 @@ const propertyValue = z.union([z.string(), z.number(), z.boolean(), z.array(z.st
 const target = z.enum(["preview", "publish", "both"]);
 const sheetMatch = z.object({ column: z.string().min(1), value: z.string() }).strict();
 
-const operationSchema = z.discriminatedUnion("kind", [
+const singleOperationSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("page.set-properties"),
@@ -55,6 +55,8 @@ const operationSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("sheet.delete-row"), sheetPath: z.string().min(1), match: sheetMatch }).strict(),
   z.object({ kind: z.literal("page.publish"), paths: plannedPaths, target }).strict(),
   z.object({ kind: z.literal("page.unpublish"), paths: plannedPaths, target }).strict(),
+  /** Every page at or below `root`, listed when the plan is made (inside a batch: when it is applied). */
+  z.object({ kind: z.literal("page.publish-tree"), root: z.string().min(1), target }).strict(),
   z
     .object({
       kind: z.literal("page.create"),
@@ -102,6 +104,21 @@ const operationSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("page.unlock"), path: z.string().min(1) }).strict(),
 ]);
 
+/** At most 300 operations per batch; a batch never contains a batch. */
+export const MAX_BATCH_OPERATIONS = 300;
+
+const operationSchema = z.discriminatedUnion("kind", [
+  ...singleOperationSchema.options,
+  z
+    .object({
+      kind: z.literal("batch"),
+      /** Applied in order; each one is planned against the author's state when its turn comes. */
+      operations: z.array(singleOperationSchema).min(1).max(MAX_BATCH_OPERATIONS),
+    })
+    .strict(),
+]);
+
+export type SinglePlanOperation = z.infer<typeof singleOperationSchema>;
 export type PlanOperation = z.infer<typeof operationSchema>;
 export type OperationKind = PlanOperation["kind"];
 

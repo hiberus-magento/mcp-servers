@@ -62,7 +62,12 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
         .filter(([p]) => p === root || p.startsWith(`${root}/`))
         .filter(([, body]) => body["cq:lastReplicationAction"] === "Activate" || body["cq:lastReplicationAction_publish"] === "Activate")
         .map(([p]) => ({ path: p }));
-      return json(200, { total: activated.length, hits: url.searchParams.has("group.p.or") ? activated : [] });
+      if (url.searchParams.has("group.p.or")) {
+        return json(200, { total: activated.length, hits: activated });
+      }
+      // A prefix match, like the real QueryBuilder `path` predicate: callers must re-check `${root}/`.
+      const listed = [...pages.keys()].filter((p) => p.startsWith(root)).sort().map((p) => ({ path: p }));
+      return json(200, { total: listed.length, more: false, hits: listed });
     }
     if (url.pathname === "/libs/granite/security/currentuser.json") {
       return json(200, { authorizableId: currentUser.id, name: "Demo user" });

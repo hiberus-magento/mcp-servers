@@ -10,8 +10,8 @@ import { createPlanStore } from "../confirm/plan-store.js";
 import { SYNTHETIC_AEM_AUTHOR, SYNTHETIC_ROOT } from "../testing/author-double.js";
 import { createFakeAuthor, type FakeAuthor } from "../testing/fake-author.js";
 import { applyPlan, type ApplyResult } from "./apply.js";
-import { AGENT_PAUSE_MS, COMPONENT_INHERITANCE_WARNING, EDS_LIVE_WARNING, planOperation, type PlanResult, type StoredPlan } from "./plan-builder.js";
-import { OPERATION_KINDS, type AemApplyInput, type OperationKind, type PlanOperation } from "./plan-schema.js";
+import { AGENT_PAUSE_MS, BATCH_TTL_MS, COMPONENT_INHERITANCE_WARNING, EDS_LIVE_WARNING, planOperation, type PlanResult, type StoredPlan } from "./plan-builder.js";
+import { OPERATION_KINDS, type AemApplyInput, type OperationKind, type PlanOperation, type SinglePlanOperation } from "./plan-schema.js";
 
 const EN = `${SYNTHETIC_ROOT}/en`;
 const FR = `${SYNTHETIC_ROOT}/fr`;
@@ -82,7 +82,10 @@ function planned(result: PlanResult): Extract<PlanResult, { status: "planned" }>
 }
 
 /** One valid operation per kind, plus a mutation that makes its plan stale. */
-const CASES: Record<OperationKind, { readonly operation: PlanOperation; readonly stale: (author: FakeAuthor) => void }> = {
+type SingleKind = Exclude<OperationKind, "batch">;
+const SINGLE_KINDS = OPERATION_KINDS.filter((kind): kind is SingleKind => kind !== "batch");
+
+const CASES: Record<SingleKind, { readonly operation: PlanOperation; readonly stale: (author: FakeAuthor) => void }> = {
   "page.set-properties": {
     operation: { kind: "page.set-properties", path: PAGE, set: { "jcr:title": "Gear" } },
     stale: (a) => a.pages.set(PAGE, { ...a.pages.get(PAGE), "jcr:title": "Edited meanwhile" }),
@@ -106,6 +109,10 @@ const CASES: Record<OperationKind, { readonly operation: PlanOperation; readonly
   "page.publish": {
     operation: { kind: "page.publish", paths: [PAGE], target: "both" },
     stale: (a) => a.pages.set(PAGE, { ...a.pages.get(PAGE), "cq:lastModified": "2" }),
+  },
+  "page.publish-tree": {
+    operation: { kind: "page.publish-tree", root: EN, target: "preview" },
+    stale: (a) => a.pages.set(OLD, { ...a.pages.get(OLD), "cq:lastModified": "2" }),
   },
   "page.unpublish": {
     operation: { kind: "page.unpublish", paths: [PAGE], target: "publish" },
@@ -143,10 +150,10 @@ const CASES: Record<OperationKind, { readonly operation: PlanOperation; readonly
 
 describe("every operation kind", () => {
   it("has a case here, so the matrix below is exhaustive", () => {
-    expect(Object.keys(CASES).sort()).toEqual([...OPERATION_KINDS].sort());
+    expect(Object.keys(CASES).sort()).toEqual([...SINGLE_KINDS].sort());
   });
 
-  for (const kind of OPERATION_KINDS) {
+  for (const kind of SINGLE_KINDS) {
     const { operation, stale } = CASES[kind];
 
     describe(kind, () => {
@@ -496,5 +503,92 @@ describe("Live Copies and locks", () => {
   it("unlocking a page that is not locked is a no-op", async () => {
     const h = harness();
     expect((await h.plan({ kind: "page.unlock", path: OLD })).status).toBe("no-changes");
+  });
+});
+
+describe("page.publish-tree", () => {
+  it("publishes every page at or below the root, and nothing that only shares its prefix", async () => {
+    const h = harness();
+    h.author.pages.set(`${SYNTHETIC_ROOT}/en-gb`, { "jcr:title": "EN-GB" });
+    const plan = planned(await h.plan({ kind: "page.publish-tree", root: EN, target: "both" }));
+    const previewed = plan.changes.filter((change) => change.what === "preview").map((change) => change.path);
+    expect(previewed.sort()).toEqual([EN, LOCKED, OLD, PAGE].sort());
+    expect(plan.summary).toContain("4 pages");
+  });
+
+  it("refuses a root outside the write roots", async () => {
+    const h = harness();
+    expect(await h.plan({ kind: "page.publish-tree", root: "/content/acme-demo-site-us/en", target: "both" })).toMatchObject({ reason: "path-outside-write-roots" });
+  });
+});
+
+describe("batch", () => {
+  const OPS: SinglePlanOperation[] = [
+    { kind: "page.set-properties", path: OLD, set: { "jcr:title": "Older" } },
+    { kind: "page.delete", path: OLD, force: true },
+  ];
+
+  it("plans without reading or writing, lists every operation and lives longer than a single plan", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "batch", operations: OPS }));
+    expect(h.author.posts()).toEqual([]);
+    expect(plan.summary).toContain("2 operations");
+    expect(plan.confirmationMessage).toContain(`1. page.set-properties ${OLD}`);
+    expect(plan.confirmationMessage).toContain(`2. page.delete ${OLD}`);
+    expect(plan.confirmationMessage).toContain("force");
+    expect(new Date(plan.expiresAt).getTime()).toBe(BATCH_TTL_MS);
+    h.advance(TTL);
+    expect((await h.apply({ token: plan.token, env: "stage", kind: "batch" })).status).toBe("applied");
+  });
+
+  it("applies the operations in order, each planned against the state at that moment", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "batch", operations: OPS }));
+    const result = await h.apply({ token: plan.token, env: "stage", kind: "batch" });
+    expect(result).toMatchObject({ status: "applied", operations: [{ index: 1, kind: "page.set-properties", sent: 1, ok: 1 }, { index: 2, kind: "page.delete", sent: 1, ok: 1 }] });
+    expect(h.author.posts().map((r) => r.path)).toEqual([`${OLD}/jcr:content`, "/bin/wcmcommand"]);
+  });
+
+  it("stops at the first operation that is rejected or fails, and runs nothing after it", async () => {
+    const h = harness();
+    const plan = planned(
+      await h.plan({
+        kind: "batch",
+        operations: [OPS[0] as SinglePlanOperation, { kind: "page.set-properties", path: `${EN}/missing`, set: { "jcr:title": "x" } }, OPS[1] as SinglePlanOperation],
+      }),
+    );
+    const result = await h.apply({ token: plan.token, env: "stage", kind: "batch" });
+    expect(result).toMatchObject({ status: "failed", failed: { index: 2, kind: "page.set-properties", message: expect.stringContaining("no page") }, notRun: 1 });
+    expect(h.author.posts()).toHaveLength(1);
+  });
+
+  it("an operation with nothing to change is skipped, not a failure", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "batch", operations: [{ kind: "page.set-properties", path: OLD, set: { "jcr:title": "Old" } }] }));
+    expect(await h.apply({ token: plan.token, env: "stage", kind: "batch" })).toMatchObject({ status: "applied", operations: [{ index: 1, sent: 0, skipped: true }] });
+  });
+
+  it("rejects at plan time what the guards reject, naming the operation", async () => {
+    const h = harness();
+    const result = await h.plan({ kind: "batch", operations: [OPS[0] as SinglePlanOperation, { kind: "page.delete", path: "/content/acme-demo-site-us/en" }] });
+    expect(result).toMatchObject({ status: "rejected", reason: "path-outside-write-roots", message: expect.stringContaining("operation 2") });
+  });
+
+  it("keeps the token matrix: forged, reused and mismatched echoes write nothing", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "batch", operations: OPS }));
+    expect(await h.apply({ token: "forged", env: "stage", kind: "batch" })).toMatchObject({ reason: "unknown-token" });
+    expect(await h.apply({ token: plan.token, env: "stage", kind: "page.delete" })).toMatchObject({ reason: "kind-mismatch" });
+    expect(await h.apply({ token: plan.token, env: "prod", kind: "batch" })).toMatchObject({ reason: "env-mismatch" });
+    expect(h.author.posts()).toEqual([]);
+    await h.apply({ token: plan.token, env: "stage", kind: "batch" });
+    expect(await h.apply({ token: plan.token, env: "stage", kind: "batch" })).toMatchObject({ reason: "already-applied" });
+  });
+
+  it("asks for the typed target when an operation touches a protected path", async () => {
+    const h = harness({ AEM_PROTECTED_PATHS: "/content/*/en" });
+    const plan = planned(await h.plan({ kind: "batch", operations: [{ kind: "page.set-properties", path: EN, set: { "jcr:title": "x" } }] }));
+    expect(plan.requiresConfirmTarget).toBe(true);
+    expect(await h.plan({ kind: "batch", operations: [{ kind: "page.publish", paths: [EN], target: "preview" }] })).toMatchObject({ reason: "protected-path-publish" });
   });
 });
