@@ -339,6 +339,23 @@ function projectNode(name: string, node: Record<string, unknown>): ComponentNode
   return { name, ...present("resourceType", str(node, "sling:resourceType")), properties, children };
 }
 
+export interface ComponentDetails {
+  readonly path: string;
+  readonly resourceType?: string;
+  /** The node's own fields; child nodes and bookkeeping are left out. */
+  readonly properties: Readonly<Record<string, string | number | boolean | readonly string[]>>;
+}
+
+/** One component node's own fields (`<path>.json`, depth 0), or `undefined` when it does not exist. */
+export async function readComponent(http: AuthorHttp, path: string): Promise<ComponentDetails | undefined> {
+  const { status, body } = await http.readJson({ method: "GET", path: `${path}.json`, label: `the component ${path}`, expectedStatuses: [404] });
+  if (status === 404 || !isRecord(body)) {
+    return undefined;
+  }
+  const node = projectNode(path, body);
+  return { path, ...present("resourceType", node.resourceType), properties: node.properties };
+}
+
 export async function readPageTree(http: AuthorHttp, path: string, depth: number): Promise<ComponentNode | undefined> {
   assertAemPath(path);
   const bounded = Math.min(Math.max(Math.trunc(depth), 1), 4);

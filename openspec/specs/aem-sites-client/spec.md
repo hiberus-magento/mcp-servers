@@ -11,7 +11,8 @@ Service author. The client never reads environment variables or credential files
 ### Requirement: Closed Operation Set
 
 The client MUST expose only named operations (`queryPages`, `readPage`, `readSheet`,
-`readReplicationStatus`, `listTemplates`, `readPageTree`, `buildSetProperties`, `buildSheetUpsert`,
+`readReplicationStatus`, `listTemplates`, `readPageTree`, `readComponent`, `buildSetProperties`,
+`buildSetComponentProperties`, `buildSheetUpsert`,
 `buildSheetDeleteRow`, `buildReplicate`, `buildWcmCommand`, `send`). There SHALL be no function
 that issues a request to a caller-supplied URL or with caller-supplied form field names.
 

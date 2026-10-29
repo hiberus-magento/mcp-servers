@@ -2,6 +2,8 @@
 import { describe, expect, it } from "vitest";
 import {
   assertAemPath,
+  assertComponentPath,
+  InvalidComponentPathError,
   assertWritable,
   InvalidAemPathError,
   InvalidPathPatternError,
@@ -115,5 +117,38 @@ describe("rollout configs", () => {
     expect(parseRolloutConfigs(" /apps/msm/acme/sync, /conf/acme/msm/x ")).toEqual(["/apps/msm/acme/sync", "/conf/acme/msm/x"]);
     expect(() => parseRolloutConfigs("/apps/acme/sync")).toThrow(InvalidRolloutConfigError);
     expect(() => parseRolloutConfigs("/content/x")).toThrow(InvalidRolloutConfigError);
+  });
+});
+
+describe("assertComponentPath", () => {
+  const PAGE = `${ROOT}/en/outdoor-gear`;
+
+  it("splits a component node path into its page and returns both", () => {
+    expect(assertComponentPath(`${PAGE}/jcr:content/root/section/block_123`, [ROOT])).toEqual({
+      page: PAGE,
+      path: `${PAGE}/jcr:content/root/section/block_123`,
+    });
+  });
+
+  const rejected = [
+    `${PAGE}/jcr:content`,
+    `${PAGE}/jcr:content/`,
+    `${PAGE}/root/section/block`,
+    `${PAGE}/jcr:content/root/jcr:content/block`,
+    `${PAGE}/jcr:content/root/../block`,
+    `${PAGE}/jcr:content/root//block`,
+    `${PAGE}/jcr:content/root/cq:block`,
+    `${PAGE}/jcr:content/root/block@Delete`,
+    `${PAGE}/jcr:content/root/block.json`,
+    `/jcr:content/root`,
+  ];
+  for (const path of rejected) {
+    it(`rejects ${JSON.stringify(path)}`, () => {
+      expect(() => assertComponentPath(path, [ROOT])).toThrow(InvalidComponentPathError);
+    });
+  }
+
+  it("rejects a component of a page outside the write roots", () => {
+    expect(() => assertComponentPath("/content/acme-demo-site-us/en/jcr:content/root", [ROOT])).toThrow(PathOutsideWriteRootsError);
   });
 });

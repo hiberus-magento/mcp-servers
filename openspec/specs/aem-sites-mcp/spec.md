@@ -170,7 +170,7 @@ follow a redirect.
 
 ### Requirement: Operation Kinds
 
-`aem_plan`'s `operation.kind` MUST be one of: `page.set-properties`, `page.set-robots`,
+`aem_plan`'s `operation.kind` MUST be one of: `page.set-properties`, `component.set-properties`, `page.set-robots`,
 `sheet.upsert-row`, `sheet.delete-row`, `page.publish`, `page.unpublish`, `page.create`,
 `page.copy`, `page.move`, `page.delete`, `livecopy.create`, `page.lock`, `page.unlock`. Each branch
 is strict: a field a kind does not take is a schema rejection. Every kind MUST pass the same token
@@ -181,6 +181,35 @@ matrix (forged, expired, reused, stale, echo mismatch) before any write.
 - GIVEN `{ kind: "page.delete", path, force: true }`
 - WHEN `aem_plan` is called
 - THEN the input is rejected by the schema and nothing is read
+
+### Requirement: Component Fields
+
+`component.set-properties` MUST take a component node path `<page>/jcr:content/<node>[/<node>…]`
+whose page is inside `AEM_WRITE_ROOTS`; `jcr:content` alone MUST be rejected as `invalid-path`.
+The node MUST already exist (`not-found` otherwise; it never creates one). Field names MUST be
+plain names: a name containing `@`, starting with `:`, carrying a namespace, or one of `name`,
+`model`, `filter`, `modelFields`, `key-value` MUST be rejected as `forbidden-property-name`. The plan
+MUST send only the fields whose value changes, MUST re-check the node before applying, and MUST
+warn that a rollout overwrites an inherited component.
+
+#### Scenario: Fixing a block's configured link
+
+- GIVEN a block at `/content/acme-demo-site-eu/en/cart/jcr:content/root/section/block` whose
+  `checkout-url` is `/content/acme-demo-site-eu/en/checkout`
+- WHEN `aem_plan` is called with `component.set-properties`, `set: { "checkout-url": "/checkout" }`
+- THEN the plan changes only `checkout-url`, posts to the block's node and warns about rollouts
+
+#### Scenario: The node was edited in the editor meanwhile
+
+- GIVEN a plan for that block
+- WHEN an author changes the block before `aem_apply`
+- THEN `aem_apply` is rejected as `stale-plan` and nothing is written
+
+#### Scenario: A field that binds the node to Universal Editor
+
+- GIVEN `set: { model: "other" }`
+- WHEN `aem_plan` is called
+- THEN it is rejected with `forbidden-property-name`
 
 ### Requirement: Per-Page Robots Uses the Page-Metadata Field
 

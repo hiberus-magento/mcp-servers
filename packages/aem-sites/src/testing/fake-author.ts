@@ -17,6 +17,8 @@ export interface RecordedRequest {
 export interface FakeAuthor {
   readonly pages: Map<string, Record<string, unknown>>;
   readonly sheets: Map<string, Record<string, unknown>>;
+  /** Component nodes by path (`<page>/jcr:content/…`), read as `<path>.json`. */
+  readonly components: Map<string, Record<string, unknown>>;
   readonly requests: RecordedRequest[];
   readonly sleeps: number[];
   /** Status for POSTs whose path starts with the key; default 200. */
@@ -33,6 +35,7 @@ const json = (status: number, body?: unknown): Response =>
 export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAuthor {
   const pages = new Map<string, Record<string, unknown>>();
   const sheets = new Map<string, Record<string, unknown>>();
+  const components = new Map<string, Record<string, unknown>>();
   const requests: RecordedRequest[] = [];
   const sleeps: number[] = [];
   const postStatus = new Map<string, number>();
@@ -76,6 +79,11 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
       const dated = typeof body["cq:lastReplicationAction"] === "string" && body["cq:lastReplicated"] === undefined ? { "cq:lastReplicated": "2026-10-01" } : {};
       return json(200, { "jcr:primaryType": "cq:PageContent", ...dated, ...body });
     }
+    const component = /^(.*\/jcr:content\/.*)\.json$/.exec(url.pathname);
+    if (component?.[1] !== undefined) {
+      const body = components.get(component[1]);
+      return body === undefined ? json(404) : json(200, body);
+    }
     return json(404);
   }) as unknown as typeof globalThis.fetch;
 
@@ -89,5 +97,5 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
     origin,
   });
 
-  return { pages, sheets, requests, sleeps, postStatus, currentUser, client, posts: () => requests.filter((r) => r.method === "POST") };
+  return { pages, sheets, components, requests, sleeps, postStatus, currentUser, client, posts: () => requests.filter((r) => r.method === "POST") };
 }

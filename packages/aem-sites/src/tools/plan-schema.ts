@@ -28,6 +28,15 @@ const operationSchema = z.discriminatedUnion("kind", [
     .strict(),
   z
     .object({
+      kind: z.literal("component.set-properties"),
+      /** A component node: `<page>/jcr:content/<node>[/<node>…]`. */
+      path: z.string().min(1),
+      set: z.record(z.string(), propertyValue).optional(),
+      remove: z.array(z.string().min(1)).optional(),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal("page.set-robots"),
       paths: plannedPaths,
       /** Written to the page-metadata `robots` field; `null` removes it. */

@@ -8,8 +8,15 @@
 // The only Sling POST operators that ever appear in a request are emitted
 // here as constants — `@TypeHint`, `@Delete` and `:operation=delete` — next
 // to names that already passed `assertWritableProperty`/`assertSheetColumn`.
-import { assertAemPath, assertReadable, assertRolloutConfig, assertWritable } from "../guard/paths.js";
-import { assertPropertyValue, assertRobotsTokens, assertSheetColumn, assertWritableProperty, type PropertyValue } from "../guard/properties.js";
+import { assertAemPath, assertComponentPath, assertReadable, assertRolloutConfig, assertWritable } from "../guard/paths.js";
+import {
+  assertPropertyValue,
+  assertRobotsTokens,
+  assertSheetColumn,
+  assertWritableComponentProperty,
+  assertWritableProperty,
+  type PropertyValue,
+} from "../guard/properties.js";
 import type { FormFields } from "./http.js";
 
 /** An operation that is well-formed JSON but not something this server will build (empty change, self-move, …). */
@@ -104,6 +111,33 @@ export function buildSetProperties(scope: WriteScope, input: SetPropertiesInput)
   }
   form.push(CHARSET);
   return { method: "POST", path: `${path}/jcr:content`, form, label: `page properties of ${path}` };
+}
+
+/**
+ * Writes the fields of one existing component node (a block, a section…).
+ * The node path is `<page>/jcr:content/<node>…`; its page must be writable.
+ */
+export function buildSetComponentProperties(scope: WriteScope, input: SetPropertiesInput): PlannedRequest {
+  const { path } = assertComponentPath(input.path, scope.roots);
+  const form: (readonly [string, string])[] = [];
+  const set = Object.entries(input.set ?? {});
+  const remove = input.remove ?? [];
+  if (set.length === 0 && remove.length === 0) {
+    throw new InvalidOperationError("Nothing to change: give at least one field to set or remove.");
+  }
+  for (const [name, raw] of set) {
+    assertWritableComponentProperty(name);
+    form.push(...valueFields(name, assertPropertyValue(name, raw)));
+  }
+  for (const name of remove) {
+    assertWritableComponentProperty(name);
+    if (set.some(([setName]) => setName === name)) {
+      throw new InvalidOperationError(`"${name}" cannot be both set and removed.`);
+    }
+    form.push([`${name}@Delete`, ""]);
+  }
+  form.push(CHARSET);
+  return { method: "POST", path, form, label: `component ${path}` };
 }
 
 /**

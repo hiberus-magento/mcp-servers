@@ -1,7 +1,7 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 import { describe, expect, it } from "vitest";
 import { SYNTHETIC_ROOT } from "../testing/author-double.js";
-import { InvalidAemPathError, PathOutsideWriteRootsError } from "../guard/paths.js";
+import { InvalidAemPathError, InvalidComponentPathError, PathOutsideWriteRootsError } from "../guard/paths.js";
 import { ForbiddenPropertyNameError, InvalidPropertyValueError } from "../guard/properties.js";
 import { InvalidRolloutConfigError } from "../guard/paths.js";
 import {
@@ -13,6 +13,7 @@ import {
   buildDeletePage,
   buildMovePage,
   buildReplicate,
+  buildSetComponentProperties,
   buildSetProperties,
   buildSetRobots,
   buildSheetColumns,
@@ -221,5 +222,42 @@ describe("MSM and lock builders", () => {
     ]);
     expect(buildLockPage(scope, PAGE, false).form[0]).toEqual(["cmd", "unlockPage"]);
     expect(() => buildLockPage(scope, OUTSIDE, true)).toThrow(PathOutsideWriteRootsError);
+  });
+});
+
+describe("buildSetComponentProperties", () => {
+  const BLOCK = `${PAGE}/jcr:content/root/section/block`;
+
+  it("posts the fields to the component node with client-emitted operators only", () => {
+    expect(buildSetComponentProperties(scope, { path: BLOCK, set: { "checkout-url": "/checkout", "max-items": 6, "hide-heading": false, tags: ["a"] }, remove: ["start-shopping-url"] })).toEqual({
+      method: "POST",
+      path: BLOCK,
+      form: [
+        ["checkout-url", "/checkout"],
+        ["max-items", "6"],
+        ["max-items@TypeHint", "Long"],
+        ["hide-heading", "false"],
+        ["hide-heading@TypeHint", "Boolean"],
+        ["tags", "a"],
+        ["tags@TypeHint", "String[]"],
+        ["start-shopping-url@Delete", ""],
+        ["_charset_", "utf-8"],
+      ],
+      label: `component ${BLOCK}`,
+    });
+  });
+
+  it("refuses a page property path, a binding field, an operator and a namespaced name", () => {
+    expect(() => buildSetComponentProperties(scope, { path: `${PAGE}/jcr:content`, set: { title: "x" } })).toThrow(InvalidComponentPathError);
+    expect(() => buildSetComponentProperties(scope, { path: BLOCK, set: { model: "x" } })).toThrow(ForbiddenPropertyNameError);
+    expect(() => buildSetComponentProperties(scope, { path: BLOCK, set: { "title@MoveFrom": "/content/x" } })).toThrow(ForbiddenPropertyNameError);
+    expect(() => buildSetComponentProperties(scope, { path: BLOCK, remove: ["sling:resourceType"] })).toThrow(ForbiddenPropertyNameError);
+  });
+
+  it("refuses components outside the roots, empty changes, a field set and removed, and bad values", () => {
+    expect(() => buildSetComponentProperties(scope, { path: `${OUTSIDE}/jcr:content/root`, set: { title: "x" } })).toThrow(PathOutsideWriteRootsError);
+    expect(() => buildSetComponentProperties(scope, { path: BLOCK })).toThrow(/Nothing to change/);
+    expect(() => buildSetComponentProperties(scope, { path: BLOCK, set: { title: "x" }, remove: ["title"] })).toThrow(/both set and removed/);
+    expect(() => buildSetComponentProperties(scope, { path: BLOCK, set: { title: { nested: true } } })).toThrow(InvalidPropertyValueError);
   });
 });

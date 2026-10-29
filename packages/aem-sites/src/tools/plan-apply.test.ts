@@ -10,7 +10,7 @@ import { createPlanStore } from "../confirm/plan-store.js";
 import { SYNTHETIC_AEM_AUTHOR, SYNTHETIC_ROOT } from "../testing/author-double.js";
 import { createFakeAuthor, type FakeAuthor } from "../testing/fake-author.js";
 import { applyPlan, type ApplyResult } from "./apply.js";
-import { AGENT_PAUSE_MS, EDS_LIVE_WARNING, planOperation, type PlanResult, type StoredPlan } from "./plan-builder.js";
+import { AGENT_PAUSE_MS, COMPONENT_INHERITANCE_WARNING, EDS_LIVE_WARNING, planOperation, type PlanResult, type StoredPlan } from "./plan-builder.js";
 import { OPERATION_KINDS, type AemApplyInput, type OperationKind, type PlanOperation } from "./plan-schema.js";
 
 const EN = `${SYNTHETIC_ROOT}/en`;
@@ -18,6 +18,7 @@ const FR = `${SYNTHETIC_ROOT}/fr`;
 const PAGE = `${EN}/outdoor-gear`;
 const OLD = `${EN}/old`;
 const LOCKED = `${EN}/locked`;
+const BLOCK = `${PAGE}/jcr:content/root/section/block`;
 const SHEET = `${SYNTHETIC_ROOT}/metadata`;
 const FR_SHEET = `${FR}/metadata`;
 const TTL = 1_000;
@@ -28,6 +29,14 @@ function seed(author: FakeAuthor): void {
   author.pages.set(PAGE, { "jcr:title": "Outdoor gear", "cq:lastReplicationAction": "Activate", "cq:lastModified": "1" });
   author.pages.set(OLD, { "jcr:title": "Old" });
   author.pages.set(LOCKED, { "jcr:title": "Locked", "jcr:lockOwner": author.currentUser.id });
+  author.components.set(BLOCK, {
+    "jcr:primaryType": "nt:unstructured",
+    "sling:resourceType": "core/franklin/components/block/v1/block",
+    name: "commerce-cart",
+    model: "commerce-cart",
+    "checkout-url": `${EN}/checkout`,
+    "start-shopping-url": EN,
+  });
   author.sheets.set(FR_SHEET, {
     "jcr:primaryType": "cq:PageContent",
     columns: ["url", "Robots"],
@@ -77,6 +86,10 @@ const CASES: Record<OperationKind, { readonly operation: PlanOperation; readonly
   "page.set-properties": {
     operation: { kind: "page.set-properties", path: PAGE, set: { "jcr:title": "Gear" } },
     stale: (a) => a.pages.set(PAGE, { ...a.pages.get(PAGE), "jcr:title": "Edited meanwhile" }),
+  },
+  "component.set-properties": {
+    operation: { kind: "component.set-properties", path: BLOCK, set: { "checkout-url": "/checkout" } },
+    stale: (a) => a.components.set(BLOCK, { ...a.components.get(BLOCK), "checkout-url": "/edited-in-the-editor" }),
   },
   "page.set-robots": {
     operation: { kind: "page.set-robots", paths: [PAGE], robots: ["noindex", "nofollow"] },
@@ -215,6 +228,41 @@ describe("plan contents", () => {
     });
     h.author.pages.set(PAGE, { ...h.author.pages.get(PAGE), robots: "nofollow, NoIndex" });
     expect((await h.plan({ kind: "page.set-robots", paths: [PAGE], robots: ["noindex", "nofollow"] })).status).toBe("no-changes");
+  });
+
+  it("component.set-properties sends only the changed fields to the node and warns about rollouts", async () => {
+    const h = harness();
+    const plan = planned(
+      await h.plan({ kind: "component.set-properties", path: BLOCK, set: { "checkout-url": "/checkout", "start-shopping-url": EN }, remove: ["max-items"] }),
+    );
+    expect(plan.changes).toEqual([{ path: BLOCK, what: "checkout-url", before: `${EN}/checkout`, after: "/checkout" }]);
+    expect(plan.warnings).toContain(COMPONENT_INHERITANCE_WARNING);
+    expect(plan.requests).toEqual([{ method: "POST", path: BLOCK, label: `component ${BLOCK}` }]);
+    await h.apply({ token: plan.token, env: "stage", kind: "component.set-properties" });
+    expect(h.author.posts()[0]).toMatchObject({ path: BLOCK, body: "checkout-url=%2Fcheckout&_charset_=utf-8" });
+  });
+
+  it("component.set-properties: a no-op, a missing node, a binding field and a page path", async () => {
+    const h = harness();
+    expect(await h.plan({ kind: "component.set-properties", path: BLOCK, set: { "start-shopping-url": EN } })).toEqual({
+      status: "no-changes",
+      env: "stage",
+      kind: "component.set-properties",
+      summary: `${BLOCK} already has these fields.`,
+    });
+    expect(await h.plan({ kind: "component.set-properties", path: `${PAGE}/jcr:content/root/section/missing`, set: { title: "x" } })).toMatchObject({
+      status: "rejected",
+      reason: "not-found",
+    });
+    expect(await h.plan({ kind: "component.set-properties", path: BLOCK, set: { model: "other" } })).toMatchObject({
+      status: "rejected",
+      reason: "forbidden-property-name",
+    });
+    expect(await h.plan({ kind: "component.set-properties", path: `${PAGE}/jcr:content`, set: { title: "x" } })).toMatchObject({
+      status: "rejected",
+      reason: "invalid-path",
+    });
+    expect(h.author.posts()).toEqual([]);
   });
 
   it("sheet.upsert-row creates the metadata sheet, its columns and the /** row (field-proven order)", async () => {

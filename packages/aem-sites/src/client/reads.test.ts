@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { createAuthorDouble, SYNTHETIC_ROOT } from "../testing/author-double.js";
 import { InvalidAemPathError } from "../guard/paths.js";
-import { listTemplates, probeAuth, queryPages, queryPublishedPages, readCurrentUser, readPage, readPageTree, readSheet } from "./reads.js";
+import { listTemplates, probeAuth, queryPages, queryPublishedPages, readComponent, readCurrentUser, readPage, readPageTree, readSheet } from "./reads.js";
 
 const PAGE = `${SYNTHETIC_ROOT}/en/outdoor-gear`;
 const SHEET = `${SYNTHETIC_ROOT}/metadata`;
@@ -218,5 +218,38 @@ describe("Live Copy info and the current user", () => {
   it("reads the token's user id", async () => {
     const { http } = createAuthorDouble({ "GET /libs/granite/security/currentuser.json": { status: 200, body: { authorizableId: "demo-user", home: "/home/users/x" } } });
     expect(await readCurrentUser(http)).toBe("demo-user");
+  });
+});
+
+describe("readComponent", () => {
+  const BLOCK = `${PAGE}/jcr:content/root/section/block`;
+
+  it("returns the node's own authored fields, without child nodes or bookkeeping", async () => {
+    const { http, calls } = createAuthorDouble({
+      [`GET ${BLOCK}.json`]: {
+        status: 200,
+        body: {
+          "jcr:primaryType": "nt:unstructured",
+          "sling:resourceType": "core/franklin/components/block/v1/block",
+          "jcr:lastModified": "x",
+          name: "commerce-cart",
+          "checkout-url": "/checkout",
+          "max-items": 6,
+          tags: ["a"],
+          item: { "jcr:primaryType": "nt:unstructured", text: "child" },
+        },
+      },
+    });
+    expect(await readComponent(http, BLOCK)).toEqual({
+      path: BLOCK,
+      resourceType: "core/franklin/components/block/v1/block",
+      properties: { name: "commerce-cart", "checkout-url": "/checkout", "max-items": 6, tags: ["a"] },
+    });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("is undefined when the node does not exist", async () => {
+    const { http } = createAuthorDouble({ [`GET ${BLOCK}.json`]: { status: 404 } });
+    expect(await readComponent(http, BLOCK)).toBeUndefined();
   });
 });

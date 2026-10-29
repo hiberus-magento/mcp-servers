@@ -38,10 +38,19 @@ after checking the token is known, unexpired and unused, and that the state
 the user reviewed has not changed since. A model cannot apply anything other
 than what the user was shown.
 
-Operation kinds: `page.set-properties`, `page.set-robots`, `sheet.upsert-row`,
-`sheet.delete-row`, `page.publish`, `page.unpublish`, `page.create`,
-`page.copy`, `page.move`, `page.delete`, `livecopy.create`, `page.lock`,
-`page.unlock`.
+Operation kinds: `page.set-properties`, `component.set-properties`,
+`page.set-robots`, `sheet.upsert-row`, `sheet.delete-row`, `page.publish`,
+`page.unpublish`, `page.create`, `page.copy`, `page.move`, `page.delete`,
+`livecopy.create`, `page.lock`, `page.unlock`.
+
+**Component fields.** `component.set-properties` edits the fields of one
+existing component node — for example a block's configured link — at
+`<page>/jcr:content/<node>…`. It never creates, moves or deletes a component.
+Field names are what the block's model declares; Sling operators, namespaced
+names and the fields that bind the node to Universal Editor (`name`, `model`,
+`filter`, `modelFields`, `key-value`) are refused. On a Live Copy the next
+rollout overwrites the edit unless the component's inheritance is cancelled in
+the editor; every plan says so.
 
 **Live Copies and locks.** `livecopy.create` makes an MSM Live Copy (Standard
 rollout config unless told otherwise; the source may be any readable page, the
@@ -73,7 +82,7 @@ through this server, not what an editor can do in the Sites console.
 - `aem_get_sheet` (read-only) — Use this to read a sheet page's columns and rows, e.g. the EDS bulk metadata sheet.
 - `aem_list_templates` (read-only) — Use this before planning page.create, to find template paths under a /conf root.
 - `aem_get_page_tree` (read-only) — Use this when you need a page's component tree, depth 1–4.
-- `aem_plan` (read-only) — Use this whenever you want to change anything on an AEM author — including creating a Live Copy or locking a page; it returns exactly what would change and a one-time token, and never writes.
+- `aem_plan` (read-only) — Use this whenever you want to change anything on an AEM author — including a component's fields, creating a Live Copy or locking a page; it returns exactly what would change and a one-time token, and never writes.
 - `aem_apply` — Use this only after the user explicitly confirms a plan from aem_plan; it sends exactly the planned requests and nothing else.
 
 ## Environment

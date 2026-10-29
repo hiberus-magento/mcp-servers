@@ -14,6 +14,7 @@ import {
   buildLockPage,
   buildMovePage,
   buildReplicate,
+  buildSetComponentProperties,
   buildSetProperties,
   buildSetRobots,
   buildSheetColumns,
@@ -23,10 +24,12 @@ import {
   nextRowNode,
   parseRobots,
   queryPublishedPages,
+  readComponent,
   readCurrentUser,
   readPage,
   readSheet,
   type AemClient,
+  type ComponentDetails,
   type PageDetails,
   type PlannedRequest,
   type ReplicationAgent,
@@ -40,6 +43,7 @@ import {
   assertWritable,
   BUILTIN_ROLLOUT_CONFIGS,
   InvalidAemPathError,
+  InvalidComponentPathError,
   InvalidRolloutConfigError,
   PathNotReadableError,
   PathOutsideWriteRootsError,
@@ -69,6 +73,7 @@ export type StateCheck =
   | { readonly kind: "page"; readonly path: string; readonly sha256: string }
   | { readonly kind: "page-present"; readonly path: string }
   | { readonly kind: "page-absent"; readonly path: string }
+  | { readonly kind: "component"; readonly path: string; readonly sha256: string }
   | { readonly kind: "sheet"; readonly path: string; readonly sha256: string }
   | { readonly kind: "sheet-absent"; readonly path: string };
 
@@ -150,7 +155,7 @@ export function rejectionFor(error: unknown): PlanRejection | undefined {
   if (error instanceof PathOutsideWriteRootsError) {
     return new PlanRejection("path-outside-write-roots", error.message);
   }
-  if (error instanceof InvalidAemPathError || error instanceof PathNotReadableError) {
+  if (error instanceof InvalidAemPathError || error instanceof InvalidComponentPathError || error instanceof PathNotReadableError) {
     return new PlanRejection("invalid-path", error.message);
   }
   if (error instanceof ForbiddenPropertyNameError) {
@@ -183,6 +188,8 @@ type Context = { readonly client: AemClient; readonly scope: WriteScope; readonl
 
 export const LIVE_COPY_NOTE =
   "A Live Copy inherits its content from the source: editing an inherited component requires an author to cancel inheritance, and a rollout from the source overwrites inherited content. The new page is not published.";
+export const COMPONENT_INHERITANCE_WARNING =
+  "If this page is a Live Copy, the component is inherited: the next rollout from its source overwrites this edit unless an author cancels the component's inheritance in the editor.";
 export const LOCK_NOTE =
   "A lock stops OTHER users from editing this page and the pages below it; the lock owner — the user this server's token belongs to — can still edit. It does not change permissions.";
 
@@ -219,6 +226,7 @@ async function requireAbsent(ctx: Context, path: string): Promise<void> {
 }
 
 const pageCheck = (page: PageDetails): StateCheck => ({ kind: "page", path: page.path, sha256: fingerprint(page) });
+const componentCheck = (component: ComponentDetails): StateCheck => ({ kind: "component", path: component.path, sha256: fingerprint(component) });
 const sheetCheck = (sheet: Sheet): StateCheck => ({ kind: "sheet", path: sheet.path, sha256: fingerprint(sheet) });
 
 function agents(target: "preview" | "publish" | "both"): readonly ReplicationAgent[] {
@@ -259,6 +267,40 @@ async function draftSetProperties(ctx: Context, op: Extract<PlanOperation, { kin
   }
   const request = buildSetProperties(ctx.scope, { path: op.path, set, remove });
   return { steps: [{ request }], checks: [pageCheck(page)], changes, targets: [op.path], summary: `Change ${changes.length} page propert${changes.length === 1 ? "y" : "ies"} of ${op.path}.` };
+}
+
+async function draftSetComponentProperties(ctx: Context, op: Extract<PlanOperation, { kind: "component.set-properties" }>): Promise<Draft> {
+  // Validate the whole request first, so a forbidden name or path is rejected before any read.
+  const fields = { ...(op.set !== undefined ? { set: op.set } : {}), ...(op.remove !== undefined ? { remove: op.remove } : {}) };
+  buildSetComponentProperties(ctx.scope, { path: op.path, ...fields });
+  const component = await readComponent(ctx.client.http, op.path);
+  if (component === undefined) {
+    throw new PlanRejection("not-found", `There is no component at ${op.path}. This operation edits an existing component; it never creates one.`);
+  }
+  const set: Record<string, unknown> = {};
+  const changes: Change[] = [];
+  for (const [name, value] of Object.entries(op.set ?? {})) {
+    if (!sameValue(component.properties[name], value)) {
+      set[name] = value;
+      changes.push({ path: op.path, what: name, before: component.properties[name], after: value });
+    }
+  }
+  const remove = (op.remove ?? []).filter((name) => component.properties[name] !== undefined);
+  for (const name of remove) {
+    changes.push({ path: op.path, what: name, before: component.properties[name] });
+  }
+  if (changes.length === 0) {
+    return { steps: [], checks: [], changes, targets: [op.path], summary: `${op.path} already has these fields.` };
+  }
+  const request = buildSetComponentProperties(ctx.scope, { path: op.path, set, remove });
+  return {
+    steps: [{ request }],
+    checks: [componentCheck(component)],
+    changes,
+    targets: [op.path],
+    summary: `Change ${changes.length} field${changes.length === 1 ? "" : "s"} of the component ${op.path}.`,
+    warnings: [COMPONENT_INHERITANCE_WARNING],
+  };
 }
 
 async function draftSetRobots(ctx: Context, op: Extract<PlanOperation, { kind: "page.set-robots" }>): Promise<Draft> {
@@ -531,6 +573,8 @@ function draftFor(ctx: Context, op: PlanOperation): Promise<Draft> {
   switch (op.kind) {
     case "page.set-properties":
       return draftSetProperties(ctx, op);
+    case "component.set-properties":
+      return draftSetComponentProperties(ctx, op);
     case "page.set-robots":
       return draftSetRobots(ctx, op);
     case "sheet.upsert-row":

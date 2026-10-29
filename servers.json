@@ -288,7 +288,7 @@
         {
           "name": "aem_plan",
           "readOnly": true,
-          "description": "Use this whenever you want to change anything on an AEM author — including creating a Live Copy or locking a page; it returns exactly what would change and a one-time token, and never writes."
+          "description": "Use this whenever you want to change anything on an AEM author — including a component's fields, creating a Live Copy or locking a page; it returns exactly what would change and a one-time token, and never writes."
         },
         {
           "name": "aem_apply",
