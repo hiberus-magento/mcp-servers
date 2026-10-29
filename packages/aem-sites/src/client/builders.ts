@@ -291,12 +291,22 @@ export function buildMovePage(scope: WriteScope, input: { readonly srcPath: stri
   };
 }
 
-export function buildDeletePage(scope: WriteScope, path: string): PlannedRequest {
+/**
+ * `force: true` is the Sites console's *Force Delete*: the author deletes the
+ * page even when other pages or Live Copies reference it (412 otherwise).
+ */
+export function buildDeletePage(scope: WriteScope, path: string, options: { readonly force?: boolean } = {}): PlannedRequest {
   assertWritable(path, scope.roots);
   if (scope.roots.includes(path)) {
     throw new InvalidOperationError(`${path} is a write root; deleting a whole root is not offered.`);
   }
-  return { method: "POST", path: WCM_COMMAND, form: [["cmd", "deletePage"], CHARSET, ["path", path], ["force", "false"]], label: `delete ${path}` };
+  const force = options.force === true;
+  return {
+    method: "POST",
+    path: WCM_COMMAND,
+    form: [["cmd", "deletePage"], CHARSET, ["path", path], ["force", String(force)]],
+    label: `${force ? "force-delete" : "delete"} ${path}`,
+  };
 }
 
 // ---------------------------------------------------------------------------

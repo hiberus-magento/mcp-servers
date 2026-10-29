@@ -110,7 +110,11 @@ describe("aem_plan input schema", () => {
   const plan = tools.find((t) => t.name === "aem_plan");
 
   it("rejects a field a kind does not take", async () => {
-    await expect(plan?.invoke({ env: "stage", operation: { kind: "page.delete", path: `${SYNTHETIC_ROOT}/en`, force: true } }, {})).rejects.toThrow();
+    await expect(plan?.invoke({ env: "stage", operation: { kind: "page.lock", path: `${SYNTHETIC_ROOT}/en`, force: true } }, {})).rejects.toThrow();
+  });
+
+  it("takes force on page.delete, and only a boolean", async () => {
+    await expect(plan?.invoke({ env: "stage", operation: { kind: "page.delete", path: `${SYNTHETIC_ROOT}/en`, force: "yes" } }, {})).rejects.toThrow();
   });
 
   it("rejects more than 100 paths", async () => {

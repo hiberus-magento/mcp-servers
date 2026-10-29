@@ -44,6 +44,18 @@ author) and attach it as `CSRF-Token` to every POST.
 - WHEN `send` retries
 - THEN it refreshes the CSRF token once and resends the identical request
 
+### Requirement: Status Errors Keep the Author's Message
+
+A non-2xx answer that is not an authentication failure MUST become `AemStatusError` with a
+`detail`: a JSON or text body as a whitespace-collapsed excerpt, an HTML body only as the text of
+Sling's status message (`<div id="Message">`), and nothing else of an HTML page.
+
+#### Scenario: Delete refused with an HTML status page
+
+- GIVEN `/bin/wcmcommand` answering 412 with a Sling HTML page whose message explains the refusal
+- WHEN `send` fails
+- THEN the error's detail is that message, and no other text of the page
+
 ### Requirement: Field-Proven Retry Policy
 
 `send` MUST retry `409` after 1 s, 2 s and 4 s; MUST retry `400` on `/bin/replicate` once after 3 s;

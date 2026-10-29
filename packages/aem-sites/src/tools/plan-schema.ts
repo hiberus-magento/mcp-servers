@@ -75,7 +75,14 @@ const operationSchema = z.discriminatedUnion("kind", [
     })
     .strict(),
   z.object({ kind: z.literal("page.move"), srcPath: z.string().min(1), destParentPath: z.string().min(1), destName: z.string().min(1).optional() }).strict(),
-  z.object({ kind: z.literal("page.delete"), path: z.string().min(1) }).strict(),
+  z
+    .object({
+      kind: z.literal("page.delete"),
+      path: z.string().min(1),
+      /** The Sites console's Force Delete: delete even when other pages or Live Copies reference it. */
+      force: z.boolean().optional(),
+    })
+    .strict(),
   z
     .object({
       kind: z.literal("livecopy.create"),

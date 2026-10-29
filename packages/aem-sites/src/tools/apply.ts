@@ -6,11 +6,11 @@
 // known, unexpired and unused, that the echoes match, that a protected plan
 // carries the typed confirmation, and that the state the user reviewed has
 // not changed. Only then is the token consumed and the first request sent.
-import { readComponent, readPage, readSheet, type AemClient } from "../client/index.js";
+import { AemError, readComponent, readPage, readSheet, type AemClient } from "../client/index.js";
 import type { AemConfig } from "../config.js";
 import { fingerprint } from "../confirm/fingerprint.js";
 import type { PlanStore } from "../confirm/plan-store.js";
-import type { StateCheck, StoredPlan } from "./plan-builder.js";
+import type { PlannedStep, StateCheck, StoredPlan } from "./plan-builder.js";
 import type { AemApplyInput, OperationKind } from "./plan-schema.js";
 
 export type ApplyRejectionReason =
@@ -49,6 +49,12 @@ export interface ApplyDeps {
 }
 
 const reject = (reason: ApplyRejectionReason, message: string): ApplyResult => ({ status: "rejected", reason, message });
+
+function failureMessage(error: unknown, hints: PlannedStep["hints"]): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const hint = error instanceof AemError && error.status !== undefined ? hints?.[error.status] : undefined;
+  return hint !== undefined ? `${message}\n${hint}` : message;
+}
 
 async function stillHolds(client: AemClient, config: AemConfig, check: StateCheck): Promise<boolean> {
   switch (check.kind) {
@@ -122,7 +128,7 @@ export async function applyPlan(deps: ApplyDeps, input: AemApplyInput): Promise<
         env: plan.env,
         kind: plan.kind,
         completed,
-        failed: { label: step.request.label, message: error instanceof Error ? error.message : String(error) },
+        failed: { label: step.request.label, message: failureMessage(error, step.hints) },
         notSent: plan.steps.length - index - 1,
       };
     }

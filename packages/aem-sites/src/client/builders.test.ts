@@ -168,14 +168,15 @@ describe("page lifecycle builders", () => {
     expect(buildMovePage(scope, { srcPath: PAGE, destParentPath: `${SYNTHETIC_ROOT}/fr`, destName: "x" }).form).toContainEqual(["cmd", "movePage"]);
   });
 
-  it("deletes with force=false and never a whole root", () => {
+  it("deletes with force=false unless forced, and never a whole root", () => {
     expect(buildDeletePage(scope, PAGE).form).toEqual([
       ["cmd", "deletePage"],
       ["_charset_", "utf-8"],
       ["path", PAGE],
       ["force", "false"],
     ]);
-    expect(() => buildDeletePage(scope, SYNTHETIC_ROOT)).toThrow(/write root/);
+    expect(buildDeletePage(scope, PAGE, { force: true }).form).toContainEqual(["force", "true"]);
+    expect(() => buildDeletePage(scope, SYNTHETIC_ROOT, { force: true })).toThrow(/write root/);
   });
 });
 

@@ -74,6 +74,12 @@ function looksLikeHtml(text: string): boolean {
   return /^\s*</.test(text);
 }
 
+/** The message of Sling's HTML status page (`<div id="Message">`), the only part of an HTML error body kept. */
+function slingMessage(text: string): string | undefined {
+  const match = /<div id="Message">([^<]*)<\/div>/.exec(text);
+  return match?.[1] !== undefined ? excerpt(match[1]) : undefined;
+}
+
 function retryAfterMs(headers: Headers, attempt: number): number {
   const header = headers.get("retry-after");
   const seconds = header !== null ? Number(header) : Number.NaN;
@@ -185,7 +191,7 @@ export function createAuthorHttp(deps: AuthorHttpDeps): AuthorHttp {
         throttleRetries += 1;
         continue;
       }
-      throw new AemStatusError({ status, request, detail: looksLikeHtml(text) ? undefined : excerpt(text) });
+      throw new AemStatusError({ status, request, detail: looksLikeHtml(text) ? slingMessage(text) : excerpt(text) });
     }
   };
 

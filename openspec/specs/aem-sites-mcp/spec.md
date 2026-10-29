@@ -128,14 +128,29 @@ path MUST be rejected at plan time unless `AEM_ALLOW_PROTECTED_PUBLISH=1`.
 
 `page.delete` MUST be rejected at plan time if the page or any descendant is activated on the
 publish agent, naming up to ten of them and the count, so the user can plan `page.unpublish`
-first. Because AEM does not record preview state, the plan MUST warn that pages on preview cannot
-be checked.
+first, with or without `force`. Because AEM does not record preview state, the plan MUST warn
+that pages on preview cannot be checked.
 
 #### Scenario: Deleting a live page
 
 - GIVEN a page whose last replication action on `publish` is `Activate`
-- WHEN `aem_plan` is called with `page.delete` on it
+- WHEN `aem_plan` is called with `page.delete` on it, with or without `force: true`
 - THEN it is rejected with `page-is-published`, naming the published paths
+
+### Requirement: Forced Delete
+
+`page.delete` MUST send `force=false` unless the operation says `force: true`, which MUST send
+`force=true`. A forced plan MUST say so in its summary and MUST warn that pages or Live Copies
+referencing the deleted pages are left broken. When an unforced delete is answered 412, the
+failure MUST name references as the cause and `force: true` as the way out; a forced one MUST NOT
+suggest forcing.
+
+#### Scenario: Deleting a referenced subtree
+
+- GIVEN a store folder whose pages link to each other
+- WHEN `page.delete` is applied without `force` and the author answers 412
+- THEN the failure says the pages are referenced and to plan again with `force: true`
+- AND a plan with `force: true` shows the forced summary and warning, and its apply sends `force=true`
 
 ### Requirement: One Bearer Token per Environment
 
@@ -178,7 +193,7 @@ matrix (forged, expired, reused, stale, echo mismatch) before any write.
 
 #### Scenario: A field the kind does not take
 
-- GIVEN `{ kind: "page.delete", path, force: true }`
+- GIVEN `{ kind: "page.lock", path, force: true }`
 - WHEN `aem_plan` is called
 - THEN the input is rejected by the schema and nothing is read
 

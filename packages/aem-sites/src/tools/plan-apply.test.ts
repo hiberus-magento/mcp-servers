@@ -379,6 +379,45 @@ describe("page.delete", () => {
     expect(await h.plan({ kind: "page.delete", path: EN })).toMatchObject({ status: "rejected", reason: "page-is-published", message: expect.stringContaining(PAGE) });
     expect(h.author.posts()).toEqual([]);
   });
+
+  it("a forced delete says so, warns about broken links and sends force=true", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "page.delete", path: OLD, force: true }));
+    expect(plan.summary).toContain("force");
+    expect(plan.warnings.join(" ")).toContain("references");
+    expect(plan.confirmationMessage).toContain("force");
+    await h.apply({ token: plan.token, env: "stage", kind: "page.delete" });
+    expect(h.author.posts()[0]?.body).toContain("force=true");
+  });
+
+  it("force never deletes published content", async () => {
+    const h = harness();
+    expect(await h.plan({ kind: "page.delete", path: EN, force: true })).toMatchObject({ status: "rejected", reason: "page-is-published" });
+  });
+
+  it("an unforced delete refused with 412 names the references and the way out", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "page.delete", path: OLD }));
+    h.author.postStatus.set("/bin/wcmcommand", 412);
+    const result = await h.apply({ token: plan.token, env: "stage", kind: "page.delete" });
+    expect(result).toMatchObject({ status: "failed", failed: { message: expect.stringContaining("force: true") } });
+  });
+
+  it("a forced delete refused with 412 gets no hint to force again", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "page.delete", path: OLD, force: true }));
+    h.author.postStatus.set("/bin/wcmcommand", 412);
+    const result = await h.apply({ token: plan.token, env: "stage", kind: "page.delete" });
+    expect(result).toMatchObject({ status: "failed", failed: { message: expect.not.stringContaining("force: true") } });
+  });
+
+  it("a forced delete is stale when the page changed after the plan", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "page.delete", path: OLD, force: true }));
+    h.author.pages.set(OLD, { "jcr:title": "Old, edited" });
+    expect(await h.apply({ token: plan.token, env: "stage", kind: "page.delete" })).toMatchObject({ status: "rejected", reason: "stale-plan" });
+    expect(h.author.posts()).toEqual([]);
+  });
 });
 
 describe("Live Copies and locks", () => {

@@ -65,6 +65,10 @@ export const EDS_UNPUBLISH_WARNING = "Unpublishing from the publish agent remove
 export const ROBOTS_UNVERIFIED_WARNING =
   "Writes the robots field of the EDS page-metadata model. That EDS renders it as <meta name=\"robots\"> once the page is published has not yet been verified on a live page; the site-wide route is a row in the EDS metadata sheet (sheet.upsert-row).";
 export const PREVIEW_UNKNOWN = "unknown (AEM does not record preview replication)";
+export const FORCE_DELETE_WARNING =
+  "Forced: the author deletes these pages even when other pages or Live Copies reference them; those references are left broken.";
+export const DELETE_REFERENCED_HINT =
+  "The author refuses to delete a page that other pages or Live Copies reference (links between the deleted pages count too). To delete it anyway, plan page.delete again with force: true and show the user that plan.";
 
 /** Pause between the preview and publish agents (field finding: publish right after preview answered 400). */
 export const AGENT_PAUSE_MS = 1_000;
@@ -80,6 +84,8 @@ export type StateCheck =
 export interface PlannedStep {
   readonly request: PlannedRequest;
   readonly pauseBeforeMs?: number;
+  /** Appended to the failure message when the author answers this step with that HTTP status. */
+  readonly hints?: Readonly<Record<number, string>>;
 }
 
 export interface StoredPlan {
@@ -499,7 +505,8 @@ async function draftCopyOrMove(ctx: Context, op: Extract<PlanOperation, { kind: 
 }
 
 async function draftDelete(ctx: Context, op: Extract<PlanOperation, { kind: "page.delete" }>): Promise<Draft> {
-  const request = buildDeletePage(ctx.scope, op.path);
+  const force = op.force === true;
+  const request = buildDeletePage(ctx.scope, op.path, { force });
   const page = await requirePage(ctx, op.path);
   const published = await queryPublishedPages(ctx.client.http, op.path);
   if (published.length > 0) {
@@ -508,13 +515,14 @@ async function draftDelete(ctx: Context, op: Extract<PlanOperation, { kind: "pag
       `${published.length === 100 ? "At least 100" : published.length} page(s) at or below ${op.path} are published on publish and must be unpublished first (aem_plan page.unpublish), e.g. ${published.slice(0, 10).join(", ")}${published.length > 10 ? ` and ${published.length - 10} more` : ""}.`,
     );
   }
+  const previewWarning = `Only publish-agent state can be checked; if any of these pages is on preview, unpublish it from preview first (preview state is ${PREVIEW_UNKNOWN}).`;
   return {
-    steps: [{ request }],
+    steps: [force ? { request } : { request, hints: { 412: DELETE_REFERENCED_HINT } }],
     checks: [pageCheck(page)],
     changes: [{ path: op.path, what: "page", before: page.properties["jcr:title"] ?? op.path }],
     targets: [op.path],
-    summary: `Delete ${op.path} and every page below it.`,
-    warnings: [`Only publish-agent state can be checked; if any of these pages is on preview, unpublish it from preview first (preview state is ${PREVIEW_UNKNOWN}).`],
+    summary: force ? `Delete ${op.path} and every page below it, with force (references ignored).` : `Delete ${op.path} and every page below it.`,
+    warnings: force ? [FORCE_DELETE_WARNING, previewWarning] : [previewWarning],
   };
 }
 

@@ -43,6 +43,14 @@ Operation kinds: `page.set-properties`, `component.set-properties`,
 `page.unpublish`, `page.create`, `page.copy`, `page.move`, `page.delete`,
 `livecopy.create`, `page.lock`, `page.unlock`.
 
+**Deleting.** `page.delete` refuses a page that is, or has a descendant that
+is, activated on publish: unpublish it first. The author also refuses (412) to
+delete a page that other pages or Live Copies reference, and for a subtree the
+links between its own pages count. `force: true` is the Sites console's *Force
+Delete*: the plan says so and warns that those references are left broken. It
+never lifts the published-content check. A 412 without `force` names that way
+out.
+
 **Component fields.** `component.set-properties` edits the fields of one
 existing component node — for example a block's configured link — at
 `<page>/jcr:content/<node>…`. It never creates, moves or deletes a component.
