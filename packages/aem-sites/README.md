@@ -50,8 +50,11 @@ operators, protected paths): an operation may depend on pages an earlier one
 creates, so each is planned against the author's state when its turn comes,
 and applied at once. The first rejection or failed request stops the batch;
 nothing before it is rolled back. The result lists each operation with its
-request counts. `page.publish-tree` publishes every page at or below a root,
-listed when it is planned.
+request counts. When the client sends a `progressToken`, apply reports
+progress before each operation and after each request, so a batch that runs
+for most of an hour does not hit the client's idle timeout.
+`page.publish-tree` publishes every page at or below a root, listed when it is
+planned.
 
 **Deleting.** `page.delete` refuses a page that is, or has a descendant that
 is, activated on publish: unpublish it first. The author also refuses (412) to

@@ -13,6 +13,8 @@
 - [x] 2.4 CLI output for batch results.
 - [x] 2.5 Read-after-write: a batch operation rejected as `not-found` is re-planned up to 5 times, 2 s apart (observed 2026-10-30: a page created by one operation was not found by the next).
 
+- [x] 2.6 Progress: with a client `progressToken`, `notifications/progress` before each operation and after each request (total = operations, growing only); a failed notification never stops the batch. `ToolContext.reportProgress` in `mcp-core` (observed in 4.1: the client dropped a 45-minute apply after 30 minutes without progress).
+
 ## Phase 3: Docs
 
 - [x] 3.1 `aem_plan` description, README, spec `aem-sites-mcp` (Batches, Tree Publish, kinds).

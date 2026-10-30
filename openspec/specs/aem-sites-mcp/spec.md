@@ -118,7 +118,16 @@ and without reading or writing; protected targets MUST require the typed confirm
 Its confirmation MUST list every operation and warn that requests are planned when applied. The
 token MUST live 60 minutes. Apply MUST plan each operation against the current state when its turn
 comes, send its requests, skip one with nothing to change, and stop at the first rejection or failed
-request, reporting per operation and how many did not run.
+request, reporting per operation and how many did not run. When the client sends a
+`progressToken`, apply MUST notify progress before each operation and after each request it
+sends (total: the number of operations; progress only grows), and a notification the client cannot
+take MUST NOT stop the batch.
+
+#### Scenario: A long batch keeps the call alive
+
+- GIVEN a batch whose apply takes longer than the client's idle timeout
+- WHEN the client called `aem_apply` with a `progressToken`
+- THEN it receives a progress notification at least after every request sent
 
 #### Scenario: A store rebuilt under one confirmation
 

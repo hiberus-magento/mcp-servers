@@ -6,7 +6,7 @@
 // Published Content". The token matrix runs for EVERY operation kind.
 import { describe, expect, it } from "vitest";
 import { parseConfig, type AemConfig } from "../config.js";
-import { createPlanStore } from "../confirm/plan-store.js";
+import { createPlanStore, type PlanStore } from "../confirm/plan-store.js";
 import { SYNTHETIC_AEM_AUTHOR, SYNTHETIC_ROOT } from "../testing/author-double.js";
 import { createFakeAuthor, type FakeAuthor } from "../testing/fake-author.js";
 import { applyPlan, type ApplyResult } from "./apply.js";
@@ -47,6 +47,7 @@ function seed(author: FakeAuthor): void {
 interface Harness {
   readonly author: FakeAuthor;
   readonly config: AemConfig;
+  readonly store: PlanStore<StoredPlan>;
   plan(operation: PlanOperation, env?: string): Promise<PlanResult>;
   apply(input: AemApplyInput): Promise<ApplyResult>;
   advance(ms: number): void;
@@ -66,6 +67,7 @@ function harness(variables: Record<string, string> = {}): Harness {
   return {
     author,
     config,
+    store,
     plan: (operation, env = "stage") => planOperation(deps, { env, operation }),
     apply: (input) => applyPlan({ ...deps, sleep: async (ms) => void author.sleeps.push(ms) }, input),
     advance: (ms) => {
@@ -568,6 +570,29 @@ describe("batch", () => {
     const result = await h.apply({ token: plan.token, env: "stage", kind: "batch" });
     expect(result).toMatchObject({ status: "failed", failed: { index: 1, message: expect.stringContaining("not-found") } });
     expect(h.author.sleeps).toEqual(Array.from({ length: BATCH_READ_RETRIES }, () => BATCH_READ_RETRY_MS));
+  });
+
+  it("reports growing progress before each operation and after each request, and ignores a client that cannot take it", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "batch", operations: OPS }));
+    const reports: { progress: number; total: number | undefined; message: string }[] = [];
+    const result = await applyPlan(
+      {
+        config: h.config,
+        clientFor: () => h.author.client,
+        store: h.store,
+        sleep: async () => {},
+        reportProgress: async (progress, total, message) => {
+          reports.push({ progress, total, message });
+          throw new Error("client gone");
+        },
+      },
+      { token: plan.token, env: "stage", kind: "batch" },
+    );
+    expect(result.status).toBe("applied");
+    expect(reports.map((r) => r.progress)).toEqual([0, 1, 2]);
+    expect(reports.every((r) => r.total === 2)).toBe(true);
+    expect(reports[0]?.message).toBe("operation 1/2: page.set-properties");
   });
 
   it("an operation with nothing to change is skipped, not a failure", async () => {

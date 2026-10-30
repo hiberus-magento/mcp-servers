@@ -67,6 +67,8 @@ export interface ApplyDeps {
   readonly clientFor: (env: string) => AemClient;
   readonly store: PlanStore<StoredPlan>;
   readonly sleep: (ms: number) => Promise<void>;
+  /** Called before each batch operation and after each request it sends, so a long batch keeps the client's call alive. */
+  readonly reportProgress?: (progress: number, total: number | undefined, message: string) => Promise<void>;
 }
 
 const reject = (reason: ApplyRejectionReason, message: string): ApplyResult => ({ status: "rejected", reason, message });
@@ -164,13 +166,28 @@ export async function applyPlan(deps: ApplyDeps, input: AemApplyInput): Promise<
  * Runs an approved batch: each operation is planned against the author's
  * state when its turn comes (so it can depend on what earlier ones created)
  * and its requests are sent at once. The first rejection or failed request
- * stops the batch.
+ * stops the batch. Progress counts finished operations, with the share of an
+ * operation's requests already sent as the fraction.
  */
 async function applyBatch(deps: ApplyDeps, env: string, operations: readonly SinglePlanOperation[]): Promise<ApplyResult> {
   const client = deps.clientFor(env);
   const done: BatchOperationResult[] = [];
+  let reported = -1;
+  // Best effort: a notification the client cannot take never stops the batch, and progress only grows.
+  const progress = async (value: number, message: string): Promise<void> => {
+    if (deps.reportProgress === undefined || value <= reported) {
+      return;
+    }
+    reported = value;
+    try {
+      await deps.reportProgress(value, operations.length, message);
+    } catch {
+      // The client may have gone; the batch keeps running.
+    }
+  };
   for (const [position, op] of operations.entries()) {
     const index = position + 1;
+    await progress(position, `operation ${index}/${operations.length}: ${op.kind}`);
     let draft;
     for (let attempt = 0; draft === undefined; attempt += 1) {
       try {
@@ -195,6 +212,7 @@ async function applyBatch(deps: ApplyDeps, env: string, operations: readonly Sin
       try {
         await client.execute(step.request);
         ok += 1;
+        await progress(position + ok / draft.steps.length, `operation ${index}/${operations.length}: ${step.request.label}`);
       } catch (error) {
         return {
           status: "failed",

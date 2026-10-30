@@ -207,9 +207,10 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
       `It sends exactly the planned requests and nothing else; a stale, expired, reused or forged token writes nothing. Writes to the AEM author.`,
     inputSchema: aemApplyInput,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
-    handler: async (args) => {
+    handler: async (args, ctx) => {
       const runtime = getRuntime();
-      return withAuthAnswer(() => applyPlan({ config: runtime.config, clientFor: runtime.clientFor, store: runtime.store, sleep: runtime.sleep }, args));
+      const deps = { config: runtime.config, clientFor: runtime.clientFor, store: runtime.store, sleep: runtime.sleep };
+      return withAuthAnswer(() => applyPlan(ctx.reportProgress !== undefined ? { ...deps, reportProgress: ctx.reportProgress } : deps, args));
     },
   });
 

@@ -39,6 +39,12 @@ export type ToolAnnotations =
 
 export interface ToolContext {
   readonly signal?: AbortSignal;
+  /**
+   * Present only when the client asked for progress (a `progressToken` in the
+   * request). A long tool calls it so the client does not give up on a call
+   * that is still working; `progress` must grow from one call to the next.
+   */
+  readonly reportProgress?: (progress: number, total: number | undefined, message: string) => Promise<void>;
 }
 
 export interface ToolCallContent {
