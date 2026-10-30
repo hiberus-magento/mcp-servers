@@ -1,0 +1,15 @@
+{
+  "topic": "preview",
+  "user": "demo-user@example-domain.invalid",
+  "name": "job-1",
+  "state": "stopped",
+  "createTime": "2026-10-30T10:43:49.631Z",
+  "startTime": "2026-10-30T10:43:50.040Z",
+  "stopTime": "2026-10-30T10:43:52.840Z",
+  "progress": { "total": 13, "processed": 13, "failed": 12, "notmodified": 0, "success": 1 },
+  "links": {
+    "list": "https://admin.hlx.page/job/acme-demo-org/acme-demo-site-eu/main/preview",
+    "self": "https://admin.hlx.page/job/acme-demo-org/acme-demo-site-eu/main/preview/job-1",
+    "details": "https://admin.hlx.page/job/acme-demo-org/acme-demo-site-eu/main/preview/job-1/details"
+  }
+}

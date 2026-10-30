@@ -104,6 +104,18 @@ test.
 - WHEN the client evaluates job success
 - THEN it reports the job as successfully retrieved
 
+### Requirement: Job Status Shapes
+
+The client MUST read a job status whether the job comes wrapped (`{ job, links }`, as in the
+response that starts it) or flat (the job's fields with `links` beside them, as a `GET` on the
+job's own URL returns), and MUST hand both on as `{ job, links }`.
+
+#### Scenario: A flat job status
+
+- GIVEN `GET /job/{org}/{site}/{ref}/{topic}/{jobName}` answers the job's fields at the top level
+- WHEN the client reads it or waits on it
+- THEN it reads `state` and `progress` from those fields and `links.self` from `links`
+
 ### Requirement: Config Write Existence Check via GET-Before-Write
 
 Before writing a site configuration, the client MUST perform a `GET` to

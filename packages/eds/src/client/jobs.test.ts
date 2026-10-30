@@ -18,6 +18,11 @@ const COMPLETED_FIXTURE = JSON.parse(
   readFileSync(fileURLToPath(new URL("../../fixtures/job.202.completed.json", import.meta.url)), "utf8"),
 ) as typeof RUNNING_FIXTURE;
 
+// A GET on a job's own URL: the job's fields flat, `links` beside them (Admin API, 2026-10-30).
+const FLAT_FIXTURE = JSON.parse(
+  readFileSync(fileURLToPath(new URL("../../fixtures/job.200.stopped.flat.json", import.meta.url)), "utf8"),
+) as Record<string, unknown>;
+
 const SELF_PATH = "/job/acme-demo-org/acme-demo-site-eu/main/preview/job-1";
 
 function makeHttp(routes: Record<string, unknown>) {
@@ -62,6 +67,26 @@ describe("fetchJobEnvelope", () => {
     });
 
     await expect(fetchJobEnvelope(http, SELF_PATH)).rejects.toThrow();
+  });
+});
+
+describe("job status shapes", () => {
+  it("reads a flat job status as { job, links }", async () => {
+    const { http } = makeHttp({ [`GET ${SELF_PATH}`]: { status: 200, body: FLAT_FIXTURE } });
+
+    const result = await fetchJobEnvelope(http, SELF_PATH);
+
+    expect(result.body.job).toMatchObject({ name: "job-1", topic: "preview", state: "stopped", progress: { total: 13, failed: 12, success: 1 } });
+    expect(result.body.links.self).toContain("/preview/job-1");
+    expect(result.body.job).not.toHaveProperty("links");
+  });
+
+  it("waits on a job whose status comes back flat", async () => {
+    const { http } = makeHttp({ [`GET ${SELF_PATH}`]: [{ status: 202, body: RUNNING_FIXTURE }, { status: 200, body: FLAT_FIXTURE }] });
+
+    const job = await waitForJob({ http, now: () => Date.now(), sleep: async () => undefined }, { self: SELF_PATH, pollIntervalMs: 1 });
+
+    expect(job.state).toBe("stopped");
   });
 });
 
