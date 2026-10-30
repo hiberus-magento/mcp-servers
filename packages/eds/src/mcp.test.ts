@@ -308,4 +308,39 @@ describe("eds_get_status_bulk reads the finished job's results inline (observed 
     expect(payload.results?.map((entry) => entry.path)).toEqual(["/"]);
     expect(payload.missingPaths).toEqual(["/drafts/test"]);
   });
+
+  it("when the job is still running, polls it and reads the results from its details", async () => {
+    const SELF = `/job/${TEST_ORG}/${EU}/main/status/job-2026-10-20t00-00-00-000z`;
+    const { job, links } = COMPLETED_BULK_BODY;
+    const running = { job: { ...job, state: "running", data: { ...job.data, phase: "processing", resources: undefined } }, links };
+    // A GET on the job: flat, with no `data`; the results only under `/details` (observed live).
+    const status = { topic: job.topic, name: job.name, state: "stopped", progress: { total: 2, processed: 2 }, links: { self: links.self } };
+    const details = { topic: job.topic, name: job.name, state: "stopped", data: job.data };
+    const { fetch } = createFetchDouble({
+      [`POST ${BULK_POST_PATH}`]: { status: 202, body: running },
+      [`GET ${SELF}`]: { status: 200, body: status },
+      [`GET ${SELF}/details`]: { status: 200, body: details },
+    } as never);
+    const client = createEdsClient({
+      fetch,
+      now: () => Date.now(),
+      sleep: async () => undefined,
+      tokenProvider: {
+        domain: "eds",
+        getToken: async () => ({ kind: "static" as const, value: "k" }),
+        invalidate: () => undefined,
+        describeRemedy: () => ({ domain: "eds", cliCommand: "hiberus-eds auth token set", envVar: "EDS_TOKEN", configPath: "/dev/null", reason: "not found" }),
+      },
+      baseUrl: "https://admin.hlx.page",
+      org: TEST_ORG,
+    });
+
+    const payload = (await call(toolsOver(client), "eds_get_status_bulk", { site: EU, paths: ["/", "/drafts/test"] })) as {
+      results?: { path: string }[];
+      missingPaths?: string[];
+    };
+
+    expect(payload.results?.map((entry) => entry.path)).toEqual(["/"]);
+    expect(payload.missingPaths).toEqual(["/drafts/test"]);
+  });
 });
