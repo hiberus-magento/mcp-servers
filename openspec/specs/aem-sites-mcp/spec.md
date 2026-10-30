@@ -247,7 +247,7 @@ follow a redirect.
 
 `aem_plan`'s `operation.kind` MUST be one of: `page.set-properties`, `component.set-properties`, `page.set-robots`,
 `sheet.upsert-row`, `sheet.delete-row`, `page.publish`, `page.publish-tree`, `page.unpublish`, `page.create`,
-`page.copy`, `page.move`, `page.delete`, `livecopy.create`, `page.lock`, `page.unlock`, `batch`. Each branch
+`page.copy`, `page.move`, `page.delete`, `livecopy.create`, `livecopy.rollout`, `page.lock`, `page.unlock`, `batch`. Each branch
 is strict: a field a kind does not take is a schema rejection. Every kind MUST pass the same token
 matrix (forged, expired, reused, stale, echo mismatch) before any write.
 
@@ -322,6 +322,19 @@ and MUST NOT be inside or above its source. Rollout configs MUST be among AEM's 
 `AEM_EXTRA_ROLLOUT_CONFIGS`; the default is `default`. The plan MUST state that inherited content
 can still be edited by cancelling inheritance. `aem_get_page` MUST report `liveCopy` (master,
 rollout configs, deep) for a Live Copy root.
+
+`livecopy.rollout` MUST send the Sites console's async rollout (`/bin/asynccommand`,
+`cmd=rollout`, `operation=asyncRollout`) for one readable source page to 1–100 existing targets
+inside `AEM_WRITE_ROOTS`, none of them inside or above the source; `deep` rolls out sub-pages too.
+The plan MUST warn that inherited content of the targets is overwritten. Apply MUST wait until
+each target's `cq:lastRolledout` differs from its value at plan time, and MUST fail naming the
+targets not reached after 5 minutes.
+
+#### Scenario: Two levels of Live Copies in one batch
+
+- GIVEN a global page, its Live Copy in a vertical and that page's Live Copy in a store
+- WHEN a batch rolls out the global page to the vertical, then the vertical page to the store
+- THEN the second rollout starts only after the first reached the vertical page
 
 #### Scenario: Destination already taken
 

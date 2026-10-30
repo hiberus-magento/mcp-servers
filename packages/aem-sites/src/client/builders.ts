@@ -45,6 +45,7 @@ export interface WriteScope {
 
 const CHARSET: readonly [string, string] = ["_charset_", "utf-8"];
 const WCM_COMMAND = "/bin/wcmcommand";
+const ASYNC_COMMAND = "/bin/asynccommand";
 const SEGMENT = /^[A-Za-z0-9_-]+$/;
 
 /** The sheet template the field CLI created `metadata` sheets from (EDS on AEM Sites). */
@@ -351,6 +352,48 @@ export function buildCreateLiveCopy(scope: WriteScope, input: CreateLiveCopyInpu
       ...configs.map((config) => ["cq:rolloutConfigs", config] as const),
     ],
     label: `create the Live Copy ${dest} of ${input.srcPath}`,
+  };
+}
+
+export interface RolloutInput {
+  /** The source page; any readable page, like a Live Copy's source. */
+  readonly path: string;
+  /** Pages of Live Copies of `path` to update; all inside the write roots. */
+  readonly targets: readonly string[];
+  /** Roll out the source's sub-pages too. */
+  readonly deep: boolean;
+}
+
+/**
+ * The Sites console's rollout request (both its rollout dialog and the
+ * References rail): an async job on `/bin/asynccommand`. The job runs after
+ * the response, so apply waits for each target's `cq:lastRolledout`.
+ */
+export function buildRollout(scope: WriteScope, input: RolloutInput): PlannedRequest {
+  assertReadable(input.path);
+  if (input.targets.length === 0) {
+    throw new InvalidOperationError("A rollout needs at least one target.");
+  }
+  for (const target of input.targets) {
+    assertWritable(target, scope.roots);
+    if (`${target}/`.startsWith(`${input.path}/`) || `${input.path}/`.startsWith(`${target}/`)) {
+      throw new InvalidOperationError(`A rollout target cannot be its source, nor inside or above it (${input.path} → ${target}).`);
+    }
+  }
+  return {
+    method: "POST",
+    path: ASYNC_COMMAND,
+    form: [
+      ["cmd", "rollout"],
+      ["operation", "asyncRollout"],
+      CHARSET,
+      ["path", input.path],
+      ["type", input.deep ? "deep" : "page"],
+      ["paras", "[]"],
+      ["msm:targetPath", JSON.stringify([...new Set(input.targets)])],
+      ["reportSchedule", "now"],
+    ],
+    label: `roll out ${input.path}${input.deep ? " and its sub-pages" : ""} to ${input.targets.join(", ")}`,
   };
 }
 

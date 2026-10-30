@@ -9,8 +9,8 @@ import { parseConfig, type AemConfig } from "../config.js";
 import { createPlanStore, type PlanStore } from "../confirm/plan-store.js";
 import { SYNTHETIC_AEM_AUTHOR, SYNTHETIC_ROOT } from "../testing/author-double.js";
 import { createFakeAuthor, type FakeAuthor } from "../testing/fake-author.js";
-import { applyPlan, type ApplyResult } from "./apply.js";
-import { AGENT_PAUSE_MS, BATCH_READ_RETRIES, BATCH_READ_RETRY_MS, BATCH_TTL_MS, COMPONENT_INHERITANCE_WARNING, EDS_LIVE_WARNING, planOperation, type PlanResult, type StoredPlan } from "./plan-builder.js";
+import { applyPlan, ROLLOUT_POLL_MS, ROLLOUT_TIMEOUT_MS, type ApplyResult } from "./apply.js";
+import { AGENT_PAUSE_MS, BATCH_READ_RETRIES, BATCH_READ_RETRY_MS, BATCH_TTL_MS, COMPONENT_INHERITANCE_WARNING, EDS_LIVE_WARNING, planOperation, ROLLOUT_WARNING, type PlanResult, type StoredPlan } from "./plan-builder.js";
 import { OPERATION_KINDS, type AemApplyInput, type OperationKind, type PlanOperation, type SinglePlanOperation } from "./plan-schema.js";
 
 const EN = `${SYNTHETIC_ROOT}/en`;
@@ -28,6 +28,7 @@ function seed(author: FakeAuthor): void {
   author.pages.set(FR, { "jcr:title": "FR" });
   author.pages.set(PAGE, { "jcr:title": "Outdoor gear", "cq:lastReplicationAction": "Activate", "cq:lastModified": "1" });
   author.pages.set(OLD, { "jcr:title": "Old" });
+  author.pages.set(`${FR}/gear-live`, { "jcr:title": "Outdoor gear (FR)" });
   author.pages.set(LOCKED, { "jcr:title": "Locked", "jcr:lockOwner": author.currentUser.id });
   author.components.set(BLOCK, {
     "jcr:primaryType": "nt:unstructured",
@@ -139,6 +140,10 @@ const CASES: Record<SingleKind, { readonly operation: PlanOperation; readonly st
   "livecopy.create": {
     operation: { kind: "livecopy.create", srcPath: PAGE, destParentPath: FR, name: "gear-lc", title: "Gear LC" },
     stale: (a) => a.pages.set(`${FR}/gear-lc`, {}),
+  },
+  "livecopy.rollout": {
+    operation: { kind: "livecopy.rollout", path: PAGE, targets: [`${FR}/gear-live`] },
+    stale: (a) => a.pages.delete(`${FR}/gear-live`),
   },
   "page.lock": {
     operation: { kind: "page.lock", path: OLD },
@@ -521,6 +526,34 @@ describe("page.publish-tree", () => {
   it("refuses a root outside the write roots", async () => {
     const h = harness();
     expect(await h.plan({ kind: "page.publish-tree", root: "/content/acme-demo-site-us/en", target: "both" })).toMatchObject({ reason: "path-outside-write-roots" });
+  });
+});
+
+describe("livecopy.rollout", () => {
+  const TARGET = `${FR}/gear-live`;
+
+  it("waits until the async job reaches every target, so a later batch operation sees the rolled-out content", async () => {
+    const h = harness();
+    h.author.pages.set(TARGET, { ...h.author.pages.get(TARGET), "cq:lastRolledout": "before" });
+    const plan = planned(await h.plan({ kind: "livecopy.rollout", path: PAGE, targets: [TARGET] }));
+    expect(plan.summary).toContain(`Roll out ${PAGE} to 1 Live Copy`);
+    expect(plan.warnings).toContain(ROLLOUT_WARNING);
+    expect(await h.apply({ token: plan.token, env: "stage", kind: "livecopy.rollout" })).toMatchObject({ status: "applied" });
+    expect(h.author.pages.get(TARGET)?.["cq:lastRolledout"]).not.toBe("before");
+  });
+
+  it("fails naming the targets the job never reached", async () => {
+    const h = harness();
+    h.author.rollout.delivers = false;
+    const plan = planned(await h.plan({ kind: "livecopy.rollout", path: PAGE, targets: [TARGET] }));
+    const result = await h.apply({ token: plan.token, env: "stage", kind: "livecopy.rollout" });
+    expect(result).toMatchObject({ status: "failed", failed: { message: expect.stringContaining(`has not reached ${TARGET}`) } });
+    expect(h.author.sleeps.filter((ms) => ms === ROLLOUT_POLL_MS)).toHaveLength(ROLLOUT_TIMEOUT_MS / ROLLOUT_POLL_MS);
+  });
+
+  it("rejects a target that does not exist, at plan time", async () => {
+    const h = harness();
+    expect(await h.plan({ kind: "livecopy.rollout", path: PAGE, targets: [`${FR}/missing`] })).toMatchObject({ status: "rejected", reason: "not-found" });
   });
 });
 

@@ -100,6 +100,17 @@ const singleOperationSchema = z.discriminatedUnion("kind", [
       shallow: z.boolean().optional(),
     })
     .strict(),
+  z
+    .object({
+      kind: z.literal("livecopy.rollout"),
+      /** The source page (a Live Copy's master, or a page below it). */
+      path: z.string().min(1),
+      /** The matching pages of its Live Copies to update. */
+      targets: z.array(z.string().min(1)).min(1).max(100),
+      /** Roll out the source's sub-pages too. */
+      deep: z.boolean().optional(),
+    })
+    .strict(),
   z.object({ kind: z.literal("page.lock"), path: z.string().min(1) }).strict(),
   z.object({ kind: z.literal("page.unlock"), path: z.string().min(1) }).strict(),
 ]);

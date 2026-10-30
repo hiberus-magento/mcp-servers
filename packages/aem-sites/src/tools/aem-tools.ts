@@ -189,7 +189,7 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
   const plan = defineTool({
     name: "aem_plan",
     description:
-      "Use this whenever you want to change anything on an AEM author: page properties, the fields of a component (a block's configured links or texts), robots (noindex), EDS metadata-sheet rows, publish/unpublish, create/copy/move/delete pages (force: true deletes pages other pages reference; allowPublished: true only when an unpublish was refused), create a Live Copy (MSM), or lock/unlock a page; publish a whole subtree (page.publish-tree); or many of these in order under one confirmation (batch, each planned when applied). " +
+      "Use this whenever you want to change anything on an AEM author: page properties, the fields of a component (a block's configured links or texts), robots (noindex), EDS metadata-sheet rows, publish/unpublish, create/copy/move/delete pages (force: true deletes pages other pages reference; allowPublished: true only when an unpublish was refused), create a Live Copy (MSM) or roll out a source page to its Live Copies (livecopy.rollout, waits for the async job), or lock/unlock a page; publish a whole subtree (page.publish-tree); or many of these in order under one confirmation (batch, each planned when applied). " +
       "It reads the current state and returns exactly what would change, a confirmationMessage to show the user and a one-time token — it never writes. " +
       `Then call aem_apply only after the user explicitly confirms.`,
     inputSchema: aemPlanInput,

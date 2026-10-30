@@ -73,6 +73,36 @@ export interface ApplyDeps {
 
 const reject = (reason: ApplyRejectionReason, message: string): ApplyResult => ({ status: "rejected", reason, message });
 
+/** How often and how long apply waits for an async rollout job to reach its targets. */
+export const ROLLOUT_POLL_MS = 3000;
+export const ROLLOUT_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * Waits until every target's `cq:lastRolledout` differs from the value read
+ * when the plan was made. Throws naming the targets the job has not reached.
+ */
+async function awaitRollout(deps: ApplyDeps, client: AemClient, targets: NonNullable<PlannedStep["awaitRollout"]>): Promise<void> {
+  let pending = [...targets];
+  for (let waited = 0; ; waited += ROLLOUT_POLL_MS) {
+    const still: typeof pending = [];
+    for (const target of pending) {
+      const page = await readPage(client.http, target.path, ["cq:lastRolledout"]);
+      const last = page?.properties["cq:lastRolledout"];
+      if (typeof last !== "string" || last === target.before) {
+        still.push(target);
+      }
+    }
+    pending = still;
+    if (pending.length === 0) {
+      return;
+    }
+    if (waited >= ROLLOUT_TIMEOUT_MS) {
+      throw new Error(`The rollout job was accepted but has not reached ${pending.map((t) => t.path).join(", ")} after ${ROLLOUT_TIMEOUT_MS / 1000} s; check the targets before running anything that depends on them.`);
+    }
+    await deps.sleep(ROLLOUT_POLL_MS);
+  }
+}
+
 function failureMessage(error: unknown, hints: PlannedStep["hints"]): string {
   const message = error instanceof Error ? error.message : String(error);
   const hint = error instanceof AemError && error.status !== undefined ? hints?.[error.status] : undefined;
@@ -147,6 +177,9 @@ export async function applyPlan(deps: ApplyDeps, input: AemApplyInput): Promise<
     }
     try {
       const response = await client.execute(step.request);
+      if (step.awaitRollout !== undefined) {
+        await awaitRollout(deps, client, step.awaitRollout);
+      }
       completed.push({ label: step.request.label, status: response.status });
     } catch (error) {
       return {
@@ -211,6 +244,9 @@ async function applyBatch(deps: ApplyDeps, env: string, operations: readonly Sin
       }
       try {
         await client.execute(step.request);
+        if (step.awaitRollout !== undefined) {
+          await awaitRollout(deps, client, step.awaitRollout);
+        }
         ok += 1;
         await progress(position + ok / draft.steps.length, `operation ${index}/${operations.length}: ${step.request.label}`);
       } catch (error) {

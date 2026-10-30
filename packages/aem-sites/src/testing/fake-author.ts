@@ -27,6 +27,8 @@ export interface FakeAuthor {
   readonly postStatus: Map<string, number>;
   /** The user `currentuser.json` reports for the token. */
   readonly currentUser: { id: string };
+  /** Whether a rollout job reaches its targets (stamps `cq:lastRolledout`); default true. */
+  readonly rollout: { delivers: boolean };
   readonly client: AemClient;
   posts(): RecordedRequest[];
 }
@@ -43,6 +45,8 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
   const sleeps: number[] = [];
   const postStatus = new Map<string, number>();
   const currentUser = { id: "demo-user@example-domain.invalid" };
+  const rollout = { delivers: true };
+  let rolloutStamp = 0;
 
   const fetch = (async (input: URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(input.toString());
@@ -51,6 +55,13 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
     requests.push({ method, path, body: typeof init?.body === "string" ? init.body : undefined });
     if (method === "POST") {
       const status = [...postStatus.entries()].find(([prefix]) => path.startsWith(prefix))?.[1] ?? 200;
+      const form = new URLSearchParams(typeof init?.body === "string" ? init.body : "");
+      if (status === 200 && url.pathname === "/bin/asynccommand" && form.get("cmd") === "rollout" && rollout.delivers) {
+        rolloutStamp += 1;
+        for (const target of JSON.parse(form.get("msm:targetPath") ?? "[]") as string[]) {
+          pages.set(target, { ...pages.get(target), "cq:lastRolledout": `rolled-out-${rolloutStamp}` });
+        }
+      }
       return json(status, {});
     }
     if (url.pathname === "/libs/granite/csrf/token.json") {
@@ -109,5 +120,5 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
     origin,
   });
 
-  return { pages, sheets, components, confs, requests, sleeps, postStatus, currentUser, client, posts: () => requests.filter((r) => r.method === "POST") };
+  return { pages, sheets, components, confs, requests, sleeps, postStatus, currentUser, rollout, client, posts: () => requests.filter((r) => r.method === "POST") };
 }

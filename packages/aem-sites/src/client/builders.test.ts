@@ -7,6 +7,7 @@ import { InvalidRolloutConfigError } from "../guard/paths.js";
 import {
   buildCopyPage,
   buildCreateLiveCopy,
+  buildRollout,
   buildLockPage,
   buildCreatePage,
   buildCreateSheet,
@@ -213,6 +214,29 @@ describe("MSM and lock builders", () => {
     expect(() => buildCreateLiveCopy(scope, { ...LC, rolloutConfigs: [] })).toThrow(/at least one rollout config/);
     expect(() => buildCreateLiveCopy(scope, { ...LC, destParentPath: PAGE })).toThrow(/inside its own source/);
     expect(() => buildCreateLiveCopy({ ...scope, extraRolloutConfigs: ["/apps/msm/acme/sync"] }, { ...LC, rolloutConfigs: ["/apps/msm/acme/sync"] }).form).not.toThrow();
+  });
+
+  it("rolls out with the Sites console's async rollout fields, targets only inside the roots", () => {
+    const target = `${SYNTHETIC_ROOT}/fr/outdoor-gear`;
+    expect(buildRollout(scope, { path: "/content/acme-demo-site-us/en/gear", targets: [target, target], deep: false })).toEqual({
+      method: "POST",
+      path: "/bin/asynccommand",
+      form: [
+        ["cmd", "rollout"],
+        ["operation", "asyncRollout"],
+        ["_charset_", "utf-8"],
+        ["path", "/content/acme-demo-site-us/en/gear"],
+        ["type", "page"],
+        ["paras", "[]"],
+        ["msm:targetPath", JSON.stringify([target])],
+        ["reportSchedule", "now"],
+      ],
+      label: `roll out /content/acme-demo-site-us/en/gear to ${target}, ${target}`,
+    });
+    expect(buildRollout(scope, { path: PAGE, targets: [target], deep: true }).form).toContainEqual(["type", "deep"]);
+    expect(() => buildRollout(scope, { path: PAGE, targets: [OUTSIDE], deep: false })).toThrow(PathOutsideWriteRootsError);
+    expect(() => buildRollout(scope, { path: PAGE, targets: [`${PAGE}/child`], deep: false })).toThrow(/inside or above/);
+    expect(() => buildRollout(scope, { path: PAGE, targets: [], deep: false })).toThrow(/at least one target/);
   });
 
   it("locks and unlocks only inside the roots", () => {

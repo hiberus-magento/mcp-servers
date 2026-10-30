@@ -8,6 +8,7 @@
 import {
   buildCopyPage,
   buildCreateLiveCopy,
+  buildRollout,
   buildCreatePage,
   buildCreateSheet,
   buildDeletePage,
@@ -103,6 +104,8 @@ export interface PlannedStep {
   readonly pauseBeforeMs?: number;
   /** Appended to the failure message when the author answers this step with that HTTP status. */
   readonly hints?: Readonly<Record<number, string>>;
+  /** The request starts an async rollout job: apply waits until each target's `cq:lastRolledout` differs from `before`. */
+  readonly awaitRollout?: readonly { readonly path: string; readonly before?: string }[];
 }
 
 export interface StoredPlan {
@@ -215,6 +218,8 @@ export const LIVE_COPY_NOTE =
   "A Live Copy inherits its content from the source: editing an inherited component requires an author to cancel inheritance, and a rollout from the source overwrites inherited content. The new page is not published.";
 export const COMPONENT_INHERITANCE_WARNING =
   "If this page is a Live Copy, the component is inherited: the next rollout from its source overwrites this edit unless an author cancels the component's inheritance in the editor.";
+export const ROLLOUT_WARNING =
+  "A rollout overwrites the inherited content of every target with the source's; components whose inheritance an author cancelled keep their edits. The targets are not published.";
 export const LOCK_NOTE =
   "A lock stops OTHER users from editing this page and the pages below it; the lock owner — the user this server's token belongs to — can still edit. It does not change permissions.";
 
@@ -635,6 +640,30 @@ async function draftLiveCopy(ctx: Context, op: Extract<PlanOperation, { kind: "l
   };
 }
 
+async function draftRollout(ctx: Context, op: Extract<PlanOperation, { kind: "livecopy.rollout" }>): Promise<Draft> {
+  const deep = op.deep ?? false;
+  const targets = [...new Set(op.targets)];
+  const request = buildRollout(ctx.scope, { path: op.path, targets, deep });
+  await requirePage(ctx, op.path);
+  const before: { path: string; before?: string }[] = [];
+  for (const target of targets) {
+    const page = await readPage(ctx.client.http, target, [...ctx.config.extraProperties, "cq:lastRolledout"]);
+    if (page === undefined) {
+      throw new PlanRejection("not-found", `There is no page at ${target}.`);
+    }
+    const last = page.properties["cq:lastRolledout"];
+    before.push({ path: target, ...(typeof last === "string" ? { before: last } : {}) });
+  }
+  return {
+    steps: [{ request, awaitRollout: before }],
+    checks: [{ kind: "page-present", path: op.path }, ...targets.map((path) => ({ kind: "page-present" as const, path }))],
+    changes: targets.map((path) => ({ path, what: "inherited content", after: `rolled out from ${op.path}` })),
+    targets,
+    summary: `Roll out ${op.path}${deep ? " and its sub-pages" : ""} to ${targets.length} Live Cop${targets.length === 1 ? "y" : "ies"}: ${targets.join(", ")}.`,
+    warnings: [ROLLOUT_WARNING],
+  };
+}
+
 async function draftLock(ctx: Context, op: Extract<PlanOperation, { kind: "page.lock" | "page.unlock" }>): Promise<Draft> {
   const lock = op.kind === "page.lock";
   const request = buildLockPage(ctx.scope, op.path, lock);
@@ -684,6 +713,8 @@ function draftFor(ctx: Context, op: SinglePlanOperation): Promise<Draft> {
       return draftDelete(ctx, op);
     case "livecopy.create":
       return draftLiveCopy(ctx, op);
+    case "livecopy.rollout":
+      return draftRollout(ctx, op);
     case "page.lock":
     case "page.unlock":
       return draftLock(ctx, op);
@@ -769,6 +800,9 @@ function staticCheck(ctx: Context, op: SinglePlanOperation): readonly string[] {
         shallow: op.shallow ?? false,
       });
       return [`${op.destParentPath}/${op.name}`];
+    case "livecopy.rollout":
+      buildRollout(scope, { path: op.path, targets: op.targets, deep: op.deep ?? false });
+      return [...op.targets];
     case "page.lock":
     case "page.unlock":
       buildLockPage(scope, op.path, op.kind === "page.lock");

@@ -41,7 +41,7 @@ than what the user was shown.
 Operation kinds: `page.set-properties`, `component.set-properties`,
 `page.set-robots`, `sheet.upsert-row`, `sheet.delete-row`, `page.publish`,
 `page.publish-tree`, `page.unpublish`, `page.create`, `page.copy`, `page.move`,
-`page.delete`, `livecopy.create`, `page.lock`, `page.unlock`, `batch`.
+`page.delete`, `livecopy.create`, `livecopy.rollout`, `page.lock`, `page.unlock`, `batch`.
 
 **Batches.** `kind: "batch"` takes up to 300 operations of any other kind and
 returns one confirmation listing them, under a token that lives 60 minutes.
@@ -80,7 +80,11 @@ the editor; every plan says so.
 **Live Copies and locks.** `livecopy.create` makes an MSM Live Copy (Standard
 rollout config unless told otherwise; the source may be any readable page, the
 copy must be inside the write roots). Its components are inherited: editing one
-needs an author to cancel inheritance. `page.lock` stops *other* users from
+needs an author to cancel inheritance. `livecopy.rollout` pushes a source
+page (and its sub-pages with `deep: true`) to the matching pages of its Live
+Copies listed as `targets`, with the Sites console's async rollout; apply waits
+until every target's `cq:lastRolledout` changes (up to 5 minutes), so a batch
+can roll out one level of Live Copies and then the next. `page.lock` stops *other* users from
 editing a page; the lock owner is the token's user, who can still edit, and
 `page.unlock` only releases that user's own locks. Neither changes permissions:
 "nobody can edit" is an ACL, which this server does not touch.
