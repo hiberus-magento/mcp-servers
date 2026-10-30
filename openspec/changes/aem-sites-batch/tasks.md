@@ -19,4 +19,5 @@
 
 ## Phase 4: Live validation
 
-- [ ] 4.1 On a non-production author: rebuild a vertical with one batch.
+- [x] 4.1 On a non-production author: rebuild a vertical with one batch.
+  - 2026-10-30, a non-production author: a first batch (deletes, language-master live copies, sheets) stopped at a page create read back too early (`not-found`, fixed by 2.5); a second batch of 91 operations (pages, configuration references, 20 live copies, 40 sheet copies, 2 rows, 20 tree publishes) ran in about 45 minutes with one confirmation. The client gave up after 30 minutes without progress while the server kept applying to the end: a long batch should report progress.
