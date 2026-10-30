@@ -15,4 +15,5 @@
 
 ## Phase 4: Live validation
 
-- [ ] 4.1 On a non-production author: roll out a global page to a vertical language master and that page to a store in one batch; the store page shows the source's change.
+- [x] 4.1 On a non-production author: roll out a global page to a vertical language master and that page to a store in one batch; the store page shows the source's change.
+  - 2026-10-30, a non-production author: one batch changed a component field on 9 source pages, rolled each out to its vertical copies (9 rollouts, 21 targets), then each vertical page to its store copies (21 rollouts, 63 targets) and published the 63 pages: 40 operations, all applied in one call; every rollout reached its targets before the next started, and the store pages carry the source's value with their own paths (MSM rewrites the link per Live Copy).
