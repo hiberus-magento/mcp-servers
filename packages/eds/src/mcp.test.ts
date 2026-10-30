@@ -343,4 +343,25 @@ describe("eds_get_status_bulk reads the finished job's results inline (observed 
     expect(payload.results?.map((entry) => entry.path)).toEqual(["/"]);
     expect(payload.missingPaths).toEqual(["/drafts/test"]);
   });
+
+  it("never reports a wildcard path as missing", async () => {
+    const { fetch } = createFetchDouble({ [`POST ${BULK_POST_PATH}`]: { status: 200, body: COMPLETED_BULK_BODY } } as never);
+    const client = createEdsClient({
+      fetch,
+      now: () => Date.now(),
+      sleep: async () => undefined,
+      tokenProvider: {
+        domain: "eds",
+        getToken: async () => ({ kind: "static" as const, value: "k" }),
+        invalidate: () => undefined,
+        describeRemedy: () => ({ domain: "eds", cliCommand: "hiberus-eds auth token set", envVar: "EDS_TOKEN", configPath: "/dev/null", reason: "not found" }),
+      },
+      baseUrl: "https://admin.hlx.page",
+      org: TEST_ORG,
+    });
+
+    const payload = (await call(toolsOver(client), "eds_get_status_bulk", { site: EU, paths: ["/*"] })) as { missingPaths?: string[] };
+
+    expect(payload.missingPaths).toEqual([]);
+  });
 });
