@@ -11,6 +11,7 @@
 - [x] 2.2 `applyBatch`: plan each operation at its turn, skip no-ops, stop at the first rejection or failure, per-operation results.
 - [x] 2.3 `page.publish-tree` with prefix re-check and 100-page chunks (fake author lists by prefix like QueryBuilder).
 - [x] 2.4 CLI output for batch results.
+- [x] 2.5 Read-after-write: a batch operation rejected as `not-found` is re-planned up to 5 times, 2 s apart (observed 2026-10-30: a page created by one operation was not found by the next).
 
 ## Phase 3: Docs
 

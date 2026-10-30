@@ -71,6 +71,13 @@ export const PREVIEW_UNKNOWN = "unknown (AEM does not record preview replication
 export const BATCH_TTL_MS = 60 * 60 * 1000;
 export const BATCH_WARNING =
   "A batch is planned operation by operation when it is applied, against the author's state at that moment: the exact requests are not listed here. It stops at the first operation that is rejected or fails; what ran before is not rolled back.";
+/**
+ * An author answers a read right after a write with the old state for a moment
+ * (observed 2026-10-29: a page created by one operation was "not found" by the
+ * next). A batch operation rejected as `not-found` is re-planned this many times.
+ */
+export const BATCH_READ_RETRIES = 5;
+export const BATCH_READ_RETRY_MS = 2000;
 /** Upper bound on QueryBuilder pages read for one tree, so a wrong root cannot loop for ever. */
 const MAX_TREE_QUERIES = 100;
 export const CONF_WARNING =

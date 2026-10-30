@@ -10,7 +10,7 @@ import { AemError, readComponent, readPage, readSheet, type AemClient } from "..
 import type { AemConfig } from "../config.js";
 import { fingerprint } from "../confirm/fingerprint.js";
 import type { PlanStore } from "../confirm/plan-store.js";
-import { draftBatchOperation, rejectionFor, type PlannedStep, type StateCheck, type StoredPlan } from "./plan-builder.js";
+import { BATCH_READ_RETRIES, BATCH_READ_RETRY_MS, draftBatchOperation, rejectionFor, type PlannedStep, type StateCheck, type StoredPlan } from "./plan-builder.js";
 import type { AemApplyInput, OperationKind, SinglePlanOperation } from "./plan-schema.js";
 
 export type ApplyRejectionReason =
@@ -172,14 +172,20 @@ async function applyBatch(deps: ApplyDeps, env: string, operations: readonly Sin
   for (const [position, op] of operations.entries()) {
     const index = position + 1;
     let draft;
-    try {
-      draft = await draftBatchOperation(deps, env, op);
-    } catch (error) {
-      const rejection = rejectionFor(error);
-      if (rejection === undefined) {
-        throw error;
+    for (let attempt = 0; draft === undefined; attempt += 1) {
+      try {
+        draft = await draftBatchOperation(deps, env, op);
+      } catch (error) {
+        const rejection = rejectionFor(error);
+        if (rejection === undefined) {
+          throw error;
+        }
+        if (rejection.reason === "not-found" && attempt < BATCH_READ_RETRIES) {
+          await deps.sleep(BATCH_READ_RETRY_MS);
+          continue;
+        }
+        return { status: "failed", env, kind: "batch", operations: done, failed: { index, kind: op.kind, message: `${rejection.reason}: ${rejection.message}`, sent: 0 }, notRun: operations.length - index };
       }
-      return { status: "failed", env, kind: "batch", operations: done, failed: { index, kind: op.kind, message: `${rejection.reason}: ${rejection.message}`, sent: 0 }, notRun: operations.length - index };
     }
     let ok = 0;
     for (const step of draft.steps) {

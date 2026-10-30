@@ -10,7 +10,7 @@ import { createPlanStore } from "../confirm/plan-store.js";
 import { SYNTHETIC_AEM_AUTHOR, SYNTHETIC_ROOT } from "../testing/author-double.js";
 import { createFakeAuthor, type FakeAuthor } from "../testing/fake-author.js";
 import { applyPlan, type ApplyResult } from "./apply.js";
-import { AGENT_PAUSE_MS, BATCH_TTL_MS, COMPONENT_INHERITANCE_WARNING, EDS_LIVE_WARNING, planOperation, type PlanResult, type StoredPlan } from "./plan-builder.js";
+import { AGENT_PAUSE_MS, BATCH_READ_RETRIES, BATCH_READ_RETRY_MS, BATCH_TTL_MS, COMPONENT_INHERITANCE_WARNING, EDS_LIVE_WARNING, planOperation, type PlanResult, type StoredPlan } from "./plan-builder.js";
 import { OPERATION_KINDS, type AemApplyInput, type OperationKind, type PlanOperation, type SinglePlanOperation } from "./plan-schema.js";
 
 const EN = `${SYNTHETIC_ROOT}/en`;
@@ -560,6 +560,14 @@ describe("batch", () => {
     const result = await h.apply({ token: plan.token, env: "stage", kind: "batch" });
     expect(result).toMatchObject({ status: "failed", failed: { index: 2, kind: "page.set-properties", message: expect.stringContaining("no page") }, notRun: 1 });
     expect(h.author.posts()).toHaveLength(1);
+  });
+
+  it("retries an operation that does not find what an earlier one just wrote, then fails", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "batch", operations: [{ kind: "page.set-properties", path: `${EN}/missing`, set: { "jcr:title": "x" } }] }));
+    const result = await h.apply({ token: plan.token, env: "stage", kind: "batch" });
+    expect(result).toMatchObject({ status: "failed", failed: { index: 1, message: expect.stringContaining("not-found") } });
+    expect(h.author.sleeps).toEqual(Array.from({ length: BATCH_READ_RETRIES }, () => BATCH_READ_RETRY_MS));
   });
 
   it("an operation with nothing to change is skipped, not a failure", async () => {
