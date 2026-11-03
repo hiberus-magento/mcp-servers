@@ -192,7 +192,7 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
   const getJobStatus = defineTool({
     name: "aem_get_job_status",
     description:
-      "Use this after aem_apply returned a rollout job (jobId), to check whether the job has visibly reached its targets: completed when every target's cq:lastRolledout has changed since the rollout was planned (a new target: once it exists with one), not-observed otherwise, with the targets reached and pending and a note on what not-observed can mean. Read-only.",
+      "Use this after aem_apply returned a rollout job (jobId), to check whether the job has visibly reached its targets: completed when every target's cq:lastRolledout has changed since the rollout was planned, not-observed otherwise, with the targets reached and pending and a note on what not-observed can mean. Read-only.",
     inputSchema: z.object({ jobId: z.string().min(1) }).strict(),
     annotations: readTool,
     handler: async (args) => {
@@ -204,7 +204,7 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
   const plan = defineTool({
     name: "aem_plan",
     description:
-      "Use this whenever you want to change anything on an AEM author: page properties, the fields of a component (a block's configured links or texts), robots (noindex), EDS metadata-sheet rows, publish/unpublish, create/copy/move/delete pages (force: true deletes pages other pages reference; allowPublished: true only when an unpublish was refused), create a Live Copy (MSM) or roll out a source page to its Live Copies (livecopy.rollout: an async job, apply returns once the author accepts it unless wait: true; without deep it does not create new sub-pages, so roll out a new page itself, to targets that may not exist yet; several rollouts go in one batch), change a Live Copy's rollout configs (livecopy.set-rollout-configs, e.g. Push on modify), or lock/unlock a page; publish a whole subtree (page.publish-tree); or many of these in order under one confirmation (batch, each planned when applied). " +
+      "Use this whenever you want to change anything on an AEM author: page properties, the fields of a component (a block's configured links or texts), robots (noindex), EDS metadata-sheet rows, publish/unpublish, create/copy/move/delete pages (force: true deletes pages other pages reference; allowPublished: true only when an unpublish was refused), create a Live Copy (MSM) or roll out a source page to its Live Copies (livecopy.rollout: an async job, apply returns once the author accepts it unless wait: true; a new page of the source reaches a Live Copy only through a deep rollout of its parent; several rollouts go in one batch), change a Live Copy's rollout configs (livecopy.set-rollout-configs, e.g. Push on modify), or lock/unlock a page; publish a whole subtree (page.publish-tree); or many of these in order under one confirmation (batch, each planned when applied). " +
       "It reads the current state and returns exactly what would change, a confirmationMessage to show the user and a one-time token — it never writes. " +
       `Then call aem_apply only after the user explicitly confirms.`,
     inputSchema: aemPlanInput,

@@ -229,6 +229,8 @@ export const ROLLOUT_ACCEPTED_NOTE =
   "Apply returns as soon as the author accepts the rollout job; the job reaches the targets minutes later. Check it with aem_get_job_status before anything that depends on the targets (or plan with wait: true).";
 export const ROLLOUT_NO_WAIT_BATCH_WARNING =
   "Rollouts without wait: true do not hold up the operations after them: an operation that reads or rolls out their targets may run before the job reaches them.";
+export const DEEP_ROLLOUT_WARNING =
+  "deep: true rolls out the whole subtree of the source: it also brings down any other change of it not rolled out yet, and creates the pages the Live Copies do not have.";
 export const ROLLOUT_CONFIGS_NOTE =
   "The configs apply to the Live Copy root and to every page below it that does not set its own; nothing is rolled out by this change.";
 export const PUSH_ON_MODIFY_WARNING =
@@ -665,11 +667,7 @@ async function draftRollout(ctx: Context, op: Extract<PlanOperation, { kind: "li
   for (const target of targets) {
     const page = await readPage(ctx.client.http, target, [...ctx.config.extraProperties, "cq:lastRolledout"]);
     if (page === undefined) {
-      const liveCopy = await liveCopyHolding(ctx, op.path, target);
-      checks.push({ kind: "page-absent", path: target }, { kind: "page-present", path: liveCopy.root });
-      changes.push({ path: target, what: "new page", after: `created by the rollout from ${op.path} (Live Copy ${liveCopy.root} of ${liveCopy.master})` });
-      before.push({ path: target });
-      continue;
+      throw new PlanRejection("not-found", `There is no page at ${target}.${await newPageHint(ctx, op.path, target)}`);
     }
     const last = page.properties["cq:lastRolledout"];
     before.push({ path: target, ...(typeof last === "string" ? { before: last } : {}) });
@@ -682,44 +680,22 @@ async function draftRollout(ctx: Context, op: Extract<PlanOperation, { kind: "li
     changes,
     targets,
     summary: `Roll out ${op.path}${deep ? " and its sub-pages" : ""} to ${targets.length} Live Cop${targets.length === 1 ? "y" : "ies"}: ${targets.join(", ")}.`,
-    warnings: wait ? [ROLLOUT_WARNING] : [ROLLOUT_WARNING, ROLLOUT_ACCEPTED_NOTE],
+    warnings: [ROLLOUT_WARNING, ...(deep ? [DEEP_ROLLOUT_WARNING] : []), ...(wait ? [] : [ROLLOUT_ACCEPTED_NOTE])],
   };
 }
 
 /**
- * A rollout target that does not exist yet: a new page of the source, which
- * the rollout creates in a Live Copy that does not have it (the Sites
- * console offers the same targets). Valid only when an ancestor of the
- * target is a Live Copy root whose master is the matching ancestor of the
- * source, at the same relative path, and the Live Copy includes sub-pages
- * unless it is the target's parent. The target's parent must exist.
+ * AEM lists no Live Copies for a page that exists only in the blueprint, so
+ * a rollout of that page has no target (observed 2026-11-03). What creates it
+ * in a Live Copy is a deep rollout of its parent; the hint names it when the
+ * target's parent exists.
  */
-async function liveCopyHolding(ctx: Context, source: string, target: string): Promise<{ readonly root: string; readonly master: string }> {
-  const refuse = (why: string): PlanRejection =>
-    new PlanRejection("not-found", `There is no page at ${target}, and the rollout cannot create it: ${why} Roll out a parent page first, or name an existing target.`);
+async function newPageHint(ctx: Context, source: string, target: string): Promise<string> {
   const parent = target.slice(0, target.lastIndexOf("/"));
-  let page = await readPage(ctx.client.http, parent);
-  if (page === undefined) {
-    throw refuse(`its parent ${parent} does not exist either.`);
+  if ((await readPage(ctx.client.http, parent)) === undefined) {
+    return "";
   }
-  // Up to the page below /content: a Live Copy root is never /content itself.
-  for (let ancestor = parent; ancestor.split("/").length > 2; ancestor = ancestor.slice(0, ancestor.lastIndexOf("/"))) {
-    if (ancestor !== parent) {
-      page = await readPage(ctx.client.http, ancestor);
-    }
-    if (page?.liveCopy === undefined) {
-      continue;
-    }
-    const { master, deep } = page.liveCopy;
-    if (`${master}${target.slice(ancestor.length)}` !== source) {
-      throw refuse(`the Live Copy ${ancestor} above it is of ${master}, so ${source} would not land at this path.`);
-    }
-    if (ancestor !== parent && !deep) {
-      throw refuse(`the Live Copy ${ancestor} above it does not include sub-pages.`);
-    }
-    return { root: ancestor, master };
-  }
-  throw refuse("no page above it is a Live Copy.");
+  return ` If ${leafOf(target)} is a new page of the source that this Live Copy does not have yet, roll out ${source.slice(0, source.lastIndexOf("/"))} with deep: true to ${parent} instead: AEM creates new pages only through a rollout of their parent.`;
 }
 
 async function draftSetRolloutConfigs(ctx: Context, op: Extract<PlanOperation, { kind: "livecopy.set-rollout-configs" }>): Promise<Draft> {

@@ -10,7 +10,7 @@
 - [x] 2.1 `livecopy.rollout` takes `wait`; the plan says whether apply waits (plan-apply.test.ts).
 - [x] 2.2 Without `wait`, apply returns `accepted` with the job and no polling; a batch records the job per operation and goes on (plan-apply.test.ts).
 - [x] 2.3 With `wait`, apply polls up to 15 minutes with progress; a single plan returns `accepted` with the pending targets on timeout, a batch stops keeping the job (plan-apply.test.ts).
-- [x] 2.4 A target that does not exist yet, resolved through the Live Copy root above it; `not-observed` with its note (plan-apply.test.ts, jobs.test.ts).
+- [x] 2.4 A missing target names the deep rollout of the parent; deep rollouts warn about the subtree's pending changes; `not-observed` with its note (plan-apply.test.ts, jobs.test.ts).
 
 ## Phase 3: Tool
 
@@ -23,4 +23,4 @@
 ## Phase 5: Live validation
 
 - [ ] 5.1 On a non-production author: a batch of shallow rollouts, one per language, each to its vertical targets, under one confirmation; `aem_get_job_status` until every job is `completed`. Record the body of the `/bin/asynccommand` response.
-- [ ] 5.2 On a non-production author: roll out a new page (e.g. a new folder under a language master) to its Live Copies that do not have it, and check the page is created; check whether a shallow rollout with nothing to sync updates `cq:lastRolledout`.
+- [ ] 5.2 On a non-production author: a deep rollout of a language master to its vertical copies creates a new page there through this server; check whether a rollout with nothing to sync updates `cq:lastRolledout`.

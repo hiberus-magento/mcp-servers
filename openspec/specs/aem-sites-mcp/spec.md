@@ -326,12 +326,12 @@ can still be edited by cancelling inheritance. `aem_get_page` MUST report `liveC
 rollout configs, deep) for a Live Copy root.
 
 `livecopy.rollout` MUST send the Sites console's async rollout (`/bin/asynccommand`,
-`cmd=rollout`, `operation=asyncRollout`) for one readable source page to 1–100 targets inside
-`AEM_WRITE_ROOTS`, none of them inside or above the source. A target MUST exist, or else be a new
-page of the source that the rollout creates: its parent MUST exist and an ancestor of it MUST be a
-Live Copy root whose master, followed by the target's path below that root, is the source, and
-that Live Copy MUST include sub-pages unless it is the target's parent; such a target is planned as
-a new page and checked absent before apply. `deep` rolls out sub-pages too.
+`cmd=rollout`, `operation=asyncRollout`) for one readable source page to 1–100 existing targets
+inside `AEM_WRITE_ROOTS`, none of them inside or above the source. A target that does not exist
+MUST be rejected `not-found`; when its parent exists, the message MUST name the rollout of the
+source's parent with `deep: true` to that parent, which is how a new page reaches a Live Copy.
+A plan with `deep: true` MUST warn that it also rolls out every change of the subtree not rolled
+out yet. `deep` rolls out sub-pages too.
 The plan MUST warn that inherited content of the targets is overwritten.
 
 A rollout is an async job on the author. Apply MUST record each accepted rollout under a job id
@@ -368,13 +368,15 @@ lists before and after, and MUST warn when the new list includes Push on modify.
 - AND `aem_get_job_status` answers `not-observed` for a job until every one of its targets has a new
   `cq:lastRolledout`, then `completed`
 
-#### Scenario: Rolling out a new page to Live Copies that do not have it
+#### Scenario: A new page reaches a Live Copy through a deep rollout of its parent
 
 - GIVEN a new page `fragments` under a global language master, and a vertical Live Copy root of
   that language master without `fragments`
 - WHEN `aem_plan` plans `livecopy.rollout` of the new page to `<vertical root>/fragments`
-- THEN the plan lists that target as a new page created by the rollout
-- AND a target under a Live Copy of another source, or with another name, is rejected `not-found`
+- THEN it is rejected `not-found`, naming the rollout of the language master with `deep: true` to
+  the vertical root
+- AND planning that deep rollout warns that it also brings down every pending change of the
+  subtree
 
 #### Scenario: Push on modify on a store Live Copy
 

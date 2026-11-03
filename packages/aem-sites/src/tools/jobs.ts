@@ -15,7 +15,7 @@ import { readPage, type AemClient } from "../client/index.js";
  * within seconds while their targets showed no visible change.
  */
 export const NOT_OBSERVED_NOTE =
-  "No change of cq:lastRolledout is visible on the pending targets yet. That can mean the job has not run yet, or that it ran and AEM did not update that property (whether it does when there was nothing to sync is not verified). A rollout without deep does not create sub-pages that exist only in the source: roll out each new page itself (livecopy.rollout accepts targets that do not exist yet under a Live Copy).";
+  "No change of cq:lastRolledout is visible on the pending targets yet. That can mean the job has not run yet, or that it ran and AEM did not update that property (whether it does when there was nothing to sync is not verified). A rollout without deep does not create sub-pages that exist only in the source: roll out their parent with deep: true.";
 
 /** Jobs remembered; the oldest is dropped first. */
 export const MAX_REMEMBERED_JOBS = 500;

@@ -11,7 +11,7 @@ import { SYNTHETIC_AEM_AUTHOR, SYNTHETIC_ROOT } from "../testing/author-double.j
 import { createFakeAuthor, type FakeAuthor } from "../testing/fake-author.js";
 import { applyPlan, ROLLOUT_POLL_MS, ROLLOUT_WAIT_TIMEOUT_MS, type ApplyDeps, type ApplyResult } from "./apply.js";
 import { createJobRegistry, type JobRegistry } from "./jobs.js";
-import { AGENT_PAUSE_MS, BATCH_READ_RETRIES, BATCH_READ_RETRY_MS, BATCH_TTL_MS, COMPONENT_INHERITANCE_WARNING, ROLLOUT_ACCEPTED_NOTE, ROLLOUT_NO_WAIT_BATCH_WARNING, EDS_LIVE_WARNING, planOperation, PUSH_ON_MODIFY_WARNING, ROLLOUT_WARNING, type PlanResult, type StoredPlan } from "./plan-builder.js";
+import { AGENT_PAUSE_MS, BATCH_READ_RETRIES, BATCH_READ_RETRY_MS, BATCH_TTL_MS, COMPONENT_INHERITANCE_WARNING, ROLLOUT_ACCEPTED_NOTE, ROLLOUT_NO_WAIT_BATCH_WARNING, DEEP_ROLLOUT_WARNING, EDS_LIVE_WARNING, planOperation, PUSH_ON_MODIFY_WARNING, ROLLOUT_WARNING, type PlanResult, type StoredPlan } from "./plan-builder.js";
 import { OPERATION_KINDS, type AemApplyInput, type OperationKind, type PlanOperation, type SinglePlanOperation } from "./plan-schema.js";
 
 const EN = `${SYNTHETIC_ROOT}/en`;
@@ -666,50 +666,25 @@ describe("livecopy.rollout", () => {
   });
 
   describe("a new page of the source", () => {
-    // EN is the blueprint; FR_LC is a Live Copy of it, which does not have the new page yet.
+    // AEM lists no Live Copies for a page that exists only in the blueprint (observed 2026-11-03):
+    // the new page reaches a Live Copy through a deep rollout of its parent.
     const NEW = `${EN}/fragments`;
     const FR_LC = `${SYNTHETIC_ROOT}/vertical/fr`;
-    const NEW_TARGET = `${FR_LC}/fragments`;
 
-    function newPageHarness(deep: boolean): Harness {
+    it("refuses a target that does not exist and names the deep rollout of the parent that creates it", async () => {
       const h = harness();
       h.author.pages.set(NEW, { "jcr:title": "Fragments" });
-      h.author.pages.set(FR_LC, { "jcr:title": "FR", "cq:LiveSyncConfig": { "cq:master": EN, "cq:rolloutConfigs": [DEFAULT_CONFIG], "cq:isDeep": deep } });
-      return h;
-    }
-
-    it("rolls out to a target that does not exist yet when its parent is a Live Copy of the source's parent", async () => {
-      const h = newPageHarness(false);
-      const plan = planned(await h.plan({ kind: "livecopy.rollout", path: NEW, targets: [NEW_TARGET] }));
-      expect(plan.changes).toEqual([{ path: NEW_TARGET, what: "new page", after: `created by the rollout from ${NEW} (Live Copy ${FR_LC} of ${EN})` }]);
-      const result = await h.apply({ token: plan.token, env: "stage", kind: "livecopy.rollout" });
-      expect(result).toMatchObject({ status: "accepted", jobs: [{ targets: [NEW_TARGET] }] });
-      expect(h.jobs.get("job-1")?.targets).toEqual([{ path: NEW_TARGET }]);
+      h.author.pages.set(FR_LC, { "jcr:title": "FR", "cq:LiveSyncConfig": { "cq:master": EN, "cq:rolloutConfigs": [DEFAULT_CONFIG] } });
+      const result = await h.plan({ kind: "livecopy.rollout", path: NEW, targets: [`${FR_LC}/fragments`] });
+      expect(result).toMatchObject({ status: "rejected", reason: "not-found", message: expect.stringContaining(`roll out ${EN} with deep: true to ${FR_LC}`) });
     });
 
-    it("resolves a deeper new page through a deep Live Copy root above it", async () => {
-      const h = newPageHarness(true);
-      h.author.pages.set(`${NEW}/nav`, { "jcr:title": "Nav" });
-      h.author.pages.set(NEW_TARGET, { "jcr:title": "Fragments" });
-      expect(await h.plan({ kind: "livecopy.rollout", path: `${NEW}/nav`, targets: [`${NEW_TARGET}/nav`] })).toMatchObject({ status: "planned" });
-    });
-
-    it("refuses a new target below a Live Copy root that does not include sub-pages", async () => {
-      const h = newPageHarness(false);
-      h.author.pages.set(`${NEW}/nav`, { "jcr:title": "Nav" });
-      h.author.pages.set(NEW_TARGET, { "jcr:title": "Fragments" });
-      expect(await h.plan({ kind: "livecopy.rollout", path: `${NEW}/nav`, targets: [`${NEW_TARGET}/nav`] })).toMatchObject({ status: "rejected", reason: "not-found" });
-    });
-
-    it("refuses a new target whose Live Copy is of another source, or whose name differs", async () => {
-      const h = newPageHarness(false);
-      h.author.pages.set(`${FR}/fragments`, { "jcr:title": "FR fragments" });
-      for (const [source, target] of [
-        [`${FR}/fragments`, NEW_TARGET],
-        [NEW, `${FR_LC}/other-name`],
-      ] as const) {
-        expect(await h.plan({ kind: "livecopy.rollout", path: source, targets: [target] }), target).toMatchObject({ status: "rejected", reason: "not-found", message: expect.stringContaining("Live Copy") });
-      }
+    it("warns that a deep rollout brings down every pending change of the subtree", async () => {
+      const h = harness();
+      h.author.pages.set(FR_LC, { "jcr:title": "FR", "cq:LiveSyncConfig": { "cq:master": EN, "cq:rolloutConfigs": [DEFAULT_CONFIG] } });
+      const plan = planned(await h.plan({ kind: "livecopy.rollout", path: EN, targets: [FR_LC], deep: true }));
+      expect(plan.warnings).toContain(DEEP_ROLLOUT_WARNING);
+      expect(planned(await h.plan({ kind: "livecopy.rollout", path: EN, targets: [FR_LC] })).warnings).not.toContain(DEEP_ROLLOUT_WARNING);
     });
   });
 
