@@ -9,8 +9,9 @@ import { parseConfig, type AemConfig } from "../config.js";
 import { createPlanStore, type PlanStore } from "../confirm/plan-store.js";
 import { SYNTHETIC_AEM_AUTHOR, SYNTHETIC_ROOT } from "../testing/author-double.js";
 import { createFakeAuthor, type FakeAuthor } from "../testing/fake-author.js";
-import { applyPlan, ROLLOUT_POLL_MS, ROLLOUT_TIMEOUT_MS, type ApplyResult } from "./apply.js";
-import { AGENT_PAUSE_MS, BATCH_READ_RETRIES, BATCH_READ_RETRY_MS, BATCH_TTL_MS, COMPONENT_INHERITANCE_WARNING, EDS_LIVE_WARNING, planOperation, PUSH_ON_MODIFY_WARNING, ROLLOUT_WARNING, type PlanResult, type StoredPlan } from "./plan-builder.js";
+import { applyPlan, ROLLOUT_POLL_MS, ROLLOUT_WAIT_TIMEOUT_MS, type ApplyDeps, type ApplyResult } from "./apply.js";
+import { createJobRegistry, type JobRegistry } from "./jobs.js";
+import { AGENT_PAUSE_MS, BATCH_READ_RETRIES, BATCH_READ_RETRY_MS, BATCH_TTL_MS, COMPONENT_INHERITANCE_WARNING, ROLLOUT_ACCEPTED_NOTE, ROLLOUT_NO_WAIT_BATCH_WARNING, EDS_LIVE_WARNING, planOperation, PUSH_ON_MODIFY_WARNING, ROLLOUT_WARNING, type PlanResult, type StoredPlan } from "./plan-builder.js";
 import { OPERATION_KINDS, type AemApplyInput, type OperationKind, type PlanOperation, type SinglePlanOperation } from "./plan-schema.js";
 
 const EN = `${SYNTHETIC_ROOT}/en`;
@@ -55,6 +56,9 @@ interface Harness {
   readonly author: FakeAuthor;
   readonly config: AemConfig;
   readonly store: PlanStore<StoredPlan>;
+  readonly jobs: JobRegistry;
+  /** What `apply` passes to `applyPlan`, for a test that adds its own `reportProgress`. */
+  applyDeps(): ApplyDeps;
   plan(operation: PlanOperation, env?: string): Promise<PlanResult>;
   apply(input: AemApplyInput): Promise<ApplyResult>;
   advance(ms: number): void;
@@ -70,13 +74,26 @@ function harness(variables: Record<string, string> = {}): Harness {
     ...variables,
   });
   const store = createPlanStore<StoredPlan>({ now: () => now, ttlMs: TTL });
+  let ids = 0;
+  const jobs = createJobRegistry({ randomId: () => `job-${(ids += 1)}` });
   const deps = { config, clientFor: () => author.client, store, now: () => now };
+  // Sleeping advances the clock, like the real server's wait would.
+  const applyDeps = (): ApplyDeps => ({
+    ...deps,
+    jobs,
+    sleep: async (ms) => {
+      author.sleeps.push(ms);
+      now += ms;
+    },
+  });
   return {
     author,
     config,
     store,
+    jobs,
+    applyDeps,
     plan: (operation, env = "stage") => planOperation(deps, { env, operation }),
-    apply: (input) => applyPlan({ ...deps, sleep: async (ms) => void author.sleeps.push(ms) }, input),
+    apply: (input) => applyPlan(applyDeps(), input),
     advance: (ms) => {
       now += ms;
     },
@@ -172,6 +189,8 @@ describe("every operation kind", () => {
 
   for (const kind of SINGLE_KINDS) {
     const { operation, stale } = CASES[kind];
+    // A rollout is an async job: apply answers once the author has accepted it.
+    const done = kind === "livecopy.rollout" ? "accepted" : "applied";
 
     describe(kind, () => {
       it("plans without writing, then applies exactly the planned requests", async () => {
@@ -181,7 +200,7 @@ describe("every operation kind", () => {
         expect(plan.instruction).toContain("aem_apply");
         expect(plan.confirmationMessage).toContain(plan.summary);
         const result = await h.apply({ token: plan.token, env: "stage", kind });
-        expect(result.status).toBe("applied");
+        expect(result.status).toBe(done);
         expect(h.author.posts().map((r) => r.path)).toEqual(plan.requests.map((r) => r.path));
       });
 
@@ -224,7 +243,7 @@ describe("every operation kind", () => {
         expect(await h.apply({ token: plan.token, env: "prod", kind })).toMatchObject({ status: "rejected", reason: "env-mismatch" });
         expect(await h.apply({ token: plan.token, env: "stage", kind: otherKind })).toMatchObject({ status: "rejected", reason: "kind-mismatch" });
         expect(h.author.posts()).toEqual([]);
-        expect((await h.apply({ token: plan.token, env: "stage", kind })).status).toBe("applied");
+        expect((await h.apply({ token: plan.token, env: "stage", kind })).status).toBe(done);
       });
     });
   }
@@ -570,31 +589,147 @@ describe("livecopy.set-rollout-configs", () => {
 
 describe("livecopy.rollout", () => {
   const TARGET = `${FR}/gear-live`;
+  const OTHER = `${FR}/gear-other`;
 
-  it("waits until the async job reaches every target, so a later batch operation sees the rolled-out content", async () => {
+  function rolloutHarness(): Harness {
     const h = harness();
     h.author.pages.set(TARGET, { ...h.author.pages.get(TARGET), "cq:lastRolledout": "before" });
+    h.author.pages.set(OTHER, { "jcr:title": "Other copy", "cq:LiveSyncConfig": { "cq:master": PAGE, "cq:rolloutConfigs": [DEFAULT_CONFIG] } });
+    return h;
+  }
+
+  it("returns accepted with the job as soon as the author takes the request, without polling", async () => {
+    const h = rolloutHarness();
+    h.author.rollout.delivers = false;
+    const plan = planned(await h.plan({ kind: "livecopy.rollout", path: PAGE, targets: [TARGET, OTHER] }));
+    expect(plan.summary).toContain(`Roll out ${PAGE} to 2 Live Copies`);
+    expect(plan.warnings).toEqual([ROLLOUT_WARNING, ROLLOUT_ACCEPTED_NOTE]);
+    const result = await h.apply({ token: plan.token, env: "stage", kind: "livecopy.rollout" });
+    expect(result).toMatchObject({
+      status: "accepted",
+      kind: "livecopy.rollout",
+      results: [{ status: 200 }],
+      jobs: [{ jobId: "job-1", source: PAGE, deep: false, targets: [TARGET, OTHER] }],
+      instruction: expect.stringContaining("aem_get_job_status"),
+    });
+    expect(h.author.sleeps).toEqual([]);
+    expect(h.author.posts()).toHaveLength(1);
+    expect(h.jobs.get("job-1")).toMatchObject({ env: "stage", targets: [{ path: TARGET, before: "before" }, { path: OTHER }] });
+  });
+
+  it("keeps the author's response to the request with the job, so its shape can be recorded", async () => {
+    const h = rolloutHarness();
+    h.author.postBody.set("/bin/asynccommand", { message: "Async job added", id: "opaque-1" });
     const plan = planned(await h.plan({ kind: "livecopy.rollout", path: PAGE, targets: [TARGET] }));
-    expect(plan.summary).toContain(`Roll out ${PAGE} to 1 Live Copy`);
-    expect(plan.warnings).toContain(ROLLOUT_WARNING);
-    expect(await h.apply({ token: plan.token, env: "stage", kind: "livecopy.rollout" })).toMatchObject({ status: "applied" });
+    const result = await h.apply({ token: plan.token, env: "stage", kind: "livecopy.rollout" });
+    expect(result).toMatchObject({ jobs: [{ jobId: "job-1", authorResponse: { message: "Async job added", id: "opaque-1" } }] });
+  });
+
+  it("with wait, polls until the job reaches every target and returns applied", async () => {
+    const h = rolloutHarness();
+    const plan = planned(await h.plan({ kind: "livecopy.rollout", path: PAGE, targets: [TARGET], wait: true }));
+    expect(plan.warnings).not.toContain(ROLLOUT_ACCEPTED_NOTE);
+    expect(await h.apply({ token: plan.token, env: "stage", kind: "livecopy.rollout" })).toMatchObject({ status: "applied", jobs: [{ jobId: "job-1" }] });
     expect(h.author.pages.get(TARGET)?.["cq:lastRolledout"]).not.toBe("before");
   });
 
-  it("fails naming the targets the job never reached", async () => {
-    const h = harness();
+  it("with wait, gives up after the wait timeout but still answers accepted, naming the targets not reached", async () => {
+    const h = rolloutHarness();
     h.author.rollout.delivers = false;
-    const plan = planned(await h.plan({ kind: "livecopy.rollout", path: PAGE, targets: [TARGET] }));
+    const plan = planned(await h.plan({ kind: "livecopy.rollout", path: PAGE, targets: [TARGET], wait: true }));
     const result = await h.apply({ token: plan.token, env: "stage", kind: "livecopy.rollout" });
-    expect(result).toMatchObject({ status: "failed", failed: { message: expect.stringContaining(`has not reached ${TARGET}`) } });
-    expect(h.author.sleeps.filter((ms) => ms === ROLLOUT_POLL_MS)).toHaveLength(ROLLOUT_TIMEOUT_MS / ROLLOUT_POLL_MS);
+    expect(result).toMatchObject({ status: "accepted", jobs: [{ jobId: "job-1", pending: [TARGET] }] });
+    expect(h.author.sleeps.filter((ms) => ms === ROLLOUT_POLL_MS)).toHaveLength(ROLLOUT_WAIT_TIMEOUT_MS / ROLLOUT_POLL_MS);
+  });
+
+  it("with wait, reports growing progress while it polls", async () => {
+    const h = rolloutHarness();
+    h.author.rollout.delivers = false;
+    const plan = planned(await h.plan({ kind: "livecopy.rollout", path: PAGE, targets: [TARGET], wait: true }));
+    const reports: number[] = [];
+    await applyPlan({ ...h.applyDeps(), reportProgress: async (progress) => void reports.push(progress) }, { token: plan.token, env: "stage", kind: "livecopy.rollout" });
+    expect(reports.length).toBeGreaterThan(1);
+    expect(reports.every((value, index) => index === 0 || value > (reports[index - 1] as number))).toBe(true);
+  });
+
+  it("a failed request is still a failure, and records no job", async () => {
+    const h = rolloutHarness();
+    h.author.postStatus.set("/bin/asynccommand", 400);
+    const plan = planned(await h.plan({ kind: "livecopy.rollout", path: PAGE, targets: [TARGET] }));
+    expect(await h.apply({ token: plan.token, env: "stage", kind: "livecopy.rollout" })).toMatchObject({ status: "failed" });
+    expect(h.jobs.get("job-1")).toBeUndefined();
   });
 
   it("rejects a target that does not exist, at plan time", async () => {
     const h = harness();
     expect(await h.plan({ kind: "livecopy.rollout", path: PAGE, targets: [`${FR}/missing`] })).toMatchObject({ status: "rejected", reason: "not-found" });
   });
+
+  describe("in a batch", () => {
+    const SECOND = `${SYNTHETIC_ROOT}/de/outdoor-gear`;
+    const rollouts = (wait?: boolean): SinglePlanOperation[] => [
+      { kind: "livecopy.rollout", path: PAGE, targets: [TARGET, OTHER], ...(wait !== undefined ? { wait } : {}) },
+      { kind: "livecopy.rollout", path: SECOND, targets: [`${FR}/de-gear`] },
+    ];
+
+    function batchHarness(): Harness {
+      const h = rolloutHarness();
+      h.author.pages.set(SECOND, { "jcr:title": "DE gear" });
+      h.author.pages.set(`${FR}/de-gear`, { "jcr:title": "DE gear copy" });
+      return h;
+    }
+
+    it("applies several rollouts under one plan, each accepted with its job, and goes on", async () => {
+      const h = batchHarness();
+      h.author.rollout.delivers = false;
+      const plan = planned(await h.plan({ kind: "batch", operations: [...rollouts(), OPS_AFTER] }));
+      expect(plan.warnings).not.toContain(ROLLOUT_NO_WAIT_BATCH_WARNING);
+      const result = await h.apply({ token: plan.token, env: "stage", kind: "batch" });
+      expect(result).toMatchObject({
+        status: "applied",
+        operations: [
+          { index: 1, kind: "livecopy.rollout", ok: 1, jobIds: ["job-1"] },
+          { index: 2, kind: "livecopy.rollout", ok: 1, jobIds: ["job-2"] },
+          { index: 3, kind: "page.set-properties", ok: 1 },
+        ],
+        jobs: [
+          { jobId: "job-1", source: PAGE, targets: [TARGET, OTHER] },
+          { jobId: "job-2", source: SECOND, targets: [`${FR}/de-gear`] },
+        ],
+      });
+      expect(h.author.sleeps).toEqual([]);
+    });
+
+    it("warns when a later operation touches or rolls out from the targets of a rollout that does not wait", async () => {
+      const h = batchHarness();
+      const chained: SinglePlanOperation = { kind: "livecopy.rollout", path: TARGET, targets: [`${SYNTHETIC_ROOT}/de/gear-live`] };
+      const publish: SinglePlanOperation = { kind: "page.publish", paths: [`${TARGET}/child`], target: "preview" };
+      for (const next of [chained, publish]) {
+        const plan = planned(await h.plan({ kind: "batch", operations: [...rollouts().slice(0, 1), next] }));
+        expect(plan.warnings, next.kind).toContain(ROLLOUT_NO_WAIT_BATCH_WARNING);
+        expect(plan.confirmationMessage).toContain(ROLLOUT_NO_WAIT_BATCH_WARNING);
+      }
+      expect(planned(await h.plan({ kind: "batch", operations: [...rollouts(true).slice(0, 1), chained] })).warnings).not.toContain(ROLLOUT_NO_WAIT_BATCH_WARNING);
+    });
+
+    it("stops at a waited rollout that runs out of time, keeping its job", async () => {
+      const h = batchHarness();
+      h.author.rollout.delivers = false;
+      const plan = planned(await h.plan({ kind: "batch", operations: rollouts(true) }));
+      const result = await h.apply({ token: plan.token, env: "stage", kind: "batch" });
+      expect(result).toMatchObject({
+        status: "failed",
+        operations: [],
+        failed: { index: 1, kind: "livecopy.rollout", message: expect.stringContaining("job-1") },
+        notRun: 1,
+        jobs: [{ jobId: "job-1", pending: [TARGET, OTHER] }],
+      });
+      expect(h.author.posts()).toHaveLength(1);
+    });
+  });
 });
+
+const OPS_AFTER: SinglePlanOperation = { kind: "page.set-properties", path: OLD, set: { "jcr:title": "Older" } };
 
 describe("batch", () => {
   const OPS: SinglePlanOperation[] = [
@@ -650,10 +785,7 @@ describe("batch", () => {
     const reports: { progress: number; total: number | undefined; message: string }[] = [];
     const result = await applyPlan(
       {
-        config: h.config,
-        clientFor: () => h.author.client,
-        store: h.store,
-        sleep: async () => {},
+        ...h.applyDeps(),
         reportProgress: async (progress, total, message) => {
           reports.push({ progress, total, message });
           throw new Error("client gone");

@@ -286,6 +286,11 @@
           "description": "Use this when you need a page's component tree, depth 1–4."
         },
         {
+          "name": "aem_get_job_status",
+          "readOnly": true,
+          "description": "Use this after aem_apply returned a rollout job, to check whether it has reached its targets."
+        },
+        {
           "name": "aem_plan",
           "readOnly": true,
           "description": "Use this whenever you want to change anything on an AEM author — including a component's fields, creating a Live Copy or locking a page; it returns exactly what would change and a one-time token, and never writes."
@@ -293,7 +298,7 @@
         {
           "name": "aem_apply",
           "readOnly": false,
-          "description": "Use this only after the user explicitly confirms a plan from aem_plan; it sends exactly the planned requests and nothing else."
+          "description": "Use this only after the user explicitly confirms a plan from aem_plan; it sends exactly the planned requests and nothing else, and answers accepted with a job id for a rollout."
         }
       ],
       "docs": "docs/aem-sites-onboarding.md",

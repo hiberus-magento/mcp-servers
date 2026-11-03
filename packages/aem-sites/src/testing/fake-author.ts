@@ -25,6 +25,8 @@ export interface FakeAuthor {
   readonly sleeps: number[];
   /** Status for POSTs whose path starts with the key; default 200. */
   readonly postStatus: Map<string, number>;
+  /** JSON body for POSTs whose path starts with the key; default `{}`. */
+  readonly postBody: Map<string, unknown>;
   /** The user `currentuser.json` reports for the token. */
   readonly currentUser: { id: string };
   /** Whether a rollout job reaches its targets (stamps `cq:lastRolledout`); default true. */
@@ -44,6 +46,7 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
   const requests: RecordedRequest[] = [];
   const sleeps: number[] = [];
   const postStatus = new Map<string, number>();
+  const postBody = new Map<string, unknown>();
   const currentUser = { id: "demo-user@example-domain.invalid" };
   const rollout = { delivers: true };
   let rolloutStamp = 0;
@@ -68,7 +71,7 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
       if (status === 200 && sync !== undefined && body !== undefined && typeof config === "object" && config !== null) {
         pages.set(sync, { ...body, "cq:LiveSyncConfig": { ...config, "cq:rolloutConfigs": form.getAll("cq:rolloutConfigs") } });
       }
-      return json(status, {});
+      return json(status, [...postBody.entries()].find(([prefix]) => path.startsWith(prefix))?.[1] ?? {});
     }
     if (url.pathname === "/libs/granite/csrf/token.json") {
       return json(200, { token: "csrf-demo" });
@@ -126,5 +129,5 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
     origin,
   });
 
-  return { pages, sheets, components, confs, requests, sleeps, postStatus, currentUser, rollout, client, posts: () => requests.filter((r) => r.method === "POST") };
+  return { pages, sheets, components, confs, requests, sleeps, postStatus, postBody, currentUser, rollout, client, posts: () => requests.filter((r) => r.method === "POST") };
 }

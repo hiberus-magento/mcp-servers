@@ -169,21 +169,25 @@ async function planOrApply(deps: CliDeps, flags: Record<string, string>, applyIt
     return ok(`${plan.confirmationMessage}\n\n${applyIt ? "SIMULATION. Nothing written. Add --yes." : "Plan only. Nothing written."}`);
   }
   const result = await applyPlan(
-    { config: runtime.config, clientFor: runtime.clientFor, store: runtime.store, sleep: runtime.sleep },
+    { config: runtime.config, clientFor: runtime.clientFor, store: runtime.store, jobs: runtime.jobs, now: runtime.now, sleep: runtime.sleep },
     { token: plan.token, env: plan.env, kind: plan.kind, ...(flags["confirm-target"] !== undefined ? { confirmTarget: flags["confirm-target"] } : {}) },
   );
   if (result.status === "rejected") {
     return fail(`Not applied (${result.reason}): ${result.message}`);
   }
+  // This process exits now, so it cannot follow a rollout job: it says where to look instead.
+  const jobLines = ("jobs" in result ? (result.jobs ?? []) : []).map(
+    (job) => `accepted: rollout job ${job.jobId} → ${job.targets.join(", ")}${job.pending !== undefined ? ` (not reached yet: ${job.pending.join(", ")})` : ""}; a target is reached when its cq:lastRolledout changes.`,
+  );
   if ("operations" in result) {
-    const lines = result.operations.map((op) => `✓ ${op.index}. ${op.kind}: ${op.summary} (${op.ok}/${op.sent} requests)`);
+    const lines = [...result.operations.map((op) => `✓ ${op.index}. ${op.kind}: ${op.summary} (${op.ok}/${op.sent} requests)`), ...jobLines];
     if (result.status === "applied") {
       return ok(`${plan.confirmationMessage}\n\n${lines.join("\n")}`);
     }
     return fail(`${lines.join("\n")}\n✗ ${result.failed.index}. ${result.failed.kind}: ${result.failed.message}\n${result.notRun} operation(s) not run.`);
   }
-  if (result.status === "applied") {
-    return ok(`${plan.confirmationMessage}\n\n${result.results.map((step) => `✓ ${step.label} → HTTP ${step.status}`).join("\n")}`);
+  if (result.status === "applied" || result.status === "accepted") {
+    return ok(`${plan.confirmationMessage}\n\n${[...result.results.map((step) => `✓ ${step.label} → HTTP ${step.status}`), ...jobLines].join("\n")}`);
   }
   return fail(
     `${result.completed.map((step) => `✓ ${step.label} → HTTP ${step.status}`).join("\n")}\n✗ ${result.failed.label}: ${result.failed.message}\n${result.notSent} request(s) not sent.`,

@@ -1,12 +1,12 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
-// The ten `aem_*` tools (aem-sites-package, spec aem-sites-mcp). Lives apart
+// The eleven `aem_*` tools (aem-sites-package, spec aem-sites-mcp). Lives apart
 // from `mcp.ts` for the same reason as in `eds`: `mcp.ts` connects the
 // transport unconditionally at module top level (the fd-1 conformance probe
 // imports the built bundle and relies on it), so it cannot also be imported
 // by unit tests. This module has no side effects.
 //
-// Eight reads and one planner, all read-only; `aem_apply` is the only tool
+// Nine reads and one planner, all read-only; `aem_apply` is the only tool
 // that writes, and it writes only what a plan stored.
 import { CredentialExpiredError, defineTool, MissingCredentialError, redact, type RegisteredTool, type ToolCallResult } from "@hiberus-magento/mcp-core";
 import { z } from "zod";
@@ -26,6 +26,7 @@ import { createPlanStore, type PlanStore } from "../confirm/plan-store.js";
 import { createAemTokenProvider, resolveAemTokenDirect, tokenEnvVar } from "../credential-provider.js";
 import { assertReadable } from "../guard/paths.js";
 import { applyPlan } from "./apply.js";
+import { createJobRegistry, jobStatus, type JobRegistry } from "./jobs.js";
 import { planOperation, type StoredPlan } from "./plan-builder.js";
 import { aemApplyInput, aemPlanInput, plannedPaths } from "./plan-schema.js";
 
@@ -35,6 +36,8 @@ export interface AemRuntime {
   readonly config: AemConfig;
   readonly clientFor: (env: string) => AemClient;
   readonly store: PlanStore<StoredPlan>;
+  /** Rollout jobs `aem_apply` started, for `aem_get_job_status`. */
+  readonly jobs: JobRegistry;
   readonly now: () => number;
   readonly sleep: (ms: number) => Promise<void>;
   /** Where each environment's token would come from — never the token itself. */
@@ -186,10 +189,22 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
       withAuthAnswer(async () => (await readPageTree(client(args.env).http, assertReadable(args.path), args.depth ?? 2)) ?? { path: args.path, exists: false }),
   });
 
+  const getJobStatus = defineTool({
+    name: "aem_get_job_status",
+    description:
+      "Use this after aem_apply returned a rollout job (jobId), to check whether the job has reached its targets: completed when every target's cq:lastRolledout has changed since the rollout was planned, running otherwise, with the targets reached and pending. Read-only.",
+    inputSchema: z.object({ jobId: z.string().min(1) }).strict(),
+    annotations: readTool,
+    handler: async (args) => {
+      const runtime = getRuntime();
+      return withAuthAnswer(() => jobStatus({ clientFor: runtime.clientFor, jobs: runtime.jobs, now: runtime.now }, args.jobId));
+    },
+  });
+
   const plan = defineTool({
     name: "aem_plan",
     description:
-      "Use this whenever you want to change anything on an AEM author: page properties, the fields of a component (a block's configured links or texts), robots (noindex), EDS metadata-sheet rows, publish/unpublish, create/copy/move/delete pages (force: true deletes pages other pages reference; allowPublished: true only when an unpublish was refused), create a Live Copy (MSM) or roll out a source page to its Live Copies (livecopy.rollout, waits for the async job), change a Live Copy's rollout configs (livecopy.set-rollout-configs, e.g. Push on modify), or lock/unlock a page; publish a whole subtree (page.publish-tree); or many of these in order under one confirmation (batch, each planned when applied). " +
+      "Use this whenever you want to change anything on an AEM author: page properties, the fields of a component (a block's configured links or texts), robots (noindex), EDS metadata-sheet rows, publish/unpublish, create/copy/move/delete pages (force: true deletes pages other pages reference; allowPublished: true only when an unpublish was refused), create a Live Copy (MSM) or roll out a source page to its Live Copies (livecopy.rollout: an async job, apply returns once the author accepts it unless wait: true; several rollouts go in one batch), change a Live Copy's rollout configs (livecopy.set-rollout-configs, e.g. Push on modify), or lock/unlock a page; publish a whole subtree (page.publish-tree); or many of these in order under one confirmation (batch, each planned when applied). " +
       "It reads the current state and returns exactly what would change, a confirmationMessage to show the user and a one-time token — it never writes. " +
       `Then call aem_apply only after the user explicitly confirms.`,
     inputSchema: aemPlanInput,
@@ -204,17 +219,18 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
     name: "aem_apply",
     description:
       "Use this only after the user's most recent message explicitly confirms a plan returned by aem_plan. Pass that plan's token, env and kind (and confirmTarget, typed by the user, when the plan requires it). " +
-      `It sends exactly the planned requests and nothing else; a stale, expired, reused or forged token writes nothing. Writes to the AEM author.`,
+      `It sends exactly the planned requests and nothing else; a stale, expired, reused or forged token writes nothing. ` +
+      `A rollout answers accepted with a jobId as soon as the author takes it: check it with aem_get_job_status. Writes to the AEM author.`,
     inputSchema: aemApplyInput,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
     handler: async (args, ctx) => {
       const runtime = getRuntime();
-      const deps = { config: runtime.config, clientFor: runtime.clientFor, store: runtime.store, sleep: runtime.sleep };
+      const deps = { config: runtime.config, clientFor: runtime.clientFor, store: runtime.store, jobs: runtime.jobs, now: runtime.now, sleep: runtime.sleep };
       return withAuthAnswer(() => applyPlan(ctx.reportProgress !== undefined ? { ...deps, reportProgress: ctx.reportProgress } : deps, args));
     },
   });
 
-  return [listEnvironments, checkAuth, listPages, getPage, getReplicationStatus, getSheet, listTemplatesTool, getPageTree, plan, apply];
+  return [listEnvironments, checkAuth, listPages, getPage, getReplicationStatus, getSheet, listTemplatesTool, getPageTree, getJobStatus, plan, apply];
 }
 
 /** Second, independent net under the projections: nothing a tool returns can carry a bearer. */
@@ -249,6 +265,7 @@ export function createRuntimeResolver(source: EnvRecord = process.env): () => Ae
         return created;
       },
       store: createPlanStore<StoredPlan>({ now }),
+      jobs: createJobRegistry(),
       now,
       sleep,
       tokenSource: (name) => {

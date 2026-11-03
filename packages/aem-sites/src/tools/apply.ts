@@ -6,11 +6,16 @@
 // known, unexpired and unused, that the echoes match, that a protected plan
 // carries the typed confirmation, and that the state the user reviewed has
 // not changed. Only then is the token consumed and the first request sent.
-import { AemError, readComponent, readPage, readSheet, type AemClient } from "../client/index.js";
+//
+// A rollout is an async job on the author (aem-sites-rollout-jobs): apply
+// records it and, unless the plan asked to wait, answers `accepted` as soon
+// as the author takes the request.
+import { AemError, readComponent, readPage, readSheet, type AemClient, type AuthorResponse } from "../client/index.js";
 import type { AemConfig } from "../config.js";
 import { fingerprint } from "../confirm/fingerprint.js";
 import type { PlanStore } from "../confirm/plan-store.js";
-import { BATCH_READ_RETRIES, BATCH_READ_RETRY_MS, draftBatchOperation, rejectionFor, type PlannedStep, type StateCheck, type StoredPlan } from "./plan-builder.js";
+import { pendingTargets, type JobRegistry, type RolloutTarget } from "./jobs.js";
+import { BATCH_READ_RETRIES, BATCH_READ_RETRY_MS, draftBatchOperation, rejectionFor, type Draft, type PlannedStep, type StateCheck, type StoredPlan } from "./plan-builder.js";
 import type { AemApplyInput, OperationKind, SinglePlanOperation } from "./plan-schema.js";
 
 export type ApplyRejectionReason =
@@ -28,6 +33,20 @@ export interface StepResult {
   readonly status: number;
 }
 
+/** A rollout job the author accepted. `pending` is set only when apply waited and the job had not reached those targets. */
+export interface AcceptedJob {
+  readonly jobId: string;
+  readonly source: string;
+  readonly deep: boolean;
+  readonly targets: readonly string[];
+  readonly pending?: readonly string[];
+  readonly authorResponse?: unknown;
+}
+
+/** Returned with every result that carries a job the author may still be running. */
+export const JOB_INSTRUCTION =
+  "The author accepted the rollout job(s) but may not have run them yet. Before anything that depends on their targets, call aem_get_job_status with each jobId until it answers completed.";
+
 /** One operation of a batch: what it did, without echoing every request. */
 export interface BatchOperationResult {
   readonly index: number;
@@ -37,12 +56,16 @@ export interface BatchOperationResult {
   readonly ok: number;
   /** The operation found nothing to change. */
   readonly skipped?: boolean;
+  /** The rollout jobs this operation started. */
+  readonly jobIds?: readonly string[];
 }
+
+type WithJobs = { readonly jobs?: readonly AcceptedJob[]; readonly instruction?: string };
 
 export type ApplyResult =
   | { readonly status: "rejected"; readonly reason: ApplyRejectionReason; readonly message: string }
-  | { readonly status: "applied"; readonly env: string; readonly kind: "batch"; readonly operations: readonly BatchOperationResult[] }
-  | {
+  | ({ readonly status: "applied"; readonly env: string; readonly kind: "batch"; readonly operations: readonly BatchOperationResult[] } & WithJobs)
+  | ({
       readonly status: "failed";
       readonly env: string;
       readonly kind: "batch";
@@ -50,8 +73,17 @@ export type ApplyResult =
       readonly operations: readonly BatchOperationResult[];
       readonly failed: { readonly index: number; readonly kind: SinglePlanOperation["kind"]; readonly message: string; readonly sent: number };
       readonly notRun: number;
+    } & WithJobs)
+  | ({ readonly status: "applied"; readonly env: string; readonly kind: OperationKind; readonly results: readonly StepResult[] } & WithJobs)
+  /** Every request succeeded, and at least one started a rollout job not known to have reached its targets. */
+  | {
+      readonly status: "accepted";
+      readonly env: string;
+      readonly kind: OperationKind;
+      readonly results: readonly StepResult[];
+      readonly jobs: readonly AcceptedJob[];
+      readonly instruction: string;
     }
-  | { readonly status: "applied"; readonly env: string; readonly kind: OperationKind; readonly results: readonly StepResult[] }
   | {
       readonly status: "failed";
       readonly env: string;
@@ -66,6 +98,8 @@ export interface ApplyDeps {
   readonly config: AemConfig;
   readonly clientFor: (env: string) => AemClient;
   readonly store: PlanStore<StoredPlan>;
+  readonly jobs: JobRegistry;
+  readonly now: () => number;
   readonly sleep: (ms: number) => Promise<void>;
   /** Called before each batch operation and after each request it sends, so a long batch keeps the client's call alive. */
   readonly reportProgress?: (progress: number, total: number | undefined, message: string) => Promise<void>;
@@ -73,34 +107,71 @@ export interface ApplyDeps {
 
 const reject = (reason: ApplyRejectionReason, message: string): ApplyResult => ({ status: "rejected", reason, message });
 
-/** How often and how long apply waits for an async rollout job to reach its targets. */
+/** How often and how long apply waits for a rollout job planned with `wait` (observed 2026-11-03: about 7 minutes). */
 export const ROLLOUT_POLL_MS = 3000;
-export const ROLLOUT_TIMEOUT_MS = 5 * 60 * 1000;
+export const ROLLOUT_WAIT_TIMEOUT_MS = 15 * 60 * 1000;
 
 /**
- * Waits until every target's `cq:lastRolledout` differs from the value read
- * when the plan was made. Throws naming the targets the job has not reached.
+ * Polls until every target's `cq:lastRolledout` differs from its plan-time
+ * value, or the wait timeout. Returns the targets not reached (empty when
+ * the job reached them all). `onPoll` gets the time waited so far.
  */
-async function awaitRollout(deps: ApplyDeps, client: AemClient, targets: NonNullable<PlannedStep["awaitRollout"]>): Promise<void> {
-  let pending = [...targets];
+async function awaitRollout(deps: ApplyDeps, client: AemClient, targets: readonly RolloutTarget[], onPoll: (waitedMs: number) => Promise<void>): Promise<readonly string[]> {
+  let pending = targets;
   for (let waited = 0; ; waited += ROLLOUT_POLL_MS) {
-    const still: typeof pending = [];
-    for (const target of pending) {
-      const page = await readPage(client.http, target.path, ["cq:lastRolledout"]);
-      const last = page?.properties["cq:lastRolledout"];
-      if (typeof last !== "string" || last === target.before) {
-        still.push(target);
-      }
+    const still = new Set(await pendingTargets(client, pending));
+    pending = pending.filter((target) => still.has(target.path));
+    if (pending.length === 0 || waited >= ROLLOUT_WAIT_TIMEOUT_MS) {
+      return pending.map((target) => target.path);
     }
-    pending = still;
-    if (pending.length === 0) {
-      return;
-    }
-    if (waited >= ROLLOUT_TIMEOUT_MS) {
-      throw new Error(`The rollout job was accepted but has not reached ${pending.map((t) => t.path).join(", ")} after ${ROLLOUT_TIMEOUT_MS / 1000} s; check the targets before running anything that depends on them.`);
-    }
+    await onPoll(waited);
     await deps.sleep(ROLLOUT_POLL_MS);
   }
+}
+
+/** The author's answer as JSON when it is JSON, else a short excerpt; kept so its shape can be recorded. */
+function authorResponseOf(response: AuthorResponse): unknown {
+  const text = response.text.trim();
+  if (text === "") {
+    return undefined;
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text.slice(0, 500);
+  }
+}
+
+/** Records the job a rollout request started and, when the plan asked to, waits for it. */
+async function startRollout(
+  deps: ApplyDeps,
+  env: string,
+  client: AemClient,
+  rollout: NonNullable<PlannedStep["rollout"]>,
+  response: AuthorResponse,
+  onPoll: (waitedMs: number) => Promise<void>,
+): Promise<{ readonly job: AcceptedJob; readonly reached: boolean }> {
+  const authorResponse = authorResponseOf(response);
+  const recorded = deps.jobs.add({
+    env,
+    source: rollout.source,
+    deep: rollout.deep,
+    targets: rollout.targets,
+    acceptedAt: deps.now(),
+    ...(authorResponse !== undefined ? { authorResponse } : {}),
+  });
+  const job: AcceptedJob = {
+    jobId: recorded.id,
+    source: rollout.source,
+    deep: rollout.deep,
+    targets: rollout.targets.map((target) => target.path),
+    ...(authorResponse !== undefined ? { authorResponse } : {}),
+  };
+  if (!rollout.wait) {
+    return { job, reached: false };
+  }
+  const pending = await awaitRollout(deps, client, rollout.targets, onPoll);
+  return pending.length === 0 ? { job, reached: true } : { job: { ...job, pending }, reached: false };
 }
 
 function failureMessage(error: unknown, hints: PlannedStep["hints"]): string {
@@ -171,16 +242,28 @@ export async function applyPlan(deps: ApplyDeps, input: AemApplyInput): Promise<
     return applyBatch(deps, plan.env, plan.batch);
   }
   const completed: StepResult[] = [];
+  const jobs: AcceptedJob[] = [];
+  let allReached = true;
+  // Best effort, like a batch's: a client that cannot take a notification never stops the wait.
+  const waitProgress = async (waitedMs: number): Promise<void> => {
+    try {
+      await deps.reportProgress?.(waitedMs / 1000, ROLLOUT_WAIT_TIMEOUT_MS / 1000, "waiting for the rollout job to reach its targets");
+    } catch {
+      // The client may have gone; the wait goes on.
+    }
+  };
   for (const [index, step] of plan.steps.entries()) {
     if (step.pauseBeforeMs !== undefined) {
       await deps.sleep(step.pauseBeforeMs);
     }
     try {
       const response = await client.execute(step.request);
-      if (step.awaitRollout !== undefined) {
-        await awaitRollout(deps, client, step.awaitRollout);
-      }
       completed.push({ label: step.request.label, status: response.status });
+      if (step.rollout !== undefined) {
+        const { job, reached } = await startRollout(deps, plan.env, client, step.rollout, response, waitProgress);
+        jobs.push(job);
+        allReached &&= reached;
+      }
     } catch (error) {
       return {
         status: "failed",
@@ -192,19 +275,25 @@ export async function applyPlan(deps: ApplyDeps, input: AemApplyInput): Promise<
       };
     }
   }
-  return { status: "applied", env: plan.env, kind: plan.kind, results: completed };
+  if (!allReached) {
+    return { status: "accepted", env: plan.env, kind: plan.kind, results: completed, jobs, instruction: JOB_INSTRUCTION };
+  }
+  return { status: "applied", env: plan.env, kind: plan.kind, results: completed, ...(jobs.length > 0 ? { jobs } : {}) };
 }
 
 /**
  * Runs an approved batch: each operation is planned against the author's
  * state when its turn comes (so it can depend on what earlier ones created)
  * and its requests are sent at once. The first rejection or failed request
- * stops the batch. Progress counts finished operations, with the share of an
+ * stops the batch, and so does a rollout planned with `wait` that runs out
+ * of time; a rollout without `wait` is accepted and the batch goes on. Progress counts finished operations, with the share of an
  * operation's requests already sent as the fraction.
  */
 async function applyBatch(deps: ApplyDeps, env: string, operations: readonly SinglePlanOperation[]): Promise<ApplyResult> {
   const client = deps.clientFor(env);
   const done: BatchOperationResult[] = [];
+  const jobs: AcceptedJob[] = [];
+  const withJobs = (): WithJobs => (jobs.length > 0 ? { jobs, instruction: JOB_INSTRUCTION } : {});
   let reported = -1;
   // Best effort: a notification the client cannot take never stops the batch, and progress only grows.
   const progress = async (value: number, message: string): Promise<void> => {
@@ -221,7 +310,7 @@ async function applyBatch(deps: ApplyDeps, env: string, operations: readonly Sin
   for (const [position, op] of operations.entries()) {
     const index = position + 1;
     await progress(position, `operation ${index}/${operations.length}: ${op.kind}`);
-    let draft;
+    let draft: Draft | undefined;
     for (let attempt = 0; draft === undefined; attempt += 1) {
       try {
         draft = await draftBatchOperation(deps, env, op);
@@ -234,18 +323,26 @@ async function applyBatch(deps: ApplyDeps, env: string, operations: readonly Sin
           await deps.sleep(BATCH_READ_RETRY_MS);
           continue;
         }
-        return { status: "failed", env, kind: "batch", operations: done, failed: { index, kind: op.kind, message: `${rejection.reason}: ${rejection.message}`, sent: 0 }, notRun: operations.length - index };
+        return { status: "failed", env, kind: "batch", operations: done, failed: { index, kind: op.kind, message: `${rejection.reason}: ${rejection.message}`, sent: 0 }, notRun: operations.length - index, ...withJobs() };
       }
     }
     let ok = 0;
+    const jobIds: string[] = [];
     for (const step of draft.steps) {
       if (step.pauseBeforeMs !== undefined) {
         await deps.sleep(step.pauseBeforeMs);
       }
       try {
-        await client.execute(step.request);
-        if (step.awaitRollout !== undefined) {
-          await awaitRollout(deps, client, step.awaitRollout);
+        const response = await client.execute(step.request);
+        if (step.rollout !== undefined) {
+          const share = (waitedMs: number): number => position + (ok + Math.min(waitedMs / ROLLOUT_WAIT_TIMEOUT_MS, 0.99)) / draft.steps.length;
+          const { job, reached } = await startRollout(deps, env, client, step.rollout, response, (waitedMs) => progress(share(waitedMs), `operation ${index}/${operations.length}: waiting for the rollout job`));
+          jobs.push(job);
+          jobIds.push(job.jobId);
+          if (step.rollout.wait && !reached) {
+            const message = `${step.request.label}: the rollout job ${job.jobId} was accepted but has not reached ${(job.pending ?? []).join(", ")} after ${ROLLOUT_WAIT_TIMEOUT_MS / 1000} s, and the operations after it may depend on it. Check it with aem_get_job_status.`;
+            return { status: "failed", env, kind: "batch", operations: done, failed: { index, kind: op.kind, message, sent: ok + 1 }, notRun: operations.length - index, ...withJobs() };
+          }
         }
         ok += 1;
         await progress(position + ok / draft.steps.length, `operation ${index}/${operations.length}: ${step.request.label}`);
@@ -257,10 +354,11 @@ async function applyBatch(deps: ApplyDeps, env: string, operations: readonly Sin
           operations: done,
           failed: { index, kind: op.kind, message: `${step.request.label}: ${failureMessage(error, step.hints)}`, sent: ok + 1 },
           notRun: operations.length - index,
+          ...withJobs(),
         };
       }
     }
-    done.push({ index, kind: op.kind, summary: draft.summary, sent: draft.steps.length, ok, ...(draft.steps.length === 0 ? { skipped: true } : {}) });
+    done.push({ index, kind: op.kind, summary: draft.summary, sent: draft.steps.length, ok, ...(draft.steps.length === 0 ? { skipped: true } : {}), ...(jobIds.length > 0 ? { jobIds } : {}) });
   }
-  return { status: "applied", env, kind: "batch", operations: done };
+  return { status: "applied", env, kind: "batch", operations: done, ...withJobs() };
 }

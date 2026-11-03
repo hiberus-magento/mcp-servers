@@ -5,6 +5,7 @@ import { createPlanStore } from "./confirm/plan-store.js";
 import { runCli, type CliDeps } from "./cli.js";
 import { SYNTHETIC_AEM_AUTHOR, SYNTHETIC_ROOT, SYNTHETIC_TOKEN } from "./testing/author-double.js";
 import { createFakeAuthor } from "./testing/fake-author.js";
+import { createJobRegistry } from "./tools/jobs.js";
 import type { StoredPlan } from "./tools/plan-builder.js";
 
 const PAGE = `${SYNTHETIC_ROOT}/en`;
@@ -29,6 +30,7 @@ function deps(overrides: Partial<CliDeps> = {}) {
       config: parseConfig({ AEM_AUTHORS: `stage=${SYNTHETIC_AEM_AUTHOR}`, AEM_WRITE_ROOTS: SYNTHETIC_ROOT }),
       clientFor: () => author.client,
       store: createPlanStore<StoredPlan>({ now: () => 0 }),
+      jobs: createJobRegistry({ randomId: () => "job-1" }),
       now: () => 0,
       sleep: async () => undefined,
       tokenSource: () => "file",
@@ -90,6 +92,17 @@ describe("plan and apply", () => {
     const result = await runCli(["apply", "--env", "stage", "--operation", "op.json", "--yes"], base);
     expect(result.exitCode).toBe(0);
     expect(author.posts()).toHaveLength(1);
+  });
+
+  it("apply --yes on a rollout reports the accepted job, which this process cannot follow", async () => {
+    const target = `${SYNTHETIC_ROOT}/fr`;
+    const { base, author } = deps({ readFile: () => JSON.stringify({ kind: "livecopy.rollout", path: PAGE, targets: [target] }) });
+    author.pages.set(target, { "jcr:title": "FR" });
+    author.rollout.delivers = false;
+    const result = await runCli(["apply", "--env", "stage", "--operation", "op.json", "--yes"], base);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`accepted: rollout job job-1 → ${target}`);
+    expect(result.stdout).toContain("cq:lastRolledout");
   });
 
   it("reports a rejection with its reason", async () => {

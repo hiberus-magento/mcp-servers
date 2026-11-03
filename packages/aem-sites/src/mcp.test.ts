@@ -1,6 +1,6 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
-// aem-sites-mcp spec: "Ten-Tool Surface", "Credentials Never Reach the
+// aem-sites-mcp spec: "Eleven-Tool Surface", "Credentials Never Reach the
 // Model" and "One Bearer Token per Environment", driven through the tool
 // objects `mcp.ts` registers (the stdio wiring itself is covered by the
 // conformance suite).
@@ -9,6 +9,7 @@ import { parseConfig } from "./config.js";
 import { createPlanStore } from "./confirm/plan-store.js";
 import { createAuthorDouble, SYNTHETIC_AEM_AUTHOR, SYNTHETIC_ROOT, SYNTHETIC_TOKEN } from "./testing/author-double.js";
 import { createAemTools, redactResult, type AemRuntime } from "./tools/aem-tools.js";
+import { createJobRegistry, type JobRegistry } from "./tools/jobs.js";
 import type { RouteTable } from "./testing/fetch-double.js";
 import type { StoredPlan } from "./tools/plan-builder.js";
 
@@ -21,16 +22,18 @@ const EXPECTED: Record<string, readonly [boolean, boolean, boolean]> = {
   aem_get_sheet: [true, false, true],
   aem_list_templates: [true, false, true],
   aem_get_page_tree: [true, false, true],
+  aem_get_job_status: [true, false, true],
   aem_plan: [true, false, true],
   aem_apply: [false, true, false],
 };
 
-function toolsOver(routes: RouteTable, variables: Record<string, string> = {}) {
+function toolsOver(routes: RouteTable, variables: Record<string, string> = {}, jobs: JobRegistry = createJobRegistry()) {
   const double = createAuthorDouble(routes);
   const runtime: AemRuntime = {
     config: parseConfig({ AEM_AUTHORS: `stage=${SYNTHETIC_AEM_AUTHOR}`, AEM_WRITE_ROOTS: SYNTHETIC_ROOT, ...variables }),
     clientFor: () => double.client,
     store: createPlanStore<StoredPlan>({ now: () => 0 }),
+    jobs,
     now: () => 0,
     sleep: async () => undefined,
     tokenSource: () => "file",
@@ -50,7 +53,7 @@ function toolsOver(routes: RouteTable, variables: Record<string, string> = {}) {
 describe("tool surface", () => {
   const { tools } = toolsOver({});
 
-  it("exposes exactly the ten tools with their annotation triples", () => {
+  it("exposes exactly the eleven tools with their annotation triples", () => {
     expect(Object.fromEntries(tools.map((t) => [t.name, [t.annotations.readOnlyHint, t.annotations.destructiveHint, t.annotations.idempotentHint]]))).toEqual(EXPECTED);
   });
 
@@ -98,6 +101,22 @@ describe("reads", () => {
   });
 });
 
+describe("aem_get_job_status", () => {
+  const target = `${SYNTHETIC_ROOT}/fr/outdoor-gear`;
+
+  it("reports a rollout job running until its target's cq:lastRolledout changes", async () => {
+    const jobs = createJobRegistry({ randomId: () => "job-1" });
+    jobs.add({ env: "stage", source: `${SYNTHETIC_ROOT}/en/outdoor-gear`, deep: false, targets: [{ path: target, before: "before" }], acceptedAt: 0 });
+    const { call } = toolsOver({ [`GET ${target}/jcr:content.1.json`]: { status: 200, body: { "jcr:primaryType": "cq:PageContent", "cq:lastRolledout": "after" } } }, {}, jobs);
+    expect(await call("aem_get_job_status", { jobId: "job-1" })).toMatchObject({ status: "completed", reached: [target], pending: [] });
+  });
+
+  it("answers unknown-job for an id this server never issued", async () => {
+    const { call } = toolsOver({});
+    expect(await call("aem_get_job_status", { jobId: "forged" })).toMatchObject({ status: "unknown-job" });
+  });
+});
+
 describe("redaction", () => {
   it("redacts a bearer that somehow reached a tool result", () => {
     const result = redactResult({ content: [{ type: "text", text: `{"h":"Authorization: Bearer ${SYNTHETIC_TOKEN}"}` }] });
@@ -111,6 +130,10 @@ describe("aem_plan input schema", () => {
 
   it("rejects a field a kind does not take", async () => {
     await expect(plan?.invoke({ env: "stage", operation: { kind: "page.lock", path: `${SYNTHETIC_ROOT}/en`, force: true } }, {})).rejects.toThrow();
+  });
+
+  it("takes wait on livecopy.rollout, and only as a boolean", async () => {
+    await expect(plan?.invoke({ env: "stage", operation: { kind: "livecopy.rollout", path: `${SYNTHETIC_ROOT}/en`, targets: [`${SYNTHETIC_ROOT}/fr`], wait: "yes" } }, {})).rejects.toThrow();
   });
 
   it("takes force and allowPublished on page.delete, and only as booleans", async () => {

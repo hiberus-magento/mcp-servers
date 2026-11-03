@@ -54,6 +54,7 @@ import {
   protectedPatternFor,
 } from "../guard/paths.js";
 import { ForbiddenPropertyNameError, InvalidPropertyValueError, assertSheetColumn } from "../guard/properties.js";
+import type { RolloutTarget } from "./jobs.js";
 import type { AemPlanInput, OperationKind, PlanOperation, SinglePlanOperation } from "./plan-schema.js";
 
 /** Returned with every plan: a model weighs what it just received more than a description read at session start. */
@@ -105,8 +106,11 @@ export interface PlannedStep {
   readonly pauseBeforeMs?: number;
   /** Appended to the failure message when the author answers this step with that HTTP status. */
   readonly hints?: Readonly<Record<number, string>>;
-  /** The request starts an async rollout job: apply waits until each target's `cq:lastRolledout` differs from `before`. */
-  readonly awaitRollout?: readonly { readonly path: string; readonly before?: string }[];
+  /**
+   * The request starts an async rollout job. Apply records it, and with
+   * `wait` polls until each target's `cq:lastRolledout` differs from `before`.
+   */
+  readonly rollout?: { readonly source: string; readonly deep: boolean; readonly wait: boolean; readonly targets: readonly RolloutTarget[] };
 }
 
 export interface StoredPlan {
@@ -221,6 +225,10 @@ export const COMPONENT_INHERITANCE_WARNING =
   "If this page is a Live Copy, the component is inherited: the next rollout from its source overwrites this edit unless an author cancels the component's inheritance in the editor.";
 export const ROLLOUT_WARNING =
   "A rollout overwrites the inherited content of every target with the source's; components whose inheritance an author cancelled keep their edits. The targets are not published.";
+export const ROLLOUT_ACCEPTED_NOTE =
+  "Apply returns as soon as the author accepts the rollout job; the job reaches the targets minutes later. Check it with aem_get_job_status before anything that depends on the targets (or plan with wait: true).";
+export const ROLLOUT_NO_WAIT_BATCH_WARNING =
+  "Rollouts without wait: true do not hold up the operations after them: an operation that reads or rolls out their targets may run before the job reaches them.";
 export const ROLLOUT_CONFIGS_NOTE =
   "The configs apply to the Live Copy root and to every page below it that does not set its own; nothing is rolled out by this change.";
 export const PUSH_ON_MODIFY_WARNING =
@@ -650,7 +658,8 @@ async function draftRollout(ctx: Context, op: Extract<PlanOperation, { kind: "li
   const targets = [...new Set(op.targets)];
   const request = buildRollout(ctx.scope, { path: op.path, targets, deep });
   await requirePage(ctx, op.path);
-  const before: { path: string; before?: string }[] = [];
+  const wait = op.wait ?? false;
+  const before: RolloutTarget[] = [];
   for (const target of targets) {
     const page = await readPage(ctx.client.http, target, [...ctx.config.extraProperties, "cq:lastRolledout"]);
     if (page === undefined) {
@@ -660,12 +669,12 @@ async function draftRollout(ctx: Context, op: Extract<PlanOperation, { kind: "li
     before.push({ path: target, ...(typeof last === "string" ? { before: last } : {}) });
   }
   return {
-    steps: [{ request, awaitRollout: before }],
+    steps: [{ request, rollout: { source: op.path, deep, wait, targets: before } }],
     checks: [{ kind: "page-present", path: op.path }, ...targets.map((path) => ({ kind: "page-present" as const, path }))],
     changes: targets.map((path) => ({ path, what: "inherited content", after: `rolled out from ${op.path}` })),
     targets,
     summary: `Roll out ${op.path}${deep ? " and its sub-pages" : ""} to ${targets.length} Live Cop${targets.length === 1 ? "y" : "ies"}: ${targets.join(", ")}.`,
-    warnings: [ROLLOUT_WARNING],
+    warnings: wait ? [ROLLOUT_WARNING] : [ROLLOUT_WARNING, ROLLOUT_ACCEPTED_NOTE],
   };
 }
 
@@ -851,6 +860,29 @@ function describeOperation(op: SinglePlanOperation): string {
   return `${kind} ${target}${options.length > 0 ? ` ${JSON.stringify(Object.fromEntries(options))}` : ""}`;
 }
 
+/** Whether a path is one of `paths`, or inside or above one of them. */
+function overlaps(path: string, paths: readonly string[]): boolean {
+  return paths.some((other) => `${path}/`.startsWith(`${other}/`) || `${other}/`.startsWith(`${path}/`));
+}
+
+/**
+ * Whether an operation touches, reads or rolls out from a page that an
+ * earlier rollout without `wait` updates: it may run before the job does.
+ */
+function dependsOnUnwaitedRollout(operations: readonly SinglePlanOperation[], targetsByOperation: readonly (readonly string[])[]): boolean {
+  const updating: string[] = [];
+  for (const [index, op] of operations.entries()) {
+    const paths = [...(targetsByOperation[index] ?? []), ...("srcPath" in op ? [op.srcPath] : op.kind === "livecopy.rollout" ? [op.path] : [])];
+    if (paths.some((path) => overlaps(path, updating))) {
+      return true;
+    }
+    if (op.kind === "livecopy.rollout" && op.wait !== true) {
+      updating.push(...op.targets);
+    }
+  }
+  return false;
+}
+
 function planBatch(deps: PlanDeps, ctx: Context, env: string, operations: readonly SinglePlanOperation[]): PlanResult {
   const targetsByOperation: (readonly string[])[] = [];
   for (const [index, op] of operations.entries()) {
@@ -865,10 +897,11 @@ function planBatch(deps: PlanDeps, ctx: Context, env: string, operations: readon
     }
   }
   const confirmTarget = confirmTargetFor(deps.config, env, targetsByOperation.flat());
+  const warnings = [BATCH_WARNING, ...(dependsOnUnwaitedRollout(operations, targetsByOperation) ? [ROLLOUT_NO_WAIT_BATCH_WARNING] : [])];
   const stored: StoredPlan = { env, kind: "batch", steps: [], checks: [], batch: operations, ...(confirmTarget !== undefined ? { confirmTarget } : {}) };
   const { token, expiresAt } = deps.store.put(stored, { ttlMs: BATCH_TTL_MS });
   const summary = `Apply ${operations.length} operation${operations.length === 1 ? "" : "s"} in order.`;
-  const lines = [`AEM author "${env}": ${summary}`, "", ...operations.map((op, index) => `${index + 1}. ${describeOperation(op)}`), "", `⚠ ${BATCH_WARNING}`, ""];
+  const lines = [`AEM author "${env}": ${summary}`, "", ...operations.map((op, index) => `${index + 1}. ${describeOperation(op)}`), "", ...warnings.map((warning) => `⚠ ${warning}`), ""];
   lines.push(confirmTarget !== undefined ? `This touches a protected ${confirmTarget === env ? "environment" : "path"}. To confirm, type: ${confirmTarget}` : "Reply yes to apply exactly these operations.");
   return {
     status: "planned",
@@ -879,7 +912,7 @@ function planBatch(deps: PlanDeps, ctx: Context, env: string, operations: readon
     summary,
     changes: operations.map((op, index) => ({ path: targetsByOperation[index]?.[0] ?? "", what: op.kind, after: describeOperation(op) })),
     requests: [],
-    warnings: [BATCH_WARNING],
+    warnings,
     confirmationMessage: lines.join("\n"),
     instruction: PLAN_INSTRUCTION,
     requiresConfirmTarget: confirmTarget !== undefined,

@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Defines the `hiberus-aem-sites-mcp` server (`packages/aem-sites/src/mcp.ts`): its ten-tool
+Defines the `hiberus-aem-sites-mcp` server (`packages/aem-sites/src/mcp.ts`): its eleven-tool
 surface, the plan/apply confirmation flow against an AEM as a Cloud Service Sites author, and the
 guards that make writes outside the declared content tree unexpressible.
 
 ## Requirements
 
-### Requirement: Ten-Tool Surface
+### Requirement: Eleven-Tool Surface
 
 The server MUST expose exactly these tools and no others:
 
@@ -22,6 +22,7 @@ The server MUST expose exactly these tools and no others:
 | `aem_get_sheet` | true/false/true | you need the columns and rows of a sheet page (e.g. the EDS bulk `metadata` sheet) |
 | `aem_list_templates` | true/false/true | you are about to plan `page.create` and need the templates allowed under a parent |
 | `aem_get_page_tree` | true/false/true | you need the component tree of a page, depth-bounded |
+| `aem_get_job_status` | true/false/true | `aem_apply` returned a rollout job and you need to know whether it has reached its targets |
 | `aem_plan` | true/false/false | you want to change anything on the author; it computes and returns the change, never writes |
 | `aem_apply` | false/true/false | the user has explicitly confirmed a plan in their latest message |
 
@@ -31,7 +32,7 @@ Each description MUST state when to use the tool, not only what it does.
 
 - GIVEN the running server
 - WHEN `tools/list` is called
-- THEN it returns exactly the ten names above with the declared annotation triples
+- THEN it returns exactly the eleven names above with the declared annotation triples
 - AND `aem_apply` is the only tool with `readOnlyHint: false`
 
 ### Requirement: Every Write Goes Through aem_plan and aem_apply
@@ -327,15 +328,40 @@ rollout configs, deep) for a Live Copy root.
 `livecopy.rollout` MUST send the Sites console's async rollout (`/bin/asynccommand`,
 `cmd=rollout`, `operation=asyncRollout`) for one readable source page to 1–100 existing targets
 inside `AEM_WRITE_ROOTS`, none of them inside or above the source; `deep` rolls out sub-pages too.
-The plan MUST warn that inherited content of the targets is overwritten. Apply MUST wait until
-each target's `cq:lastRolledout` differs from its value at plan time, and MUST fail naming the
-targets not reached after 5 minutes.
+The plan MUST warn that inherited content of the targets is overwritten.
+
+A rollout is an async job on the author. Apply MUST record each accepted rollout under a job id
+the server issues (env, source, targets and each target's `cq:lastRolledout` at plan time) and
+MUST return it in `jobs`. Without `wait: true`, apply MUST NOT poll: a plan whose requests all
+succeeded MUST return `status: "accepted"` with its jobs, and the plan MUST say so. With
+`wait: true`, apply MUST poll until each target's `cq:lastRolledout` differs from its plan-time
+value, for up to 15 minutes, reporting progress; when every target is reached it returns
+`applied`, otherwise `accepted` with the targets not reached as `pending`.
+
+In a batch, a rollout without `wait` MUST NOT stop the batch once the author accepts it; its
+operation MUST list its `jobIds` and the batch result its `jobs`. A rollout with `wait: true` that
+runs out of time MUST stop the batch as `failed`, naming its job. A batch plan MUST warn when an
+operation touches, or rolls out from, a target of an earlier rollout without `wait`.
+
+`aem_get_job_status { jobId }` MUST read each target's `cq:lastRolledout` and answer `completed`
+when every target has changed, `running` otherwise, with the targets reached and pending and the
+seconds since the job was accepted; an id the server did not issue MUST answer `unknown-job`.
 
 `livecopy.set-rollout-configs` MUST replace the `cq:rolloutConfigs` of an existing Live Copy root
 inside `AEM_WRITE_ROOTS` with a Sling POST to its `jcr:content/cq:LiveSyncConfig` node, typed
 `String[]`, from the same allowlist as `livecopy.create`. A page without `cq:LiveSyncConfig` MUST
 be rejected with `invalid-operation`; the same list MUST return `no-changes`. The plan MUST show the
 lists before and after, and MUST warn when the new list includes Push on modify.
+
+#### Scenario: One rollout per language under one confirmation
+
+- GIVEN two source pages in a global language master, each with Live Copies in the verticals
+- WHEN `aem_plan` plans a `batch` of two `livecopy.rollout` operations without `wait` and the user
+  confirms it
+- THEN `aem_apply` sends both rollout requests without polling and returns `applied`, each
+  operation with its `jobIds` and the batch with both `jobs`
+- AND `aem_get_job_status` answers `running` for a job until every one of its targets has a new
+  `cq:lastRolledout`, then `completed`
 
 #### Scenario: Push on modify on a store Live Copy
 

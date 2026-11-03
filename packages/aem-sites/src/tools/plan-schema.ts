@@ -109,6 +109,8 @@ const singleOperationSchema = z.discriminatedUnion("kind", [
       targets: z.array(z.string().min(1)).min(1).max(100),
       /** Roll out the source's sub-pages too. */
       deep: z.boolean().optional(),
+      /** Apply waits until the job reaches every target (up to 15 min); default: it returns once the author accepts the job. */
+      wait: z.boolean().optional(),
     })
     .strict(),
   z

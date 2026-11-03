@@ -83,9 +83,16 @@ rollout config unless told otherwise; the source may be any readable page, the
 copy must be inside the write roots). Its components are inherited: editing one
 needs an author to cancel inheritance. `livecopy.rollout` pushes a source
 page (and its sub-pages with `deep: true`) to the matching pages of its Live
-Copies listed as `targets`, with the Sites console's async rollout; apply waits
-until every target's `cq:lastRolledout` changes (up to 5 minutes), so a batch
-can roll out one level of Live Copies and then the next.
+Copies listed as `targets`, with the Sites console's async rollout. The author
+runs the rollout as a job, minutes later, so apply answers `accepted` with a
+`jobId` as soon as the author takes the request; `aem_get_job_status` reports
+the job `completed` once every target's `cq:lastRolledout` has changed since
+the plan. Several rollouts (one per language, each to its own targets) go in
+one `batch` under one confirmation, and each one's job is listed. With
+`wait: true` apply waits for the job instead (up to 15 minutes, reporting
+progress), so a batch can roll out one level of Live Copies and then the next;
+a waited rollout that runs out of time stops the batch, keeping its job. A
+batch plan warns when an operation depends on a rollout that does not wait.
 `livecopy.set-rollout-configs` replaces the rollout configs of an existing Live
 Copy root (its `cq:LiveSyncConfig`), from the same allowlist as `livecopy.create`;
 the plan warns when the list includes Push on modify. `page.lock` stops *other* users from
@@ -115,8 +122,9 @@ through this server, not what an editor can do in the Sites console.
 - `aem_get_sheet` (read-only) — Use this to read a sheet page's columns and rows, e.g. the EDS bulk metadata sheet.
 - `aem_list_templates` (read-only) — Use this before planning page.create, to find template paths under a /conf root.
 - `aem_get_page_tree` (read-only) — Use this when you need a page's component tree, depth 1–4.
+- `aem_get_job_status` (read-only) — Use this after aem_apply returned a rollout job, to check whether it has reached its targets.
 - `aem_plan` (read-only) — Use this whenever you want to change anything on an AEM author — including a component's fields, creating a Live Copy or locking a page; it returns exactly what would change and a one-time token, and never writes.
-- `aem_apply` — Use this only after the user explicitly confirms a plan from aem_plan; it sends exactly the planned requests and nothing else.
+- `aem_apply` — Use this only after the user explicitly confirms a plan from aem_plan; it sends exactly the planned requests and nothing else, and answers accepted with a job id for a rollout.
 
 ## Environment
 

@@ -62,7 +62,7 @@ export {
   type TemplateHit,
 } from "./reads.js";
 export { AemAuthError, AemError, AemMalformedBodyError, AemStatusError, InvalidAuthorOriginError, TransientNetworkError, type AemAuthReason } from "./errors.js";
-export { assertAuthorOrigin, type AuthorHttp } from "./http.js";
+export { assertAuthorOrigin, type AuthorHttp, type AuthorResponse } from "./http.js";
 
 export interface AemClientDeps {
   readonly fetch: typeof globalThis.fetch;
