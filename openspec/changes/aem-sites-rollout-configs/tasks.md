@@ -15,4 +15,5 @@
 
 ## Phase 4: Live validation
 
-- [ ] 4.1 On a non-production author: set Standard + Push on modify on one store Live Copy root, read it back with `aem_get_page`, change a field of its source and check the store page without a manual rollout; then roll out from the level above and record whether the store page changes too.
+- [x] 4.1 On a non-production author: set Standard + Push on modify on one store Live Copy root, read it back with `aem_get_page`, change a field of its source and check the store page without a manual rollout; then roll out from the level above and record whether the store page changes too.
+  - 2026-11-03, a non-production author: one store Live Copy root got Standard + Push on modify and read back with both configs. An author edited a global language master page and rolled it out to its vertical copy by hand; the store page under that vertical copy changed on its own, with no rollout to it. So a write made by a rollout counts as a modification for a downstream Push on modify, and a three-level tree needs one manual rollout per change. Then 62 more store roots were set in two batches (19 and 43 operations), all applied.

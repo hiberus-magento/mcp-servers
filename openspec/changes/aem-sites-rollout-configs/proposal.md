@@ -33,7 +33,7 @@ configs of an existing Live Copy.
   creating one is a different MSM operation).
 - Inheriting the configs from the parent Live Copy, suspending, detaching.
 - Whether a write made by a rollout counts as a modification for a downstream Push on modify: not
-  documented by Adobe; recorded by the live validation below.
+  documented by Adobe. Observed 2026-11-03 on a non-production author: it does (see task 4.1).
 
 ## Risks
 
@@ -47,6 +47,6 @@ configs of an existing Live Copy.
 
 - [x] `livecopy.set-rollout-configs` passes the token matrix (forged, expired, reused, stale, echo).
 - [x] Builder tests for the request, the allowlist and the write roots.
-- [ ] Validated on a non-production author: a store Live Copy gets Standard + Push on modify, a
+- [x] Validated on a non-production author: a store Live Copy gets Standard + Push on modify, a
       change in its source reaches it without a manual rollout, and the result of a rollout from
       the level above is recorded.
