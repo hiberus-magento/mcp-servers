@@ -45,7 +45,7 @@ export interface AcceptedJob {
 
 /** Returned with every result that carries a job the author may still be running. */
 export const JOB_INSTRUCTION =
-  "The author accepted the rollout job(s) but may not have run them yet. Before anything that depends on their targets, call aem_get_job_status with each jobId until it answers completed.";
+  "The author accepted the rollout job(s) but may not have run them yet. Before anything that depends on their targets, call aem_get_job_status with each jobId until it answers completed; if it stays not-observed, read its note.";
 
 /** One operation of a batch: what it did, without echoing every request. */
 export interface BatchOperationResult {

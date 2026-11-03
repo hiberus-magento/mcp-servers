@@ -12,6 +12,10 @@ master to the vertical language masters with one shallow rollout per language:
    their turn (`rejected: expired` from the third one on).
 3. Inside a `batch`, a rollout that ran out of time stopped the whole batch.
 4. Once a job was accepted there was no way to ask whether it had reached its targets.
+5. Later the same day, AEM's Background Operations listed those shallow rollouts as Success within
+   seconds, yet the new child page did not appear in the Live Copies: a rollout without `deep`
+   does not seem to create sub-pages that only the source has (not verified). Rolling out the new
+   page itself was refused at plan time, because its targets did not exist yet.
 
 ## Scope
 
@@ -31,8 +35,12 @@ master to the vertical language masters with one shallow rollout per language:
   issues. The format of the author's response to `/bin/asynccommand` is not known to this
   repository yet, so the id is the server's own; the response is kept so the live validation can
   record its shape.
+- New pages as rollout targets: a target that does not exist yet is accepted when its parent exists
+  and an ancestor is a Live Copy root of the matching ancestor of the source (with sub-pages unless
+  it is the parent). The plan lists it as a new page.
 - `aem_get_job_status { jobId }` (read-only): reads each target's `cq:lastRolledout` and reports
-  `completed` (every target reached) or `running`, with the targets reached and pending, and the
+  `completed` (every target reached) or `not-observed`, with a note on what that can mean (the job
+  has not run, or ran without updating the property), with the targets reached and pending, and the
   time since the job was accepted. An unknown id (server restarted, or never issued) answers
   `unknown-job` and points at `aem_get_page` on the targets.
 - Several rollouts under one plan and one confirmation: a `batch` of `livecopy.rollout`

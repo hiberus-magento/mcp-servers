@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { SYNTHETIC_ROOT } from "../testing/author-double.js";
 import { createFakeAuthor } from "../testing/fake-author.js";
-import { createJobRegistry, jobStatus, MAX_REMEMBERED_JOBS } from "./jobs.js";
+import { createJobRegistry, jobStatus, MAX_REMEMBERED_JOBS, NOT_OBSERVED_NOTE } from "./jobs.js";
 
 const SOURCE = `${SYNTHETIC_ROOT}/en/outdoor-gear`;
 const FR = `${SYNTHETIC_ROOT}/fr/outdoor-gear`;
@@ -42,10 +42,10 @@ describe("rollout job registry", () => {
 });
 
 describe("rollout job status", () => {
-  it("is running while a target still has its plan-time cq:lastRolledout", async () => {
+  it("is not-observed while a target still has its plan-time cq:lastRolledout, and says what that can mean", async () => {
     const { status } = setup();
     expect(await status("job-1")).toEqual({
-      status: "running",
+      status: "not-observed",
       jobId: "job-1",
       env: "stage",
       source: SOURCE,
@@ -54,13 +54,14 @@ describe("rollout job status", () => {
       elapsedSeconds: 60,
       reached: [],
       pending: [FR, DE],
+      note: NOT_OBSERVED_NOTE,
     });
   });
 
   it("names the targets already reached and completes when every one is", async () => {
     const { author, status } = setup();
     author.pages.set(FR, { ...author.pages.get(FR), "cq:lastRolledout": "after" });
-    expect(await status("job-1")).toMatchObject({ status: "running", reached: [FR], pending: [DE] });
+    expect(await status("job-1")).toMatchObject({ status: "not-observed", reached: [FR], pending: [DE] });
     author.pages.set(DE, { ...author.pages.get(DE), "cq:lastRolledout": "after" });
     expect(await status("job-1")).toMatchObject({ status: "completed", reached: [FR, DE], pending: [] });
   });
@@ -69,7 +70,7 @@ describe("rollout job status", () => {
     const { author, status } = setup();
     author.pages.set(FR, { "cq:lastRolledout": "after" });
     author.pages.delete(DE);
-    expect(await status("job-1")).toMatchObject({ status: "running", reached: [FR], pending: [DE] });
+    expect(await status("job-1")).toMatchObject({ status: "not-observed", reached: [FR], pending: [DE] });
   });
 
   it("answers unknown-job for an id it never issued, pointing at the targets' pages", async () => {

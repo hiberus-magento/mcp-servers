@@ -660,22 +660,66 @@ async function draftRollout(ctx: Context, op: Extract<PlanOperation, { kind: "li
   await requirePage(ctx, op.path);
   const wait = op.wait ?? false;
   const before: RolloutTarget[] = [];
+  const checks: StateCheck[] = [{ kind: "page-present", path: op.path }];
+  const changes: Change[] = [];
   for (const target of targets) {
     const page = await readPage(ctx.client.http, target, [...ctx.config.extraProperties, "cq:lastRolledout"]);
     if (page === undefined) {
-      throw new PlanRejection("not-found", `There is no page at ${target}.`);
+      const liveCopy = await liveCopyHolding(ctx, op.path, target);
+      checks.push({ kind: "page-absent", path: target }, { kind: "page-present", path: liveCopy.root });
+      changes.push({ path: target, what: "new page", after: `created by the rollout from ${op.path} (Live Copy ${liveCopy.root} of ${liveCopy.master})` });
+      before.push({ path: target });
+      continue;
     }
     const last = page.properties["cq:lastRolledout"];
     before.push({ path: target, ...(typeof last === "string" ? { before: last } : {}) });
+    checks.push({ kind: "page-present", path: target });
+    changes.push({ path: target, what: "inherited content", after: `rolled out from ${op.path}` });
   }
   return {
     steps: [{ request, rollout: { source: op.path, deep, wait, targets: before } }],
-    checks: [{ kind: "page-present", path: op.path }, ...targets.map((path) => ({ kind: "page-present" as const, path }))],
-    changes: targets.map((path) => ({ path, what: "inherited content", after: `rolled out from ${op.path}` })),
+    checks,
+    changes,
     targets,
     summary: `Roll out ${op.path}${deep ? " and its sub-pages" : ""} to ${targets.length} Live Cop${targets.length === 1 ? "y" : "ies"}: ${targets.join(", ")}.`,
     warnings: wait ? [ROLLOUT_WARNING] : [ROLLOUT_WARNING, ROLLOUT_ACCEPTED_NOTE],
   };
+}
+
+/**
+ * A rollout target that does not exist yet: a new page of the source, which
+ * the rollout creates in a Live Copy that does not have it (the Sites
+ * console offers the same targets). Valid only when an ancestor of the
+ * target is a Live Copy root whose master is the matching ancestor of the
+ * source, at the same relative path, and the Live Copy includes sub-pages
+ * unless it is the target's parent. The target's parent must exist.
+ */
+async function liveCopyHolding(ctx: Context, source: string, target: string): Promise<{ readonly root: string; readonly master: string }> {
+  const refuse = (why: string): PlanRejection =>
+    new PlanRejection("not-found", `There is no page at ${target}, and the rollout cannot create it: ${why} Roll out a parent page first, or name an existing target.`);
+  const parent = target.slice(0, target.lastIndexOf("/"));
+  let page = await readPage(ctx.client.http, parent);
+  if (page === undefined) {
+    throw refuse(`its parent ${parent} does not exist either.`);
+  }
+  // Up to the page below /content: a Live Copy root is never /content itself.
+  for (let ancestor = parent; ancestor.split("/").length > 2; ancestor = ancestor.slice(0, ancestor.lastIndexOf("/"))) {
+    if (ancestor !== parent) {
+      page = await readPage(ctx.client.http, ancestor);
+    }
+    if (page?.liveCopy === undefined) {
+      continue;
+    }
+    const { master, deep } = page.liveCopy;
+    if (`${master}${target.slice(ancestor.length)}` !== source) {
+      throw refuse(`the Live Copy ${ancestor} above it is of ${master}, so ${source} would not land at this path.`);
+    }
+    if (ancestor !== parent && !deep) {
+      throw refuse(`the Live Copy ${ancestor} above it does not include sub-pages.`);
+    }
+    return { root: ancestor, master };
+  }
+  throw refuse("no page above it is a Live Copy.");
 }
 
 async function draftSetRolloutConfigs(ctx: Context, op: Extract<PlanOperation, { kind: "livecopy.set-rollout-configs" }>): Promise<Draft> {

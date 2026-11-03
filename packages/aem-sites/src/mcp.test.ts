@@ -104,7 +104,7 @@ describe("reads", () => {
 describe("aem_get_job_status", () => {
   const target = `${SYNTHETIC_ROOT}/fr/outdoor-gear`;
 
-  it("reports a rollout job running until its target's cq:lastRolledout changes", async () => {
+  it("reports a rollout job not-observed until its target's cq:lastRolledout changes", async () => {
     const jobs = createJobRegistry({ randomId: () => "job-1" });
     jobs.add({ env: "stage", source: `${SYNTHETIC_ROOT}/en/outdoor-gear`, deep: false, targets: [{ path: target, before: "before" }], acceptedAt: 0 });
     const { call } = toolsOver({ [`GET ${target}/jcr:content.1.json`]: { status: 200, body: { "jcr:primaryType": "cq:PageContent", "cq:lastRolledout": "after" } } }, {}, jobs);

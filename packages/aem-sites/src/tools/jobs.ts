@@ -9,6 +9,14 @@
 import { randomBytes } from "node:crypto";
 import { readPage, type AemClient } from "../client/index.js";
 
+/**
+ * Why a target can keep its plan-time `cq:lastRolledout`. Observed on
+ * 2026-11-03: AEM's Background Operations listed shallow rollouts as Success
+ * within seconds while their targets showed no visible change.
+ */
+export const NOT_OBSERVED_NOTE =
+  "No change of cq:lastRolledout is visible on the pending targets yet. That can mean the job has not run yet, or that it ran and AEM did not update that property (whether it does when there was nothing to sync is not verified). A rollout without deep does not create sub-pages that exist only in the source: roll out each new page itself (livecopy.rollout accepts targets that do not exist yet under a Live Copy).";
+
 /** Jobs remembered; the oldest is dropped first. */
 export const MAX_REMEMBERED_JOBS = 500;
 
@@ -70,7 +78,8 @@ export async function pendingTargets(client: AemClient, targets: readonly Rollou
 export type JobStatusResult =
   | { readonly status: "unknown-job"; readonly jobId: string; readonly message: string }
   | {
-      readonly status: "running" | "completed";
+      /** `completed`: every target has a new `cq:lastRolledout`. `not-observed`: some have not, see `note`. */
+      readonly status: "not-observed" | "completed";
       readonly jobId: string;
       readonly env: string;
       readonly source: string;
@@ -80,6 +89,7 @@ export type JobStatusResult =
       readonly elapsedSeconds: number;
       readonly reached: readonly string[];
       readonly pending: readonly string[];
+      readonly note?: string;
     };
 
 export interface JobStatusDeps {
@@ -99,7 +109,7 @@ export async function jobStatus(deps: JobStatusDeps, jobId: string): Promise<Job
   }
   const pending = await pendingTargets(deps.clientFor(job.env), job.targets);
   return {
-    status: pending.length === 0 ? "completed" : "running",
+    status: pending.length === 0 ? "completed" : "not-observed",
     jobId,
     env: job.env,
     source: job.source,
@@ -108,5 +118,6 @@ export async function jobStatus(deps: JobStatusDeps, jobId: string): Promise<Job
     elapsedSeconds: Math.round((deps.now() - job.acceptedAt) / 1000),
     reached: job.targets.map((t) => t.path).filter((path) => !pending.includes(path)),
     pending,
+    ...(pending.length > 0 ? { note: NOT_OBSERVED_NOTE } : {}),
   };
 }

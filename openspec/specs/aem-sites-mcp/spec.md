@@ -326,8 +326,12 @@ can still be edited by cancelling inheritance. `aem_get_page` MUST report `liveC
 rollout configs, deep) for a Live Copy root.
 
 `livecopy.rollout` MUST send the Sites console's async rollout (`/bin/asynccommand`,
-`cmd=rollout`, `operation=asyncRollout`) for one readable source page to 1–100 existing targets
-inside `AEM_WRITE_ROOTS`, none of them inside or above the source; `deep` rolls out sub-pages too.
+`cmd=rollout`, `operation=asyncRollout`) for one readable source page to 1–100 targets inside
+`AEM_WRITE_ROOTS`, none of them inside or above the source. A target MUST exist, or else be a new
+page of the source that the rollout creates: its parent MUST exist and an ancestor of it MUST be a
+Live Copy root whose master, followed by the target's path below that root, is the source, and
+that Live Copy MUST include sub-pages unless it is the target's parent; such a target is planned as
+a new page and checked absent before apply. `deep` rolls out sub-pages too.
 The plan MUST warn that inherited content of the targets is overwritten.
 
 A rollout is an async job on the author. Apply MUST record each accepted rollout under a job id
@@ -344,7 +348,8 @@ runs out of time MUST stop the batch as `failed`, naming its job. A batch plan M
 operation touches, or rolls out from, a target of an earlier rollout without `wait`.
 
 `aem_get_job_status { jobId }` MUST read each target's `cq:lastRolledout` and answer `completed`
-when every target has changed, `running` otherwise, with the targets reached and pending and the
+when every target has changed, `not-observed` otherwise, with a note that the job may not have run
+or may have run without updating that property, with the targets reached and pending and the
 seconds since the job was accepted; an id the server did not issue MUST answer `unknown-job`.
 
 `livecopy.set-rollout-configs` MUST replace the `cq:rolloutConfigs` of an existing Live Copy root
@@ -360,8 +365,16 @@ lists before and after, and MUST warn when the new list includes Push on modify.
   confirms it
 - THEN `aem_apply` sends both rollout requests without polling and returns `applied`, each
   operation with its `jobIds` and the batch with both `jobs`
-- AND `aem_get_job_status` answers `running` for a job until every one of its targets has a new
+- AND `aem_get_job_status` answers `not-observed` for a job until every one of its targets has a new
   `cq:lastRolledout`, then `completed`
+
+#### Scenario: Rolling out a new page to Live Copies that do not have it
+
+- GIVEN a new page `fragments` under a global language master, and a vertical Live Copy root of
+  that language master without `fragments`
+- WHEN `aem_plan` plans `livecopy.rollout` of the new page to `<vertical root>/fragments`
+- THEN the plan lists that target as a new page created by the rollout
+- AND a target under a Live Copy of another source, or with another name, is rejected `not-found`
 
 #### Scenario: Push on modify on a store Live Copy
 

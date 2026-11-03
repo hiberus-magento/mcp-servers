@@ -87,7 +87,12 @@ Copies listed as `targets`, with the Sites console's async rollout. The author
 runs the rollout as a job, minutes later, so apply answers `accepted` with a
 `jobId` as soon as the author takes the request; `aem_get_job_status` reports
 the job `completed` once every target's `cq:lastRolledout` has changed since
-the plan. Several rollouts (one per language, each to its own targets) go in
+the plan, and `not-observed` otherwise (the job may not have run yet, or may
+have run without touching that property). A rollout without `deep` does not
+create sub-pages that exist only in the source: roll out the new page itself.
+Its targets may then be pages that do not exist yet, when a page above each
+one is a Live Copy root of the matching page above the source (one that
+includes sub-pages, unless it is the target's parent). Several rollouts (one per language, each to its own targets) go in
 one `batch` under one confirmation, and each one's job is listed. With
 `wait: true` apply waits for the job instead (up to 15 minutes, reporting
 progress), so a batch can roll out one level of Live Copies and then the next;
