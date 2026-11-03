@@ -111,6 +111,15 @@ const singleOperationSchema = z.discriminatedUnion("kind", [
       deep: z.boolean().optional(),
     })
     .strict(),
+  z
+    .object({
+      kind: z.literal("livecopy.set-rollout-configs"),
+      /** The root of an existing Live Copy. */
+      path: z.string().min(1),
+      /** Replaces the current list, in order. */
+      rolloutConfigs: z.array(z.string().min(1)).min(1).max(10),
+    })
+    .strict(),
   z.object({ kind: z.literal("page.lock"), path: z.string().min(1) }).strict(),
   z.object({ kind: z.literal("page.unlock"), path: z.string().min(1) }).strict(),
 ]);

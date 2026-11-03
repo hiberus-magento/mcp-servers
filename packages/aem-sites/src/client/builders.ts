@@ -355,6 +355,32 @@ export function buildCreateLiveCopy(scope: WriteScope, input: CreateLiveCopyInpu
   };
 }
 
+export interface SetRolloutConfigsInput {
+  /** The root of a Live Copy (the page that holds `jcr:content/cq:LiveSyncConfig`). */
+  readonly path: string;
+  /** The configs to keep, in order; they replace the current list. */
+  readonly rolloutConfigs: readonly string[];
+}
+
+/**
+ * Replaces the rollout configs of an existing Live Copy: a plain Sling POST to
+ * its `cq:LiveSyncConfig` node, which is where the Sites console's Live Copy
+ * properties keep them. Pages below the root without their own node follow it.
+ */
+export function buildSetRolloutConfigs(scope: WriteScope, input: SetRolloutConfigsInput): PlannedRequest {
+  assertWritable(input.path, scope.roots);
+  if (input.rolloutConfigs.length === 0) {
+    throw new InvalidOperationError("A Live Copy needs at least one rollout config.");
+  }
+  const configs = [...new Set(input.rolloutConfigs)].map((config) => assertRolloutConfig(config, scope.extraRolloutConfigs ?? []));
+  return {
+    method: "POST",
+    path: `${input.path}/jcr:content/cq:LiveSyncConfig`,
+    form: [CHARSET, ...configs.map((config) => ["cq:rolloutConfigs", config] as const), ["cq:rolloutConfigs@TypeHint", "String[]"]],
+    label: `set the rollout configs of the Live Copy ${input.path} to ${configs.join(", ")}`,
+  };
+}
+
 export interface RolloutInput {
   /** The source page; any readable page, like a Live Copy's source. */
   readonly path: string;

@@ -8,6 +8,7 @@ import {
   buildCopyPage,
   buildCreateLiveCopy,
   buildRollout,
+  buildSetRolloutConfigs,
   buildLockPage,
   buildCreatePage,
   buildCreateSheet,
@@ -237,6 +238,30 @@ describe("MSM and lock builders", () => {
     expect(() => buildRollout(scope, { path: PAGE, targets: [OUTSIDE], deep: false })).toThrow(PathOutsideWriteRootsError);
     expect(() => buildRollout(scope, { path: PAGE, targets: [`${PAGE}/child`], deep: false })).toThrow(/inside or above/);
     expect(() => buildRollout(scope, { path: PAGE, targets: [], deep: false })).toThrow(/at least one target/);
+  });
+
+  it("sets a Live Copy's rollout configs on its cq:LiveSyncConfig node, as a String[]", () => {
+    const target = `${SYNTHETIC_ROOT}/fr`;
+    const configs = ["/libs/msm/wcm/rolloutconfigs/default", "/libs/msm/wcm/rolloutconfigs/pushonmodify"];
+    expect(buildSetRolloutConfigs(scope, { path: target, rolloutConfigs: [...configs, configs[0] as string] })).toEqual({
+      method: "POST",
+      path: `${target}/jcr:content/cq:LiveSyncConfig`,
+      form: [
+        ["_charset_", "utf-8"],
+        ["cq:rolloutConfigs", configs[0]],
+        ["cq:rolloutConfigs", configs[1]],
+        ["cq:rolloutConfigs@TypeHint", "String[]"],
+      ],
+      label: `set the rollout configs of the Live Copy ${target} to ${configs.join(", ")}`,
+    });
+  });
+
+  it("refuses rollout configs outside the allowlist, none at all, and a Live Copy outside the roots", () => {
+    const target = `${SYNTHETIC_ROOT}/fr`;
+    expect(() => buildSetRolloutConfigs(scope, { path: target, rolloutConfigs: ["/apps/acme/evil"] })).toThrow(InvalidRolloutConfigError);
+    expect(() => buildSetRolloutConfigs(scope, { path: target, rolloutConfigs: [] })).toThrow(/at least one rollout config/);
+    expect(() => buildSetRolloutConfigs(scope, { path: OUTSIDE, rolloutConfigs: ["/libs/msm/wcm/rolloutconfigs/default"] })).toThrow(PathOutsideWriteRootsError);
+    expect(buildSetRolloutConfigs({ ...scope, extraRolloutConfigs: ["/apps/msm/acme/sync"] }, { path: target, rolloutConfigs: ["/apps/msm/acme/sync"] }).form).toContainEqual(["cq:rolloutConfigs", "/apps/msm/acme/sync"]);
   });
 
   it("locks and unlocks only inside the roots", () => {

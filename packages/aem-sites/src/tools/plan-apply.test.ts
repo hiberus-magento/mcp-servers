@@ -10,7 +10,7 @@ import { createPlanStore, type PlanStore } from "../confirm/plan-store.js";
 import { SYNTHETIC_AEM_AUTHOR, SYNTHETIC_ROOT } from "../testing/author-double.js";
 import { createFakeAuthor, type FakeAuthor } from "../testing/fake-author.js";
 import { applyPlan, ROLLOUT_POLL_MS, ROLLOUT_TIMEOUT_MS, type ApplyResult } from "./apply.js";
-import { AGENT_PAUSE_MS, BATCH_READ_RETRIES, BATCH_READ_RETRY_MS, BATCH_TTL_MS, COMPONENT_INHERITANCE_WARNING, EDS_LIVE_WARNING, planOperation, ROLLOUT_WARNING, type PlanResult, type StoredPlan } from "./plan-builder.js";
+import { AGENT_PAUSE_MS, BATCH_READ_RETRIES, BATCH_READ_RETRY_MS, BATCH_TTL_MS, COMPONENT_INHERITANCE_WARNING, EDS_LIVE_WARNING, planOperation, PUSH_ON_MODIFY_WARNING, ROLLOUT_WARNING, type PlanResult, type StoredPlan } from "./plan-builder.js";
 import { OPERATION_KINDS, type AemApplyInput, type OperationKind, type PlanOperation, type SinglePlanOperation } from "./plan-schema.js";
 
 const EN = `${SYNTHETIC_ROOT}/en`;
@@ -22,13 +22,19 @@ const BLOCK = `${PAGE}/jcr:content/root/section/block`;
 const SHEET = `${SYNTHETIC_ROOT}/metadata`;
 const FR_SHEET = `${FR}/metadata`;
 const TTL = 1_000;
+const DEFAULT_CONFIG = "/libs/msm/wcm/rolloutconfigs/default";
+const PUSH_ON_MODIFY = "/libs/msm/wcm/rolloutconfigs/pushonmodify";
+const LIVE_COPY = `${FR}/gear-live`;
 
 function seed(author: FakeAuthor): void {
   author.pages.set(EN, { "jcr:title": "EN" });
   author.pages.set(FR, { "jcr:title": "FR" });
   author.pages.set(PAGE, { "jcr:title": "Outdoor gear", "cq:lastReplicationAction": "Activate", "cq:lastModified": "1" });
   author.pages.set(OLD, { "jcr:title": "Old" });
-  author.pages.set(`${FR}/gear-live`, { "jcr:title": "Outdoor gear (FR)" });
+  author.pages.set(`${FR}/gear-live`, {
+    "jcr:title": "Outdoor gear (FR)",
+    "cq:LiveSyncConfig": { "cq:master": PAGE, "cq:rolloutConfigs": [DEFAULT_CONFIG], "cq:isDeep": true },
+  });
   author.pages.set(LOCKED, { "jcr:title": "Locked", "jcr:lockOwner": author.currentUser.id });
   author.components.set(BLOCK, {
     "jcr:primaryType": "nt:unstructured",
@@ -144,6 +150,10 @@ const CASES: Record<SingleKind, { readonly operation: PlanOperation; readonly st
   "livecopy.rollout": {
     operation: { kind: "livecopy.rollout", path: PAGE, targets: [`${FR}/gear-live`] },
     stale: (a) => a.pages.delete(`${FR}/gear-live`),
+  },
+  "livecopy.set-rollout-configs": {
+    operation: { kind: "livecopy.set-rollout-configs", path: LIVE_COPY, rolloutConfigs: [DEFAULT_CONFIG, PUSH_ON_MODIFY] },
+    stale: (a) => a.pages.set(LIVE_COPY, { ...a.pages.get(LIVE_COPY), "cq:LiveSyncConfig": { "cq:master": PAGE, "cq:rolloutConfigs": ["/libs/msm/wcm/rolloutconfigs/activate"] } }),
   },
   "page.lock": {
     operation: { kind: "page.lock", path: OLD },
@@ -526,6 +536,35 @@ describe("page.publish-tree", () => {
   it("refuses a root outside the write roots", async () => {
     const h = harness();
     expect(await h.plan({ kind: "page.publish-tree", root: "/content/acme-demo-site-us/en", target: "both" })).toMatchObject({ reason: "path-outside-write-roots" });
+  });
+});
+
+describe("livecopy.set-rollout-configs", () => {
+  it("replaces the configs of a Live Copy root, shows before/after and warns about Push on modify", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "livecopy.set-rollout-configs", path: LIVE_COPY, rolloutConfigs: [DEFAULT_CONFIG, PUSH_ON_MODIFY] }));
+    expect(plan.changes).toEqual([{ path: LIVE_COPY, what: "rollout configs", before: [DEFAULT_CONFIG], after: [DEFAULT_CONFIG, PUSH_ON_MODIFY] }]);
+    expect(plan.warnings).toContain(PUSH_ON_MODIFY_WARNING);
+    expect(plan.requests).toEqual([{ method: "POST", path: `${LIVE_COPY}/jcr:content/cq:LiveSyncConfig`, label: expect.stringContaining(PUSH_ON_MODIFY) }]);
+    expect(await h.apply({ token: plan.token, env: "stage", kind: "livecopy.set-rollout-configs" })).toMatchObject({ status: "applied" });
+    expect(h.author.posts()[0]?.body).toBe(
+      `_charset_=utf-8&cq%3ArolloutConfigs=${encodeURIComponent(DEFAULT_CONFIG)}&cq%3ArolloutConfigs=${encodeURIComponent(PUSH_ON_MODIFY)}&cq%3ArolloutConfigs%40TypeHint=String%5B%5D`,
+    );
+    expect(await h.plan({ kind: "livecopy.set-rollout-configs", path: LIVE_COPY, rolloutConfigs: [DEFAULT_CONFIG, PUSH_ON_MODIFY] })).toMatchObject({ status: "no-changes" });
+  });
+
+  it("does not warn about Push on modify when the new configs leave it out", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "livecopy.set-rollout-configs", path: LIVE_COPY, rolloutConfigs: ["/libs/msm/wcm/rolloutconfigs/activate"] }));
+    expect(plan.warnings).not.toContain(PUSH_ON_MODIFY_WARNING);
+  });
+
+  it("refuses a page that is not a Live Copy root, a missing page and an unknown config", async () => {
+    const h = harness();
+    expect(await h.plan({ kind: "livecopy.set-rollout-configs", path: OLD, rolloutConfigs: [DEFAULT_CONFIG] })).toMatchObject({ status: "rejected", reason: "invalid-operation" });
+    expect(await h.plan({ kind: "livecopy.set-rollout-configs", path: `${FR}/missing`, rolloutConfigs: [DEFAULT_CONFIG] })).toMatchObject({ status: "rejected", reason: "not-found" });
+    expect(await h.plan({ kind: "livecopy.set-rollout-configs", path: LIVE_COPY, rolloutConfigs: ["/apps/acme/x"] })).toMatchObject({ status: "rejected" });
+    expect(h.author.posts()).toEqual([]);
   });
 });
 

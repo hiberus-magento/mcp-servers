@@ -62,6 +62,12 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
           pages.set(target, { ...pages.get(target), "cq:lastRolledout": `rolled-out-${rolloutStamp}` });
         }
       }
+      const sync = /^(.*)\/jcr:content\/cq:LiveSyncConfig$/.exec(url.pathname)?.[1];
+      const body = sync === undefined ? undefined : pages.get(sync);
+      const config = body?.["cq:LiveSyncConfig"];
+      if (status === 200 && sync !== undefined && body !== undefined && typeof config === "object" && config !== null) {
+        pages.set(sync, { ...body, "cq:LiveSyncConfig": { ...config, "cq:rolloutConfigs": form.getAll("cq:rolloutConfigs") } });
+      }
       return json(status, {});
     }
     if (url.pathname === "/libs/granite/csrf/token.json") {

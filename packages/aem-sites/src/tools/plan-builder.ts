@@ -9,6 +9,7 @@ import {
   buildCopyPage,
   buildCreateLiveCopy,
   buildRollout,
+  buildSetRolloutConfigs,
   buildCreatePage,
   buildCreateSheet,
   buildDeletePage,
@@ -220,6 +221,10 @@ export const COMPONENT_INHERITANCE_WARNING =
   "If this page is a Live Copy, the component is inherited: the next rollout from its source overwrites this edit unless an author cancels the component's inheritance in the editor.";
 export const ROLLOUT_WARNING =
   "A rollout overwrites the inherited content of every target with the source's; components whose inheritance an author cancelled keep their edits. The targets are not published.";
+export const ROLLOUT_CONFIGS_NOTE =
+  "The configs apply to the Live Copy root and to every page below it that does not set its own; nothing is rolled out by this change.";
+export const PUSH_ON_MODIFY_WARNING =
+  "Push on modify rolls out every saved change of the source to this Live Copy, without review. Adobe advises using it sparingly: it can slow down authoring, and the order of the resulting rollouts is not guaranteed.";
 export const LOCK_NOTE =
   "A lock stops OTHER users from editing this page and the pages below it; the lock owner — the user this server's token belongs to — can still edit. It does not change permissions.";
 
@@ -664,6 +669,27 @@ async function draftRollout(ctx: Context, op: Extract<PlanOperation, { kind: "li
   };
 }
 
+async function draftSetRolloutConfigs(ctx: Context, op: Extract<PlanOperation, { kind: "livecopy.set-rollout-configs" }>): Promise<Draft> {
+  const rolloutConfigs = [...new Set(op.rolloutConfigs)];
+  const request = buildSetRolloutConfigs(ctx.scope, { path: op.path, rolloutConfigs });
+  const page = await requirePage(ctx, op.path);
+  if (page.liveCopy === undefined) {
+    throw new PlanRejection("invalid-operation", `${op.path} is not the root of a Live Copy (it has no cq:LiveSyncConfig); set the configs on the root it belongs to.`);
+  }
+  const before = page.liveCopy.rolloutConfigs;
+  if (sameValue(before, rolloutConfigs)) {
+    return { steps: [], checks: [], changes: [], targets: [op.path], summary: `${op.path} already has these rollout configs.` };
+  }
+  return {
+    steps: [{ request }],
+    checks: [pageCheck(page)],
+    changes: [{ path: op.path, what: "rollout configs", before, after: rolloutConfigs }],
+    targets: [op.path],
+    summary: `Set the rollout configs of the Live Copy ${op.path} (source ${page.liveCopy.master}) to ${rolloutConfigs.join(", ")}.`,
+    warnings: [ROLLOUT_CONFIGS_NOTE, ...(rolloutConfigs.some((config) => config.endsWith("/pushonmodify")) ? [PUSH_ON_MODIFY_WARNING] : [])],
+  };
+}
+
 async function draftLock(ctx: Context, op: Extract<PlanOperation, { kind: "page.lock" | "page.unlock" }>): Promise<Draft> {
   const lock = op.kind === "page.lock";
   const request = buildLockPage(ctx.scope, op.path, lock);
@@ -715,6 +741,8 @@ function draftFor(ctx: Context, op: SinglePlanOperation): Promise<Draft> {
       return draftLiveCopy(ctx, op);
     case "livecopy.rollout":
       return draftRollout(ctx, op);
+    case "livecopy.set-rollout-configs":
+      return draftSetRolloutConfigs(ctx, op);
     case "page.lock":
     case "page.unlock":
       return draftLock(ctx, op);
@@ -803,6 +831,9 @@ function staticCheck(ctx: Context, op: SinglePlanOperation): readonly string[] {
     case "livecopy.rollout":
       buildRollout(scope, { path: op.path, targets: op.targets, deep: op.deep ?? false });
       return [...op.targets];
+    case "livecopy.set-rollout-configs":
+      buildSetRolloutConfigs(scope, { path: op.path, rolloutConfigs: op.rolloutConfigs });
+      return [op.path];
     case "page.lock":
     case "page.unlock":
       buildLockPage(scope, op.path, op.kind === "page.lock");

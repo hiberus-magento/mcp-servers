@@ -335,7 +335,7 @@
           {
             "name": "AEM_EXTRA_ROLLOUT_CONFIGS",
             "required": false,
-            "description": "Comma-separated MSM rollout config paths under /apps/msm/ or /conf/ that livecopy.create may use, beyond AEM's built-in default, pushonmodify, activate and deactivate."
+            "description": "Comma-separated MSM rollout config paths under /apps/msm/ or /conf/ that livecopy.create and livecopy.set-rollout-configs may use, beyond AEM's built-in default, pushonmodify, activate and deactivate."
           }
         ]
       }

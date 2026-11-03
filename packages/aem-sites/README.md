@@ -41,7 +41,8 @@ than what the user was shown.
 Operation kinds: `page.set-properties`, `component.set-properties`,
 `page.set-robots`, `sheet.upsert-row`, `sheet.delete-row`, `page.publish`,
 `page.publish-tree`, `page.unpublish`, `page.create`, `page.copy`, `page.move`,
-`page.delete`, `livecopy.create`, `livecopy.rollout`, `page.lock`, `page.unlock`, `batch`.
+`page.delete`, `livecopy.create`, `livecopy.rollout`, `livecopy.set-rollout-configs`,
+`page.lock`, `page.unlock`, `batch`.
 
 **Batches.** `kind: "batch"` takes up to 300 operations of any other kind and
 returns one confirmation listing them, under a token that lives 60 minutes.
@@ -84,7 +85,10 @@ needs an author to cancel inheritance. `livecopy.rollout` pushes a source
 page (and its sub-pages with `deep: true`) to the matching pages of its Live
 Copies listed as `targets`, with the Sites console's async rollout; apply waits
 until every target's `cq:lastRolledout` changes (up to 5 minutes), so a batch
-can roll out one level of Live Copies and then the next. `page.lock` stops *other* users from
+can roll out one level of Live Copies and then the next.
+`livecopy.set-rollout-configs` replaces the rollout configs of an existing Live
+Copy root (its `cq:LiveSyncConfig`), from the same allowlist as `livecopy.create`;
+the plan warns when the list includes Push on modify. `page.lock` stops *other* users from
 editing a page; the lock owner is the token's user, who can still edit, and
 `page.unlock` only releases that user's own locks. Neither changes permissions:
 "nobody can edit" is an ACL, which this server does not touch.
@@ -122,7 +126,7 @@ through this server, not what an editor can do in the Sites console.
 - `AEM_PROTECTED_ENVS` (optional) — Comma-separated environment names. A plan against one makes aem_apply require the user to type the env name.
 - `AEM_PROTECTED_PATHS` (optional) — Comma-separated path patterns (`*` = one whole segment; a match protects everything below). Publishing them is blocked; other plans require the user to type the pattern.
 - `AEM_ALLOW_PROTECTED_PUBLISH` (optional) — "1" allows page.publish on protected paths, still behind the typed confirmation. Default: blocked.
-- `AEM_EXTRA_ROLLOUT_CONFIGS` (optional) — Comma-separated MSM rollout config paths under /apps/msm/ or /conf/ that livecopy.create may use, beyond AEM's built-in default, pushonmodify, activate and deactivate.
+- `AEM_EXTRA_ROLLOUT_CONFIGS` (optional) — Comma-separated MSM rollout config paths under /apps/msm/ or /conf/ that livecopy.create and livecopy.set-rollout-configs may use, beyond AEM's built-in default, pushonmodify, activate and deactivate.
 
 ## Configure in an MCP client
 

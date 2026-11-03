@@ -21,6 +21,7 @@ export {
   buildSetComponentProperties,
   buildSetProperties,
   buildSetRobots,
+  buildSetRolloutConfigs,
   buildSheetColumns,
   buildSheetDeleteRow,
   buildSheetRow,
@@ -33,6 +34,7 @@ export {
   type PlannedRequest,
   type ReplicationAgent,
   type SetPropertiesInput,
+  type SetRolloutConfigsInput,
   type WriteScope,
 } from "./builders.js";
 export {

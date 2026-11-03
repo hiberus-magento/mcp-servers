@@ -247,7 +247,8 @@ follow a redirect.
 
 `aem_plan`'s `operation.kind` MUST be one of: `page.set-properties`, `component.set-properties`, `page.set-robots`,
 `sheet.upsert-row`, `sheet.delete-row`, `page.publish`, `page.publish-tree`, `page.unpublish`, `page.create`,
-`page.copy`, `page.move`, `page.delete`, `livecopy.create`, `livecopy.rollout`, `page.lock`, `page.unlock`, `batch`. Each branch
+`page.copy`, `page.move`, `page.delete`, `livecopy.create`, `livecopy.rollout`, `livecopy.set-rollout-configs`, `page.lock`,
+`page.unlock`, `batch`. Each branch
 is strict: a field a kind does not take is a schema rejection. Every kind MUST pass the same token
 matrix (forged, expired, reused, stale, echo mismatch) before any write.
 
@@ -329,6 +330,19 @@ inside `AEM_WRITE_ROOTS`, none of them inside or above the source; `deep` rolls 
 The plan MUST warn that inherited content of the targets is overwritten. Apply MUST wait until
 each target's `cq:lastRolledout` differs from its value at plan time, and MUST fail naming the
 targets not reached after 5 minutes.
+
+`livecopy.set-rollout-configs` MUST replace the `cq:rolloutConfigs` of an existing Live Copy root
+inside `AEM_WRITE_ROOTS` with a Sling POST to its `jcr:content/cq:LiveSyncConfig` node, typed
+`String[]`, from the same allowlist as `livecopy.create`. A page without `cq:LiveSyncConfig` MUST
+be rejected with `invalid-operation`; the same list MUST return `no-changes`. The plan MUST show the
+lists before and after, and MUST warn when the new list includes Push on modify.
+
+#### Scenario: Push on modify on a store Live Copy
+
+- GIVEN a store Live Copy root with the Standard rollout config
+- WHEN `aem_plan` plans `livecopy.set-rollout-configs` with Standard and Push on modify
+- THEN the plan shows both lists, posts only to its `cq:LiveSyncConfig` node and warns that every
+  saved change of the source is rolled out without review
 
 #### Scenario: Two levels of Live Copies in one batch
 
