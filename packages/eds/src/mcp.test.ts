@@ -258,6 +258,19 @@ describe("mcp.ts installs the stdout guard (tasks.md 7.16)", () => {
 // job the Admin API had already finished and discarded — observed live,
 // that poll answers 404. The results are inline in the POST response.
 describe("eds_get_status_bulk reads the finished job's results inline (observed live)", () => {
+  const TEST_ORG = "acme-demo-org";
+  const EU = "acme-demo-site-eu";
+  const toolsOver = (client: ReturnType<typeof createEdsClient>) =>
+    createEdsTools({ getRuntime: () => ({ client, org: TEST_ORG }) });
+  async function call(tools: ReturnType<typeof toolsOver>, name: string, args: unknown): Promise<unknown> {
+    const tool = tools.find((candidate) => candidate.name === name);
+    if (tool === undefined) {
+      throw new Error(`${name} not found`);
+    }
+    const result = await tool.invoke(args as never, {});
+    expect(result.isError).not.toBe(true);
+    return JSON.parse(result.content[0]?.text ?? "{}");
+  }
   const BULK_POST_PATH = "/status/acme-demo-org/acme-demo-site-eu/main/*";
   const COMPLETED_BULK_BODY = {
     job: {
