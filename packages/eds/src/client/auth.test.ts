@@ -3,10 +3,13 @@
 // RED-first (tasks.md 4.21): `mintApiKey()` returns a plain object — no
 // rendering — and `authStatus()` probes the documented set of read
 // endpoints, returning per-probe results, never the token itself.
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createFetchDouble } from "../testing/fetch-double.js";
 import { createHttpClient } from "./http.js";
-import { authStatus, listApiKeys, mintApiKey } from "./auth.js";
+import { authStatus, deleteApiKey, listApiKeys, mintApiKey } from "./auth.js";
 
 function makeHttp(routes: Record<string, unknown>) {
   const { fetch, calls } = createFetchDouble(routes as never);
@@ -170,5 +173,33 @@ describe("authStatus", () => {
 
     expect(result.probes.map((p) => p.status)).toEqual([401, 403, 404]);
     expect(result.probes.map((p) => p.verdict)).toEqual(["key rejected (401)", "key lacks the required role (403)", "org or site not found (404)"]);
+  });
+});
+
+// RED-first (eds-write-surface tasks.md 2.12): delete one org-level key by
+// id. CLI-only (design.md D2), so it lives here beside mint and list.
+describe("deleteApiKey", () => {
+  it("DELETEs the org-level key document, with the id encoded", async () => {
+    const { http, calls } = makeHttp({ "DELETE /config/acme-demo-org/apiKeys/key%2Fdemo-1.json": { status: 204 } });
+
+    await expect(deleteApiKey(http, { org: "acme-demo-org", id: "key/demo-1" })).resolves.toEqual({ hasResponse: false });
+    expect(calls.map((call) => call.method)).toEqual(["DELETE"]);
+  });
+});
+
+// RED-first (tasks.md 2.12; eds-client spec, "API Key Metadata and
+// Deletion"): `mintApiKey` is the ONLY client function that may create a
+// key. A source scan, not a list of names, so a new one cannot slip in
+// under a name nobody thought to forbid.
+describe("key creation surface", () => {
+  it("has exactly one POST to an apiKeys path in the whole client tree", () => {
+    const clientDir = fileURLToPath(new URL(".", import.meta.url));
+    const sources = readdirSync(clientDir, { recursive: true })
+      .map(String)
+      .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts") && !file.endsWith(".test-d.ts"));
+    const creators = sources.filter((file) => /method:\s*"POST",\s*path:\s*apiKeysPath\(/.test(readFileSync(join(clientDir, file), "utf8")));
+
+    expect(creators).toEqual(["auth.ts"]);
+    expect(readFileSync(join(clientDir, "auth.ts"), "utf8").match(/method:\s*"POST"/g)).toHaveLength(1);
   });
 });

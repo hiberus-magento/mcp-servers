@@ -23,12 +23,14 @@ export function sitePath(options: SitePathOptions): string {
 export interface CodePathOptions {
   readonly owner: string;
   readonly repo: string;
+  /** The contract's `{ref}` segment, e.g. `"main"`. It was missing before eds-write-surface. */
+  readonly ref: string;
   readonly file: string;
 }
 
 export function codePath(options: CodePathOptions): string {
   const file = options.file.startsWith("/") ? options.file.slice(1) : options.file;
-  return `/code/${options.owner}/${options.repo}/${file}`;
+  return `/code/${options.owner}/${options.repo}/${options.ref}/${file}`;
 }
 
 const SNAPSHOT_REF = "main";

@@ -7,10 +7,10 @@
 // package barrel and never `server/index.js` directly (design.md, Decision
 // 1) — so this package's bundle stays clean of express/hono/ajv/etc.
 //
-// This file is intentionally thin: the nine tool definitions and their
+// This file is intentionally thin: the fourteen tool definitions and their
 // schemas live in `./tools/eds-tools.ts` (see that file's header for why),
-// so the only thing this file does is register them and connect the
-// transport UNCONDITIONALLY at module top level — the same way every other
+// so the only things this file does are read `EDS_PROTECTED_SITES`, register
+// the tools and connect the transport UNCONDITIONALLY at module top level — the same way every other
 // template-generated server does. That is required by the shared
 // domain-independent fd-1 conformance probe, which `await import()`s this
 // exact built bundle and relies on the top-level connect having already run
@@ -19,6 +19,7 @@ import { createStdioServer, serverVersion } from "@hiberus-magento/mcp-core";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
+import { parseProtectedSites } from "./confirm/protected-sites.js";
 import { createEdsTools, createRuntimeResolver } from "./tools/eds-tools.js";
 
 // The SDK constructs a real `AjvJsonSchemaValidator` at server-construction
@@ -48,10 +49,20 @@ const server = new McpServer(
 
 const getRuntime = createRuntimeResolver();
 
-for (const tool of createEdsTools({ getRuntime })) {
+// Read once at startup, like every adapter-level setting; `confirm/` and
+// `tools/` never touch the environment (design.md, Decision 6).
+const protectedSites = parseProtectedSites(process.env.EDS_PROTECTED_SITES);
+
+for (const tool of createEdsTools({ getRuntime, protectedSites })) {
   server.registerTool(
     tool.name,
-    { description: tool.description, inputSchema: tool.inputSchema.shape, annotations: tool.annotations },
+    {
+      description: tool.description,
+      inputSchema: tool.inputSchema.shape,
+      annotations: tool.annotations,
+      // Only `eds_apply` has one: `anthropic/requiresUserInteraction` (D3).
+      ...(tool.meta !== undefined ? { _meta: { ...tool.meta } } : {}),
+    },
     async (args: unknown) => {
       const result = await tool.invoke(args, {});
       return { content: [...result.content], isError: result.isError };
