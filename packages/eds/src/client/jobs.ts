@@ -17,6 +17,8 @@ export interface JobProgress {
   readonly total?: number;
   readonly processed?: number;
   readonly failed?: number;
+  readonly success?: number;
+  readonly notmodified?: number;
 }
 
 export interface JobLinks {
@@ -58,8 +60,21 @@ export async function fetchJobEnvelope(http: HttpClient, self: string): Promise<
   // `job.state` and `links.self` out of it on every poll.
   const context = { method: "GET" as const, path: self, label: "the job envelope" };
   const response = await http.send(context);
-  const body = await readJsonBody<JobBody>(response, context);
-  return { body };
+  const raw = await readJsonBody<JobBody | (JobDescriptor & { readonly links: JobLinks })>(response, context);
+  return { body: normalizeJobBody(raw) };
+}
+
+/**
+ * The response that starts a job wraps it (`{ job, links }`), but a GET on
+ * the job's own URL returns the job flat, with `links` beside its fields
+ * (observed on the Admin API 2026-10-30). Both become `{ job, links }`.
+ */
+export function normalizeJobBody(raw: JobBody | (JobDescriptor & { readonly links: JobLinks })): JobBody {
+  if ("job" in raw && raw.job !== undefined) {
+    return raw;
+  }
+  const { links, ...job } = raw as JobDescriptor & { readonly links: JobLinks };
+  return { job, links };
 }
 
 export interface GetJobStatusOptions {

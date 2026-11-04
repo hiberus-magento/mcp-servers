@@ -189,7 +189,7 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
   const plan = defineTool({
     name: "aem_plan",
     description:
-      "Use this whenever you want to change anything on an AEM author: page properties, robots (noindex), EDS metadata-sheet rows, publish/unpublish, create/copy/move/delete pages, create a Live Copy (MSM), or lock/unlock a page. " +
+      "Use this whenever you want to change anything on an AEM author: page properties, the fields of a component (a block's configured links or texts), robots (noindex), EDS metadata-sheet rows, publish/unpublish, create/copy/move/delete pages (force: true deletes pages other pages reference; allowPublished: true only when an unpublish was refused), create a Live Copy (MSM) or roll out a source page to its Live Copies (livecopy.rollout, waits for the async job), change a Live Copy's rollout configs (livecopy.set-rollout-configs, e.g. Push on modify), create an Edge Delivery Services configuration under /conf copied from another (conf.create-eds-config; then point cq:conf at it with page.set-properties), or lock/unlock a page; publish a whole subtree (page.publish-tree); or many of these in order under one confirmation (batch, each planned when applied). " +
       "It reads the current state and returns exactly what would change, a confirmationMessage to show the user and a one-time token — it never writes. " +
       `Then call aem_apply only after the user explicitly confirms.`,
     inputSchema: aemPlanInput,
@@ -207,9 +207,10 @@ export function createAemTools(config: AemToolsConfig): readonly AemMcpTool[] {
       `It sends exactly the planned requests and nothing else; a stale, expired, reused or forged token writes nothing. Writes to the AEM author.`,
     inputSchema: aemApplyInput,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
-    handler: async (args) => {
+    handler: async (args, ctx) => {
       const runtime = getRuntime();
-      return withAuthAnswer(() => applyPlan({ config: runtime.config, clientFor: runtime.clientFor, store: runtime.store, sleep: runtime.sleep }, args));
+      const deps = { config: runtime.config, clientFor: runtime.clientFor, store: runtime.store, sleep: runtime.sleep };
+      return withAuthAnswer(() => applyPlan(ctx.reportProgress !== undefined ? { ...deps, reportProgress: ctx.reportProgress } : deps, args));
     },
   });
 

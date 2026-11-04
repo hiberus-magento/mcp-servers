@@ -48,6 +48,8 @@ export const BUILTIN_PAGE_PROPERTIES: readonly string[] = [
   "cq:canonicalUrl",
   "sling:alias",
   "cq:redirectTarget",
+  // Cloud Configuration: which /conf tree (templates, Edge Delivery Services site) the subtree uses.
+  "cq:conf",
 ];
 
 /** Structural, security or bookkeeping properties: never writable, never configurable. */
@@ -127,7 +129,42 @@ export function assertWritableProperty(name: string, extra: readonly string[]): 
   return name;
 }
 
+/**
+ * Fields Universal Editor stores on a component node to know what it is:
+ * changing one orphans the component in the editor, so they are never written.
+ */
+const COMPONENT_BINDING_FIELDS = new Set(["name", "model", "filter", "modelFields", "key-value"]);
+
+/** Authored XWalk fields are plain names: no namespace, so nothing structural. */
+const COMPONENT_FIELD = /^[A-Za-z][A-Za-z0-9_-]*$/;
+
+/**
+ * Component fields are what a block's model declares, so they cannot be a
+ * fixed allowlist the way page properties are. What is refused instead is
+ * every Sling operator, every namespaced (structural) name and the fields that
+ * bind the node to Universal Editor.
+ */
+export function assertWritableComponentProperty(name: string): string {
+  const reason = structuralReason(name);
+  if (reason !== undefined) {
+    throw new ForbiddenPropertyNameError(name, reason);
+  }
+  if (!COMPONENT_FIELD.test(name)) {
+    throw new ForbiddenPropertyNameError(name, "a component field is a plain name without a namespace");
+  }
+  if (COMPONENT_BINDING_FIELDS.has(name)) {
+    throw new ForbiddenPropertyNameError(name, "it binds the component to Universal Editor");
+  }
+  return name;
+}
+
+/** A plain configuration path below /conf: segments of letters, digits, '_' and '-'. */
+const CONF_PATH = /^\/conf(?:\/[A-Za-z0-9_-]+)+$/;
+
 export function assertPropertyValue(name: string, value: unknown): PropertyValue {
+  if (name === "cq:conf" && (typeof value !== "string" || !CONF_PATH.test(value))) {
+    throw new InvalidPropertyValueError(name, "expected a configuration path such as /conf/<site>/<store>");
+  }
   if (typeof value === "string") {
     if (value.length > MAX_STRING_LENGTH) {
       throw new InvalidPropertyValueError(name, `longer than ${MAX_STRING_LENGTH} characters`);

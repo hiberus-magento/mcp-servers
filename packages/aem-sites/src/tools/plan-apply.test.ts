@@ -6,28 +6,60 @@
 // Published Content". The token matrix runs for EVERY operation kind.
 import { describe, expect, it } from "vitest";
 import { parseConfig, type AemConfig } from "../config.js";
-import { createPlanStore } from "../confirm/plan-store.js";
+import { createPlanStore, type PlanStore } from "../confirm/plan-store.js";
 import { SYNTHETIC_AEM_AUTHOR, SYNTHETIC_ROOT } from "../testing/author-double.js";
 import { createFakeAuthor, type FakeAuthor } from "../testing/fake-author.js";
-import { applyPlan, type ApplyResult } from "./apply.js";
-import { AGENT_PAUSE_MS, EDS_LIVE_WARNING, planOperation, type PlanResult, type StoredPlan } from "./plan-builder.js";
-import { OPERATION_KINDS, type AemApplyInput, type OperationKind, type PlanOperation } from "./plan-schema.js";
+import { applyPlan, ROLLOUT_POLL_MS, ROLLOUT_TIMEOUT_MS, type ApplyResult } from "./apply.js";
+import { AGENT_PAUSE_MS, BATCH_READ_RETRIES, BATCH_READ_RETRY_MS, BATCH_TTL_MS, COMPONENT_INHERITANCE_WARNING, EDS_CONFIG_NOTE, EDS_LIVE_WARNING, planOperation, PUSH_ON_MODIFY_WARNING, ROLLOUT_WARNING, type PlanResult, type StoredPlan } from "./plan-builder.js";
+import { OPERATION_KINDS, type AemApplyInput, type OperationKind, type PlanOperation, type SinglePlanOperation } from "./plan-schema.js";
 
 const EN = `${SYNTHETIC_ROOT}/en`;
 const FR = `${SYNTHETIC_ROOT}/fr`;
 const PAGE = `${EN}/outdoor-gear`;
 const OLD = `${EN}/old`;
 const LOCKED = `${EN}/locked`;
+const BLOCK = `${PAGE}/jcr:content/root/section/block`;
 const SHEET = `${SYNTHETIC_ROOT}/metadata`;
 const FR_SHEET = `${FR}/metadata`;
 const TTL = 1_000;
+const DEFAULT_CONFIG = "/libs/msm/wcm/rolloutconfigs/default";
+const PUSH_ON_MODIFY = "/libs/msm/wcm/rolloutconfigs/pushonmodify";
+const LIVE_COPY = `${FR}/gear-live`;
+const CONF_TENANT = `/conf/${SYNTHETIC_ROOT.split("/")[2] ?? ""}`;
+const LIKE_CONF = `${CONF_TENANT}/us`;
+const NEW_CONF = `${CONF_TENANT}/masters`;
+const EDS_PAGE = "settings/cloudconfigs/edge-delivery-service-configuration";
+const LIKE_FIELDS = {
+  owner: "acme-demo-org",
+  repo: "acme-demo-us",
+  ref: "main",
+  projectType: "5",
+  edgeHost: "preview",
+  auxiliaryScripts: ["module:scripts/editor-support.js"],
+  "sling:resourceType": "core/franklin/shell/components/configuration/page",
+};
 
 function seed(author: FakeAuthor): void {
   author.pages.set(EN, { "jcr:title": "EN" });
   author.pages.set(FR, { "jcr:title": "FR" });
   author.pages.set(PAGE, { "jcr:title": "Outdoor gear", "cq:lastReplicationAction": "Activate", "cq:lastModified": "1" });
   author.pages.set(OLD, { "jcr:title": "Old" });
+  author.pages.set(`${FR}/gear-live`, {
+    "jcr:title": "Outdoor gear (FR)",
+    "cq:LiveSyncConfig": { "cq:master": PAGE, "cq:rolloutConfigs": [DEFAULT_CONFIG], "cq:isDeep": true },
+  });
   author.pages.set(LOCKED, { "jcr:title": "Locked", "jcr:lockOwner": author.currentUser.id });
+  author.confs.add(CONF_TENANT);
+  author.confs.add(LIKE_CONF);
+  author.edsConfigs.set(LIKE_CONF, { ...LIKE_FIELDS, "jcr:title": "Edge Delivery Service Configuration", "cq:lastReplicated": "2026-10-01" });
+  author.components.set(BLOCK, {
+    "jcr:primaryType": "nt:unstructured",
+    "sling:resourceType": "core/franklin/components/block/v1/block",
+    name: "commerce-cart",
+    model: "commerce-cart",
+    "checkout-url": `${EN}/checkout`,
+    "start-shopping-url": EN,
+  });
   author.sheets.set(FR_SHEET, {
     "jcr:primaryType": "cq:PageContent",
     columns: ["url", "Robots"],
@@ -38,6 +70,7 @@ function seed(author: FakeAuthor): void {
 interface Harness {
   readonly author: FakeAuthor;
   readonly config: AemConfig;
+  readonly store: PlanStore<StoredPlan>;
   plan(operation: PlanOperation, env?: string): Promise<PlanResult>;
   apply(input: AemApplyInput): Promise<ApplyResult>;
   advance(ms: number): void;
@@ -57,6 +90,7 @@ function harness(variables: Record<string, string> = {}): Harness {
   return {
     author,
     config,
+    store,
     plan: (operation, env = "stage") => planOperation(deps, { env, operation }),
     apply: (input) => applyPlan({ ...deps, sleep: async (ms) => void author.sleeps.push(ms) }, input),
     advance: (ms) => {
@@ -73,10 +107,17 @@ function planned(result: PlanResult): Extract<PlanResult, { status: "planned" }>
 }
 
 /** One valid operation per kind, plus a mutation that makes its plan stale. */
-const CASES: Record<OperationKind, { readonly operation: PlanOperation; readonly stale: (author: FakeAuthor) => void }> = {
+type SingleKind = Exclude<OperationKind, "batch">;
+const SINGLE_KINDS = OPERATION_KINDS.filter((kind): kind is SingleKind => kind !== "batch");
+
+const CASES: Record<SingleKind, { readonly operation: PlanOperation; readonly stale: (author: FakeAuthor) => void }> = {
   "page.set-properties": {
     operation: { kind: "page.set-properties", path: PAGE, set: { "jcr:title": "Gear" } },
     stale: (a) => a.pages.set(PAGE, { ...a.pages.get(PAGE), "jcr:title": "Edited meanwhile" }),
+  },
+  "component.set-properties": {
+    operation: { kind: "component.set-properties", path: BLOCK, set: { "checkout-url": "/checkout" } },
+    stale: (a) => a.components.set(BLOCK, { ...a.components.get(BLOCK), "checkout-url": "/edited-in-the-editor" }),
   },
   "page.set-robots": {
     operation: { kind: "page.set-robots", paths: [PAGE], robots: ["noindex", "nofollow"] },
@@ -93,6 +134,10 @@ const CASES: Record<OperationKind, { readonly operation: PlanOperation; readonly
   "page.publish": {
     operation: { kind: "page.publish", paths: [PAGE], target: "both" },
     stale: (a) => a.pages.set(PAGE, { ...a.pages.get(PAGE), "cq:lastModified": "2" }),
+  },
+  "page.publish-tree": {
+    operation: { kind: "page.publish-tree", root: EN, target: "preview" },
+    stale: (a) => a.pages.set(OLD, { ...a.pages.get(OLD), "cq:lastModified": "2" }),
   },
   "page.unpublish": {
     operation: { kind: "page.unpublish", paths: [PAGE], target: "publish" },
@@ -118,6 +163,18 @@ const CASES: Record<OperationKind, { readonly operation: PlanOperation; readonly
     operation: { kind: "livecopy.create", srcPath: PAGE, destParentPath: FR, name: "gear-lc", title: "Gear LC" },
     stale: (a) => a.pages.set(`${FR}/gear-lc`, {}),
   },
+  "livecopy.rollout": {
+    operation: { kind: "livecopy.rollout", path: PAGE, targets: [`${FR}/gear-live`] },
+    stale: (a) => a.pages.delete(`${FR}/gear-live`),
+  },
+  "livecopy.set-rollout-configs": {
+    operation: { kind: "livecopy.set-rollout-configs", path: LIVE_COPY, rolloutConfigs: [DEFAULT_CONFIG, PUSH_ON_MODIFY] },
+    stale: (a) => a.pages.set(LIVE_COPY, { ...a.pages.get(LIVE_COPY), "cq:LiveSyncConfig": { "cq:master": PAGE, "cq:rolloutConfigs": ["/libs/msm/wcm/rolloutconfigs/activate"] } }),
+  },
+  "conf.create-eds-config": {
+    operation: { kind: "conf.create-eds-config", path: NEW_CONF, site: "acme-demo-masters", like: LIKE_CONF },
+    stale: (a) => a.confs.add(NEW_CONF),
+  },
   "page.lock": {
     operation: { kind: "page.lock", path: OLD },
     stale: (a) => a.pages.set(OLD, { "jcr:title": "Old", "jcr:lockOwner": "someone-else" }),
@@ -130,10 +187,10 @@ const CASES: Record<OperationKind, { readonly operation: PlanOperation; readonly
 
 describe("every operation kind", () => {
   it("has a case here, so the matrix below is exhaustive", () => {
-    expect(Object.keys(CASES).sort()).toEqual([...OPERATION_KINDS].sort());
+    expect(Object.keys(CASES).sort()).toEqual([...SINGLE_KINDS].sort());
   });
 
-  for (const kind of OPERATION_KINDS) {
+  for (const kind of SINGLE_KINDS) {
     const { operation, stale } = CASES[kind];
 
     describe(kind, () => {
@@ -215,6 +272,57 @@ describe("plan contents", () => {
     });
     h.author.pages.set(PAGE, { ...h.author.pages.get(PAGE), robots: "nofollow, NoIndex" });
     expect((await h.plan({ kind: "page.set-robots", paths: [PAGE], robots: ["noindex", "nofollow"] })).status).toBe("no-changes");
+  });
+
+  it("page.set-properties sets cq:conf to an existing configuration and says what it decides", async () => {
+    const h = harness();
+    h.author.confs.add("/conf/acme-demo-site/us");
+    const plan = planned(await h.plan({ kind: "page.set-properties", path: OLD, set: { "cq:conf": "/conf/acme-demo-site/us" } }));
+    expect(plan.changes).toEqual([{ path: OLD, what: "cq:conf", before: undefined, after: "/conf/acme-demo-site/us" }]);
+    expect(plan.warnings.join(" ")).toContain("Edge Delivery Services site");
+    await h.apply({ token: plan.token, env: "stage", kind: "page.set-properties" });
+    expect(h.author.posts()[0]?.body).toContain(`cq%3Aconf=${encodeURIComponent("/conf/acme-demo-site/us")}`);
+  });
+
+  it("page.set-properties refuses a cq:conf that does not exist", async () => {
+    const h = harness();
+    expect(await h.plan({ kind: "page.set-properties", path: OLD, set: { "cq:conf": "/conf/acme-demo-site/missing" } })).toMatchObject({ status: "rejected", reason: "not-found" });
+    expect(h.author.posts()).toEqual([]);
+  });
+
+  it("component.set-properties sends only the changed fields to the node and warns about rollouts", async () => {
+    const h = harness();
+    const plan = planned(
+      await h.plan({ kind: "component.set-properties", path: BLOCK, set: { "checkout-url": "/checkout", "start-shopping-url": EN }, remove: ["max-items"] }),
+    );
+    expect(plan.changes).toEqual([{ path: BLOCK, what: "checkout-url", before: `${EN}/checkout`, after: "/checkout" }]);
+    expect(plan.warnings).toContain(COMPONENT_INHERITANCE_WARNING);
+    expect(plan.requests).toEqual([{ method: "POST", path: BLOCK, label: `component ${BLOCK}` }]);
+    await h.apply({ token: plan.token, env: "stage", kind: "component.set-properties" });
+    expect(h.author.posts()[0]).toMatchObject({ path: BLOCK, body: "checkout-url=%2Fcheckout&_charset_=utf-8" });
+  });
+
+  it("component.set-properties: a no-op, a missing node, a binding field and a page path", async () => {
+    const h = harness();
+    expect(await h.plan({ kind: "component.set-properties", path: BLOCK, set: { "start-shopping-url": EN } })).toEqual({
+      status: "no-changes",
+      env: "stage",
+      kind: "component.set-properties",
+      summary: `${BLOCK} already has these fields.`,
+    });
+    expect(await h.plan({ kind: "component.set-properties", path: `${PAGE}/jcr:content/root/section/missing`, set: { title: "x" } })).toMatchObject({
+      status: "rejected",
+      reason: "not-found",
+    });
+    expect(await h.plan({ kind: "component.set-properties", path: BLOCK, set: { model: "other" } })).toMatchObject({
+      status: "rejected",
+      reason: "forbidden-property-name",
+    });
+    expect(await h.plan({ kind: "component.set-properties", path: `${PAGE}/jcr:content`, set: { title: "x" } })).toMatchObject({
+      status: "rejected",
+      reason: "invalid-path",
+    });
+    expect(h.author.posts()).toEqual([]);
   });
 
   it("sheet.upsert-row creates the metadata sheet, its columns and the /** row (field-proven order)", async () => {
@@ -331,6 +439,66 @@ describe("page.delete", () => {
     expect(await h.plan({ kind: "page.delete", path: EN })).toMatchObject({ status: "rejected", reason: "page-is-published", message: expect.stringContaining(PAGE) });
     expect(h.author.posts()).toEqual([]);
   });
+
+  it("a forced delete says so, warns about broken links and sends force=true", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "page.delete", path: OLD, force: true }));
+    expect(plan.summary).toContain("force");
+    expect(plan.warnings.join(" ")).toContain("references");
+    expect(plan.confirmationMessage).toContain("force");
+    await h.apply({ token: plan.token, env: "stage", kind: "page.delete" });
+    expect(h.author.posts()[0]?.body).toContain("force=true");
+  });
+
+  it("force never deletes published content", async () => {
+    const h = harness();
+    expect(await h.plan({ kind: "page.delete", path: EN, force: true })).toMatchObject({ status: "rejected", reason: "page-is-published" });
+  });
+
+  it("allowPublished deletes pages the author still marks as published, listing them in a warning", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "page.delete", path: EN, allowPublished: true, force: true }));
+    expect(plan.summary).toContain("published");
+    expect(plan.warnings.join(" ")).toContain(PAGE);
+    expect(plan.warnings.join(" ")).toContain("orphan");
+    await h.apply({ token: plan.token, env: "stage", kind: "page.delete" });
+    expect(h.author.posts()[0]?.body).toContain(`path=${encodeURIComponent(EN)}`);
+  });
+
+  it("allowPublished on a page with nothing published adds no warning", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "page.delete", path: OLD, allowPublished: true }));
+    expect(plan.warnings.join(" ")).not.toContain("orphan");
+  });
+
+  it("the published rejection names allowPublished only as the way out when the unpublish is refused", async () => {
+    const h = harness();
+    expect(await h.plan({ kind: "page.delete", path: EN })).toMatchObject({ message: expect.stringContaining("allowPublished: true") });
+  });
+
+  it("an unforced delete refused with 412 names the references and the way out", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "page.delete", path: OLD }));
+    h.author.postStatus.set("/bin/wcmcommand", 412);
+    const result = await h.apply({ token: plan.token, env: "stage", kind: "page.delete" });
+    expect(result).toMatchObject({ status: "failed", failed: { message: expect.stringContaining("force: true") } });
+  });
+
+  it("a forced delete refused with 412 gets no hint to force again", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "page.delete", path: OLD, force: true }));
+    h.author.postStatus.set("/bin/wcmcommand", 412);
+    const result = await h.apply({ token: plan.token, env: "stage", kind: "page.delete" });
+    expect(result).toMatchObject({ status: "failed", failed: { message: expect.not.stringContaining("force: true") } });
+  });
+
+  it("a forced delete is stale when the page changed after the plan", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "page.delete", path: OLD, force: true }));
+    h.author.pages.set(OLD, { "jcr:title": "Old, edited" });
+    expect(await h.apply({ token: plan.token, env: "stage", kind: "page.delete" })).toMatchObject({ status: "rejected", reason: "stale-plan" });
+    expect(h.author.posts()).toEqual([]);
+  });
 });
 
 describe("Live Copies and locks", () => {
@@ -372,5 +540,218 @@ describe("Live Copies and locks", () => {
   it("unlocking a page that is not locked is a no-op", async () => {
     const h = harness();
     expect((await h.plan({ kind: "page.unlock", path: OLD })).status).toBe("no-changes");
+  });
+});
+
+describe("page.publish-tree", () => {
+  it("publishes every page at or below the root, and nothing that only shares its prefix", async () => {
+    const h = harness();
+    h.author.pages.set(`${SYNTHETIC_ROOT}/en-gb`, { "jcr:title": "EN-GB" });
+    const plan = planned(await h.plan({ kind: "page.publish-tree", root: EN, target: "both" }));
+    const previewed = plan.changes.filter((change) => change.what === "preview").map((change) => change.path);
+    expect(previewed.sort()).toEqual([EN, LOCKED, OLD, PAGE].sort());
+    expect(plan.summary).toContain("4 pages");
+  });
+
+  it("refuses a root outside the write roots", async () => {
+    const h = harness();
+    expect(await h.plan({ kind: "page.publish-tree", root: "/content/acme-demo-site-us/en", target: "both" })).toMatchObject({ reason: "path-outside-write-roots" });
+  });
+});
+
+describe("livecopy.set-rollout-configs", () => {
+  it("replaces the configs of a Live Copy root, shows before/after and warns about Push on modify", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "livecopy.set-rollout-configs", path: LIVE_COPY, rolloutConfigs: [DEFAULT_CONFIG, PUSH_ON_MODIFY] }));
+    expect(plan.changes).toEqual([{ path: LIVE_COPY, what: "rollout configs", before: [DEFAULT_CONFIG], after: [DEFAULT_CONFIG, PUSH_ON_MODIFY] }]);
+    expect(plan.warnings).toContain(PUSH_ON_MODIFY_WARNING);
+    expect(plan.requests).toEqual([{ method: "POST", path: `${LIVE_COPY}/jcr:content/cq:LiveSyncConfig`, label: expect.stringContaining(PUSH_ON_MODIFY) }]);
+    expect(await h.apply({ token: plan.token, env: "stage", kind: "livecopy.set-rollout-configs" })).toMatchObject({ status: "applied" });
+    expect(h.author.posts()[0]?.body).toBe(
+      `_charset_=utf-8&cq%3ArolloutConfigs=${encodeURIComponent(DEFAULT_CONFIG)}&cq%3ArolloutConfigs=${encodeURIComponent(PUSH_ON_MODIFY)}&cq%3ArolloutConfigs%40TypeHint=String%5B%5D`,
+    );
+    expect(await h.plan({ kind: "livecopy.set-rollout-configs", path: LIVE_COPY, rolloutConfigs: [DEFAULT_CONFIG, PUSH_ON_MODIFY] })).toMatchObject({ status: "no-changes" });
+  });
+
+  it("does not warn about Push on modify when the new configs leave it out", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "livecopy.set-rollout-configs", path: LIVE_COPY, rolloutConfigs: ["/libs/msm/wcm/rolloutconfigs/activate"] }));
+    expect(plan.warnings).not.toContain(PUSH_ON_MODIFY_WARNING);
+  });
+
+  it("refuses a page that is not a Live Copy root, a missing page and an unknown config", async () => {
+    const h = harness();
+    expect(await h.plan({ kind: "livecopy.set-rollout-configs", path: OLD, rolloutConfigs: [DEFAULT_CONFIG] })).toMatchObject({ status: "rejected", reason: "invalid-operation" });
+    expect(await h.plan({ kind: "livecopy.set-rollout-configs", path: `${FR}/missing`, rolloutConfigs: [DEFAULT_CONFIG] })).toMatchObject({ status: "rejected", reason: "not-found" });
+    expect(await h.plan({ kind: "livecopy.set-rollout-configs", path: LIVE_COPY, rolloutConfigs: ["/apps/acme/x"] })).toMatchObject({ status: "rejected" });
+    expect(h.author.posts()).toEqual([]);
+  });
+});
+
+describe("conf.create-eds-config", () => {
+  it("copies another tree's Edge Delivery configuration with only the site changed, then cq:conf can point at it", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "conf.create-eds-config", path: NEW_CONF, site: "acme-demo-masters", like: LIKE_CONF, title: "Masters" }));
+    expect(plan.changes).toEqual([{ path: `${NEW_CONF}/${EDS_PAGE}`, what: "Edge Delivery configuration", after: { ...LIKE_FIELDS, repo: "acme-demo-masters" } }]);
+    expect(plan.warnings).toContain(EDS_CONFIG_NOTE);
+    expect(plan.requests).toEqual([{ method: "POST", path: NEW_CONF, label: expect.stringContaining("acme-demo-masters") }]);
+    expect(await h.apply({ token: plan.token, env: "stage", kind: "conf.create-eds-config" })).toMatchObject({ status: "applied" });
+    const body = new URLSearchParams(h.author.posts()[0]?.body ?? "");
+    expect(body.get("jcr:primaryType")).toBe("sling:Folder");
+    expect(body.get("jcr:title")).toBe("Masters");
+    expect(body.get(`${EDS_PAGE}/jcr:primaryType`)).toBe("cq:Page");
+    expect(body.get(`${EDS_PAGE}/jcr:content/jcr:primaryType`)).toBe("cq:PageContent");
+    expect(body.get(`${EDS_PAGE}/jcr:content/repo`)).toBe("acme-demo-masters");
+    expect(body.get(`${EDS_PAGE}/jcr:content/auxiliaryScripts@TypeHint`)).toBe("String[]");
+    expect([...body.keys()].some((key) => key.includes("lastReplicated"))).toBe(false);
+    expect(await h.plan({ kind: "conf.create-eds-config", path: NEW_CONF, site: "acme-demo-masters", like: LIKE_CONF })).toMatchObject({ status: "no-changes" });
+    expect(planned(await h.plan({ kind: "page.set-properties", path: OLD, set: { "cq:conf": NEW_CONF } })).changes).toEqual([
+      { path: OLD, what: "cq:conf", before: undefined, after: NEW_CONF },
+    ]);
+  });
+
+  it("refuses another tenant, the tenant root, an existing tree, a missing parent or template and a bad site name", async () => {
+    const h = harness();
+    const op = { kind: "conf.create-eds-config", site: "acme-demo-masters", like: LIKE_CONF } as const;
+    expect(await h.plan({ ...op, path: "/conf/other-tenant/masters" })).toMatchObject({ status: "rejected", reason: "path-outside-write-roots" });
+    expect(await h.plan({ ...op, path: "/conf/global/masters" })).toMatchObject({ status: "rejected", reason: "path-outside-write-roots" });
+    expect(await h.plan({ ...op, path: CONF_TENANT })).toMatchObject({ status: "rejected", reason: "path-outside-write-roots" });
+    expect(await h.plan({ ...op, path: `${CONF_TENANT}/../x` })).toMatchObject({ status: "rejected", reason: "invalid-path" });
+    expect(await h.plan({ ...op, path: `${CONF_TENANT}/missing/masters` })).toMatchObject({ status: "rejected", reason: "not-found" });
+    expect(await h.plan({ ...op, path: NEW_CONF, like: `${CONF_TENANT}/none` })).toMatchObject({ status: "rejected", reason: "not-found" });
+    expect(await h.plan({ ...op, path: NEW_CONF, site: "Bad Site" })).toMatchObject({ status: "rejected", reason: "invalid-operation" });
+    h.author.confs.add(NEW_CONF);
+    expect(await h.plan({ ...op, path: NEW_CONF })).toMatchObject({ status: "rejected", reason: "already-exists" });
+    expect(h.author.posts()).toEqual([]);
+  });
+});
+
+describe("livecopy.rollout", () => {
+  const TARGET = `${FR}/gear-live`;
+
+  it("waits until the async job reaches every target, so a later batch operation sees the rolled-out content", async () => {
+    const h = harness();
+    h.author.pages.set(TARGET, { ...h.author.pages.get(TARGET), "cq:lastRolledout": "before" });
+    const plan = planned(await h.plan({ kind: "livecopy.rollout", path: PAGE, targets: [TARGET] }));
+    expect(plan.summary).toContain(`Roll out ${PAGE} to 1 Live Copy`);
+    expect(plan.warnings).toContain(ROLLOUT_WARNING);
+    expect(await h.apply({ token: plan.token, env: "stage", kind: "livecopy.rollout" })).toMatchObject({ status: "applied" });
+    expect(h.author.pages.get(TARGET)?.["cq:lastRolledout"]).not.toBe("before");
+  });
+
+  it("fails naming the targets the job never reached", async () => {
+    const h = harness();
+    h.author.rollout.delivers = false;
+    const plan = planned(await h.plan({ kind: "livecopy.rollout", path: PAGE, targets: [TARGET] }));
+    const result = await h.apply({ token: plan.token, env: "stage", kind: "livecopy.rollout" });
+    expect(result).toMatchObject({ status: "failed", failed: { message: expect.stringContaining(`has not reached ${TARGET}`) } });
+    expect(h.author.sleeps.filter((ms) => ms === ROLLOUT_POLL_MS)).toHaveLength(ROLLOUT_TIMEOUT_MS / ROLLOUT_POLL_MS);
+  });
+
+  it("rejects a target that does not exist, at plan time", async () => {
+    const h = harness();
+    expect(await h.plan({ kind: "livecopy.rollout", path: PAGE, targets: [`${FR}/missing`] })).toMatchObject({ status: "rejected", reason: "not-found" });
+  });
+});
+
+describe("batch", () => {
+  const OPS: SinglePlanOperation[] = [
+    { kind: "page.set-properties", path: OLD, set: { "jcr:title": "Older" } },
+    { kind: "page.delete", path: OLD, force: true },
+  ];
+
+  it("plans without reading or writing, lists every operation and lives longer than a single plan", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "batch", operations: OPS }));
+    expect(h.author.posts()).toEqual([]);
+    expect(plan.summary).toContain("2 operations");
+    expect(plan.confirmationMessage).toContain(`1. page.set-properties ${OLD}`);
+    expect(plan.confirmationMessage).toContain(`2. page.delete ${OLD}`);
+    expect(plan.confirmationMessage).toContain("force");
+    expect(new Date(plan.expiresAt).getTime()).toBe(BATCH_TTL_MS);
+    h.advance(TTL);
+    expect((await h.apply({ token: plan.token, env: "stage", kind: "batch" })).status).toBe("applied");
+  });
+
+  it("applies the operations in order, each planned against the state at that moment", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "batch", operations: OPS }));
+    const result = await h.apply({ token: plan.token, env: "stage", kind: "batch" });
+    expect(result).toMatchObject({ status: "applied", operations: [{ index: 1, kind: "page.set-properties", sent: 1, ok: 1 }, { index: 2, kind: "page.delete", sent: 1, ok: 1 }] });
+    expect(h.author.posts().map((r) => r.path)).toEqual([`${OLD}/jcr:content`, "/bin/wcmcommand"]);
+  });
+
+  it("stops at the first operation that is rejected or fails, and runs nothing after it", async () => {
+    const h = harness();
+    const plan = planned(
+      await h.plan({
+        kind: "batch",
+        operations: [OPS[0] as SinglePlanOperation, { kind: "page.set-properties", path: `${EN}/missing`, set: { "jcr:title": "x" } }, OPS[1] as SinglePlanOperation],
+      }),
+    );
+    const result = await h.apply({ token: plan.token, env: "stage", kind: "batch" });
+    expect(result).toMatchObject({ status: "failed", failed: { index: 2, kind: "page.set-properties", message: expect.stringContaining("no page") }, notRun: 1 });
+    expect(h.author.posts()).toHaveLength(1);
+  });
+
+  it("retries an operation that does not find what an earlier one just wrote, then fails", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "batch", operations: [{ kind: "page.set-properties", path: `${EN}/missing`, set: { "jcr:title": "x" } }] }));
+    const result = await h.apply({ token: plan.token, env: "stage", kind: "batch" });
+    expect(result).toMatchObject({ status: "failed", failed: { index: 1, message: expect.stringContaining("not-found") } });
+    expect(h.author.sleeps).toEqual(Array.from({ length: BATCH_READ_RETRIES }, () => BATCH_READ_RETRY_MS));
+  });
+
+  it("reports growing progress before each operation and after each request, and ignores a client that cannot take it", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "batch", operations: OPS }));
+    const reports: { progress: number; total: number | undefined; message: string }[] = [];
+    const result = await applyPlan(
+      {
+        config: h.config,
+        clientFor: () => h.author.client,
+        store: h.store,
+        sleep: async () => {},
+        reportProgress: async (progress, total, message) => {
+          reports.push({ progress, total, message });
+          throw new Error("client gone");
+        },
+      },
+      { token: plan.token, env: "stage", kind: "batch" },
+    );
+    expect(result.status).toBe("applied");
+    expect(reports.map((r) => r.progress)).toEqual([0, 1, 2]);
+    expect(reports.every((r) => r.total === 2)).toBe(true);
+    expect(reports[0]?.message).toBe("operation 1/2: page.set-properties");
+  });
+
+  it("an operation with nothing to change is skipped, not a failure", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "batch", operations: [{ kind: "page.set-properties", path: OLD, set: { "jcr:title": "Old" } }] }));
+    expect(await h.apply({ token: plan.token, env: "stage", kind: "batch" })).toMatchObject({ status: "applied", operations: [{ index: 1, sent: 0, skipped: true }] });
+  });
+
+  it("rejects at plan time what the guards reject, naming the operation", async () => {
+    const h = harness();
+    const result = await h.plan({ kind: "batch", operations: [OPS[0] as SinglePlanOperation, { kind: "page.delete", path: "/content/acme-demo-site-us/en" }] });
+    expect(result).toMatchObject({ status: "rejected", reason: "path-outside-write-roots", message: expect.stringContaining("operation 2") });
+  });
+
+  it("keeps the token matrix: forged, reused and mismatched echoes write nothing", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "batch", operations: OPS }));
+    expect(await h.apply({ token: "forged", env: "stage", kind: "batch" })).toMatchObject({ reason: "unknown-token" });
+    expect(await h.apply({ token: plan.token, env: "stage", kind: "page.delete" })).toMatchObject({ reason: "kind-mismatch" });
+    expect(await h.apply({ token: plan.token, env: "prod", kind: "batch" })).toMatchObject({ reason: "env-mismatch" });
+    expect(h.author.posts()).toEqual([]);
+    await h.apply({ token: plan.token, env: "stage", kind: "batch" });
+    expect(await h.apply({ token: plan.token, env: "stage", kind: "batch" })).toMatchObject({ reason: "already-applied" });
+  });
+
+  it("asks for the typed target when an operation touches a protected path", async () => {
+    const h = harness({ AEM_PROTECTED_PATHS: "/content/*/en" });
+    const plan = planned(await h.plan({ kind: "batch", operations: [{ kind: "page.set-properties", path: EN, set: { "jcr:title": "x" } }] }));
+    expect(plan.requiresConfirmTarget).toBe(true);
+    expect(await h.plan({ kind: "batch", operations: [{ kind: "page.publish", paths: [EN], target: "preview" }] })).toMatchObject({ reason: "protected-path-publish" });
   });
 });

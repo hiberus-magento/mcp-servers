@@ -4,6 +4,7 @@ import {
   assertPropertyValue,
   assertRobotsTokens,
   assertSheetColumn,
+  assertWritableComponentProperty,
   assertWritableProperty,
   BUILTIN_PAGE_PROPERTIES,
   ForbiddenPropertyNameError,
@@ -71,6 +72,19 @@ describe("parseExtraProperties", () => {
   }
 });
 
+describe("cq:conf", () => {
+  it("is a built-in page property", () => {
+    expect(assertWritableProperty("cq:conf", [])).toBe("cq:conf");
+  });
+
+  it("takes only a plain path under /conf/", () => {
+    expect(assertPropertyValue("cq:conf", "/conf/acme-demo-site/us")).toBe("/conf/acme-demo-site/us");
+    for (const bad of ["/content/acme", "/conf", "/conf/", "/conf/acme/../../apps", "/conf/acme/", "conf/acme", "/conf/acme.json", ["/conf/acme"], true]) {
+      expect(() => assertPropertyValue("cq:conf", bad)).toThrow(InvalidPropertyValueError);
+    }
+  });
+});
+
 describe("assertPropertyValue", () => {
   it("accepts strings, booleans, finite numbers and string lists", () => {
     expect(assertPropertyValue("a", "x")).toBe("x");
@@ -107,6 +121,26 @@ describe("assertSheetColumn", () => {
   for (const name of ["", "1a", "a@Delete", ":operation", "jcr:primaryType", "a/b", "a.b"]) {
     it(`refuses ${JSON.stringify(name)}`, () => {
       expect(() => assertSheetColumn(name)).toThrow(ForbiddenPropertyNameError);
+    });
+  }
+});
+
+describe("assertWritableComponentProperty", () => {
+  for (const name of ["checkout-url", "start-shopping-url", "max-items", "title", "text", "image", "imageAlt", "classes", "linkText"]) {
+    it(`accepts the authored field ${name}`, () => {
+      expect(assertWritableComponentProperty(name)).toBe(name);
+    });
+  }
+
+  for (const name of ["name", "model", "filter", "modelFields", "key-value"]) {
+    it(`refuses ${name}, which binds the node to Universal Editor`, () => {
+      expect(() => assertWritableComponentProperty(name)).toThrow(ForbiddenPropertyNameError);
+    });
+  }
+
+  for (const name of ["jcr:title", "cq:tags", "sling:resourceType", "jcr:primaryType", "title@Delete", ":operation", "1title", "ti tle"]) {
+    it(`refuses ${JSON.stringify(name)}`, () => {
+      expect(() => assertWritableComponentProperty(name)).toThrow(ForbiddenPropertyNameError);
     });
   }
 });

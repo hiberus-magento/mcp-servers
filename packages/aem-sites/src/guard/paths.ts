@@ -114,6 +114,31 @@ export function parseWriteRoots(raw: string | undefined): readonly string[] {
   return roots;
 }
 
+export class InvalidComponentPathError extends Error {
+  constructor(path: string) {
+    super(`"${path}" is not a component path: expected <page>/jcr:content/<node>[/<node>…], each node made of letters, digits, "_" or "-".`);
+    this.name = "InvalidComponentPathError";
+  }
+}
+
+/** A component node: a page path, `/jcr:content`, then one or more plain node names (never `jcr:content` itself). */
+const COMPONENT_PATH = /^((?:\/[A-Za-z0-9_-]+)+)\/jcr:content((?:\/[A-Za-z0-9_-]+)+)$/;
+
+/**
+ * Splits a component node path into its page and checks the page is
+ * writable. `jcr:content` alone is the page's own properties
+ * (`page.set-properties`), so at least one node below it is required.
+ */
+export function assertComponentPath(path: string, roots: readonly string[]): { readonly page: string; readonly path: string } {
+  const match = COMPONENT_PATH.exec(path);
+  const page = match?.[1];
+  if (page === undefined) {
+    throw new InvalidComponentPathError(path);
+  }
+  assertWritable(page, roots);
+  return { page, path };
+}
+
 /** Throws unless `path` is a valid page path at or below one of `roots`. */
 export function assertWritable(path: string, roots: readonly string[]): string {
   assertAemPath(path);
@@ -202,4 +227,29 @@ export function assertRolloutConfig(config: string, extra: readonly string[]): s
     throw new InvalidRolloutConfigError(config, `is not allowed; use one of ${[...BUILTIN_ROLLOUT_CONFIGS, ...extra].join(", ")}`);
   }
   return config;
+}
+
+const CONF_PATH = /^\/conf(?:\/[A-Za-z0-9_-]+)+$/;
+
+/** A `/conf` node path with the page-path grammar (no dots, selectors or traversal). */
+export function assertConfPath(path: string): string {
+  if (!CONF_PATH.test(path)) {
+    throw new InvalidAemPathError(path);
+  }
+  return path;
+}
+
+/**
+ * A configuration this server may create: strictly below `/conf/<tenant>`,
+ * where `/content/<tenant>` is (or contains) a write root. `/conf/<tenant>`
+ * itself, `/conf/global` and other tenants stay closed.
+ */
+export function assertWritableConf(path: string, roots: readonly string[]): string {
+  assertConfPath(path);
+  const tenants = [...new Set(roots.map((root) => root.split("/")[2]).filter((tenant): tenant is string => tenant !== undefined))];
+  const allowed = tenants.map((tenant) => `/conf/${tenant}`);
+  if (!allowed.some((conf) => path.startsWith(`${conf}/`))) {
+    throw new PathOutsideWriteRootsError(path, allowed.map((conf) => `${conf}/…`));
+  }
+  return path;
 }

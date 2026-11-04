@@ -11,7 +11,8 @@ Service author. The client never reads environment variables or credential files
 ### Requirement: Closed Operation Set
 
 The client MUST expose only named operations (`queryPages`, `readPage`, `readSheet`,
-`readReplicationStatus`, `listTemplates`, `readPageTree`, `buildSetProperties`, `buildSheetUpsert`,
+`readReplicationStatus`, `listTemplates`, `readPageTree`, `readComponent`, `buildSetProperties`,
+`buildSetComponentProperties`, `buildSheetUpsert`,
 `buildSheetDeleteRow`, `buildReplicate`, `buildWcmCommand`, `send`). There SHALL be no function
 that issues a request to a caller-supplied URL or with caller-supplied form field names.
 
@@ -42,6 +43,18 @@ author) and attach it as `CSRF-Token` to every POST.
 - GIVEN a cached CSRF token rejected with 403
 - WHEN `send` retries
 - THEN it refreshes the CSRF token once and resends the identical request
+
+### Requirement: Status Errors Keep the Author's Message
+
+A non-2xx answer that is not an authentication failure MUST become `AemStatusError` with a
+`detail`: a JSON or text body as a whitespace-collapsed excerpt, an HTML body only as the text of
+Sling's status message (`<div id="Message">`), and nothing else of an HTML page.
+
+#### Scenario: Delete refused with an HTML status page
+
+- GIVEN `/bin/wcmcommand` answering 412 with a Sling HTML page whose message explains the refusal
+- WHEN `send` fails
+- THEN the error's detail is that message, and no other text of the page
 
 ### Requirement: Field-Proven Retry Policy
 

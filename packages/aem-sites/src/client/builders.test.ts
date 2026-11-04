@@ -1,18 +1,21 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 import { describe, expect, it } from "vitest";
 import { SYNTHETIC_ROOT } from "../testing/author-double.js";
-import { InvalidAemPathError, PathOutsideWriteRootsError } from "../guard/paths.js";
+import { InvalidAemPathError, InvalidComponentPathError, PathOutsideWriteRootsError } from "../guard/paths.js";
 import { ForbiddenPropertyNameError, InvalidPropertyValueError } from "../guard/properties.js";
 import { InvalidRolloutConfigError } from "../guard/paths.js";
 import {
   buildCopyPage,
   buildCreateLiveCopy,
+  buildRollout,
+  buildSetRolloutConfigs,
   buildLockPage,
   buildCreatePage,
   buildCreateSheet,
   buildDeletePage,
   buildMovePage,
   buildReplicate,
+  buildSetComponentProperties,
   buildSetProperties,
   buildSetRobots,
   buildSheetColumns,
@@ -167,14 +170,15 @@ describe("page lifecycle builders", () => {
     expect(buildMovePage(scope, { srcPath: PAGE, destParentPath: `${SYNTHETIC_ROOT}/fr`, destName: "x" }).form).toContainEqual(["cmd", "movePage"]);
   });
 
-  it("deletes with force=false and never a whole root", () => {
+  it("deletes with force=false unless forced, and never a whole root", () => {
     expect(buildDeletePage(scope, PAGE).form).toEqual([
       ["cmd", "deletePage"],
       ["_charset_", "utf-8"],
       ["path", PAGE],
       ["force", "false"],
     ]);
-    expect(() => buildDeletePage(scope, SYNTHETIC_ROOT)).toThrow(/write root/);
+    expect(buildDeletePage(scope, PAGE, { force: true }).form).toContainEqual(["force", "true"]);
+    expect(() => buildDeletePage(scope, SYNTHETIC_ROOT, { force: true })).toThrow(/write root/);
   });
 });
 
@@ -213,6 +217,53 @@ describe("MSM and lock builders", () => {
     expect(() => buildCreateLiveCopy({ ...scope, extraRolloutConfigs: ["/apps/msm/acme/sync"] }, { ...LC, rolloutConfigs: ["/apps/msm/acme/sync"] }).form).not.toThrow();
   });
 
+  it("rolls out with the Sites console's async rollout fields, targets only inside the roots", () => {
+    const target = `${SYNTHETIC_ROOT}/fr/outdoor-gear`;
+    expect(buildRollout(scope, { path: "/content/acme-demo-site-us/en/gear", targets: [target, target], deep: false })).toEqual({
+      method: "POST",
+      path: "/bin/asynccommand",
+      form: [
+        ["cmd", "rollout"],
+        ["operation", "asyncRollout"],
+        ["_charset_", "utf-8"],
+        ["path", "/content/acme-demo-site-us/en/gear"],
+        ["type", "page"],
+        ["paras", "[]"],
+        ["msm:targetPath", JSON.stringify([target])],
+        ["reportSchedule", "now"],
+      ],
+      label: `roll out /content/acme-demo-site-us/en/gear to ${target}, ${target}`,
+    });
+    expect(buildRollout(scope, { path: PAGE, targets: [target], deep: true }).form).toContainEqual(["type", "deep"]);
+    expect(() => buildRollout(scope, { path: PAGE, targets: [OUTSIDE], deep: false })).toThrow(PathOutsideWriteRootsError);
+    expect(() => buildRollout(scope, { path: PAGE, targets: [`${PAGE}/child`], deep: false })).toThrow(/inside or above/);
+    expect(() => buildRollout(scope, { path: PAGE, targets: [], deep: false })).toThrow(/at least one target/);
+  });
+
+  it("sets a Live Copy's rollout configs on its cq:LiveSyncConfig node, as a String[]", () => {
+    const target = `${SYNTHETIC_ROOT}/fr`;
+    const configs = ["/libs/msm/wcm/rolloutconfigs/default", "/libs/msm/wcm/rolloutconfigs/pushonmodify"];
+    expect(buildSetRolloutConfigs(scope, { path: target, rolloutConfigs: [...configs, configs[0] as string] })).toEqual({
+      method: "POST",
+      path: `${target}/jcr:content/cq:LiveSyncConfig`,
+      form: [
+        ["_charset_", "utf-8"],
+        ["cq:rolloutConfigs", configs[0]],
+        ["cq:rolloutConfigs", configs[1]],
+        ["cq:rolloutConfigs@TypeHint", "String[]"],
+      ],
+      label: `set the rollout configs of the Live Copy ${target} to ${configs.join(", ")}`,
+    });
+  });
+
+  it("refuses rollout configs outside the allowlist, none at all, and a Live Copy outside the roots", () => {
+    const target = `${SYNTHETIC_ROOT}/fr`;
+    expect(() => buildSetRolloutConfigs(scope, { path: target, rolloutConfigs: ["/apps/acme/evil"] })).toThrow(InvalidRolloutConfigError);
+    expect(() => buildSetRolloutConfigs(scope, { path: target, rolloutConfigs: [] })).toThrow(/at least one rollout config/);
+    expect(() => buildSetRolloutConfigs(scope, { path: OUTSIDE, rolloutConfigs: ["/libs/msm/wcm/rolloutconfigs/default"] })).toThrow(PathOutsideWriteRootsError);
+    expect(buildSetRolloutConfigs({ ...scope, extraRolloutConfigs: ["/apps/msm/acme/sync"] }, { path: target, rolloutConfigs: ["/apps/msm/acme/sync"] }).form).toContainEqual(["cq:rolloutConfigs", "/apps/msm/acme/sync"]);
+  });
+
   it("locks and unlocks only inside the roots", () => {
     expect(buildLockPage(scope, PAGE, true).form).toEqual([
       ["cmd", "lockPage"],
@@ -221,5 +272,42 @@ describe("MSM and lock builders", () => {
     ]);
     expect(buildLockPage(scope, PAGE, false).form[0]).toEqual(["cmd", "unlockPage"]);
     expect(() => buildLockPage(scope, OUTSIDE, true)).toThrow(PathOutsideWriteRootsError);
+  });
+});
+
+describe("buildSetComponentProperties", () => {
+  const BLOCK = `${PAGE}/jcr:content/root/section/block`;
+
+  it("posts the fields to the component node with client-emitted operators only", () => {
+    expect(buildSetComponentProperties(scope, { path: BLOCK, set: { "checkout-url": "/checkout", "max-items": 6, "hide-heading": false, tags: ["a"] }, remove: ["start-shopping-url"] })).toEqual({
+      method: "POST",
+      path: BLOCK,
+      form: [
+        ["checkout-url", "/checkout"],
+        ["max-items", "6"],
+        ["max-items@TypeHint", "Long"],
+        ["hide-heading", "false"],
+        ["hide-heading@TypeHint", "Boolean"],
+        ["tags", "a"],
+        ["tags@TypeHint", "String[]"],
+        ["start-shopping-url@Delete", ""],
+        ["_charset_", "utf-8"],
+      ],
+      label: `component ${BLOCK}`,
+    });
+  });
+
+  it("refuses a page property path, a binding field, an operator and a namespaced name", () => {
+    expect(() => buildSetComponentProperties(scope, { path: `${PAGE}/jcr:content`, set: { title: "x" } })).toThrow(InvalidComponentPathError);
+    expect(() => buildSetComponentProperties(scope, { path: BLOCK, set: { model: "x" } })).toThrow(ForbiddenPropertyNameError);
+    expect(() => buildSetComponentProperties(scope, { path: BLOCK, set: { "title@MoveFrom": "/content/x" } })).toThrow(ForbiddenPropertyNameError);
+    expect(() => buildSetComponentProperties(scope, { path: BLOCK, remove: ["sling:resourceType"] })).toThrow(ForbiddenPropertyNameError);
+  });
+
+  it("refuses components outside the roots, empty changes, a field set and removed, and bad values", () => {
+    expect(() => buildSetComponentProperties(scope, { path: `${OUTSIDE}/jcr:content/root`, set: { title: "x" } })).toThrow(PathOutsideWriteRootsError);
+    expect(() => buildSetComponentProperties(scope, { path: BLOCK })).toThrow(/Nothing to change/);
+    expect(() => buildSetComponentProperties(scope, { path: BLOCK, set: { title: "x" }, remove: ["title"] })).toThrow(/both set and removed/);
+    expect(() => buildSetComponentProperties(scope, { path: BLOCK, set: { title: { nested: true } } })).toThrow(InvalidPropertyValueError);
   });
 });

@@ -8,12 +8,18 @@
 import {
   buildCopyPage,
   buildCreateLiveCopy,
+  buildRollout,
+  buildSetRolloutConfigs,
+  buildCreateEdsConfig,
+  EDS_CONFIG_NODE,
+  readEdsConfig,
   buildCreatePage,
   buildCreateSheet,
   buildDeletePage,
   buildLockPage,
   buildMovePage,
   buildReplicate,
+  buildSetComponentProperties,
   buildSetProperties,
   buildSetRobots,
   buildSheetColumns,
@@ -22,11 +28,15 @@ import {
   InvalidOperationError,
   nextRowNode,
   parseRobots,
+  queryPages,
   queryPublishedPages,
+  confExists,
+  readComponent,
   readCurrentUser,
   readPage,
   readSheet,
   type AemClient,
+  type ComponentDetails,
   type PageDetails,
   type PlannedRequest,
   type ReplicationAgent,
@@ -40,13 +50,14 @@ import {
   assertWritable,
   BUILTIN_ROLLOUT_CONFIGS,
   InvalidAemPathError,
+  InvalidComponentPathError,
   InvalidRolloutConfigError,
   PathNotReadableError,
   PathOutsideWriteRootsError,
   protectedPatternFor,
 } from "../guard/paths.js";
 import { ForbiddenPropertyNameError, InvalidPropertyValueError, assertSheetColumn } from "../guard/properties.js";
-import type { AemPlanInput, OperationKind, PlanOperation } from "./plan-schema.js";
+import type { AemPlanInput, OperationKind, PlanOperation, SinglePlanOperation } from "./plan-schema.js";
 
 /** Returned with every plan: a model weighs what it just received more than a description read at session start. */
 export const PLAN_INSTRUCTION =
@@ -61,6 +72,25 @@ export const EDS_UNPUBLISH_WARNING = "Unpublishing from the publish agent remove
 export const ROBOTS_UNVERIFIED_WARNING =
   "Writes the robots field of the EDS page-metadata model. That EDS renders it as <meta name=\"robots\"> once the page is published has not yet been verified on a live page; the site-wide route is a row in the EDS metadata sheet (sheet.upsert-row).";
 export const PREVIEW_UNKNOWN = "unknown (AEM does not record preview replication)";
+/** A batch is reviewed as a whole and can take many minutes to apply, so its token lives longer than a single plan's. */
+export const BATCH_TTL_MS = 60 * 60 * 1000;
+export const BATCH_WARNING =
+  "A batch is planned operation by operation when it is applied, against the author's state at that moment: the exact requests are not listed here. It stops at the first operation that is rejected or fails; what ran before is not rolled back.";
+/**
+ * An author answers a read right after a write with the old state for a moment
+ * (observed 2026-10-29: a page created by one operation was "not found" by the
+ * next). A batch operation rejected as `not-found` is re-planned this many times.
+ */
+export const BATCH_READ_RETRIES = 5;
+export const BATCH_READ_RETRY_MS = 2000;
+/** Upper bound on QueryBuilder pages read for one tree, so a wrong root cannot loop for ever. */
+const MAX_TREE_QUERIES = 100;
+export const CONF_WARNING =
+  "cq:conf decides which /conf tree the page and every page below it use: the Edge Delivery Services site the author publishes them to, and their editable templates.";
+export const FORCE_DELETE_WARNING =
+  "Forced: the author deletes these pages even when other pages or Live Copies reference them; those references are left broken.";
+export const DELETE_REFERENCED_HINT =
+  "The author refuses to delete a page that other pages or Live Copies reference (links between the deleted pages count too). To delete it anyway, plan page.delete again with force: true and show the user that plan.";
 
 /** Pause between the preview and publish agents (field finding: publish right after preview answered 400). */
 export const AGENT_PAUSE_MS = 1_000;
@@ -69,12 +99,18 @@ export type StateCheck =
   | { readonly kind: "page"; readonly path: string; readonly sha256: string }
   | { readonly kind: "page-present"; readonly path: string }
   | { readonly kind: "page-absent"; readonly path: string }
+  | { readonly kind: "component"; readonly path: string; readonly sha256: string }
   | { readonly kind: "sheet"; readonly path: string; readonly sha256: string }
-  | { readonly kind: "sheet-absent"; readonly path: string };
+  | { readonly kind: "sheet-absent"; readonly path: string }
+  | { readonly kind: "conf-absent"; readonly path: string };
 
 export interface PlannedStep {
   readonly request: PlannedRequest;
   readonly pauseBeforeMs?: number;
+  /** Appended to the failure message when the author answers this step with that HTTP status. */
+  readonly hints?: Readonly<Record<number, string>>;
+  /** The request starts an async rollout job: apply waits until each target's `cq:lastRolledout` differs from `before`. */
+  readonly awaitRollout?: readonly { readonly path: string; readonly before?: string }[];
 }
 
 export interface StoredPlan {
@@ -82,6 +118,8 @@ export interface StoredPlan {
   readonly kind: OperationKind;
   readonly steps: readonly PlannedStep[];
   readonly checks: readonly StateCheck[];
+  /** A batch stores its operations, not requests: each is planned against the author's state when it is applied. */
+  readonly batch?: readonly SinglePlanOperation[];
   /** What the user must type when the plan touches a protected environment or path. */
   readonly confirmTarget?: string;
 }
@@ -150,7 +188,7 @@ export function rejectionFor(error: unknown): PlanRejection | undefined {
   if (error instanceof PathOutsideWriteRootsError) {
     return new PlanRejection("path-outside-write-roots", error.message);
   }
-  if (error instanceof InvalidAemPathError || error instanceof PathNotReadableError) {
+  if (error instanceof InvalidAemPathError || error instanceof InvalidComponentPathError || error instanceof PathNotReadableError) {
     return new PlanRejection("invalid-path", error.message);
   }
   if (error instanceof ForbiddenPropertyNameError) {
@@ -170,7 +208,7 @@ export function rejectionFor(error: unknown): PlanRejection | undefined {
 
 // ---------------------------------------------------------------------------
 
-interface Draft {
+export interface Draft {
   readonly steps: readonly PlannedStep[];
   readonly checks: readonly StateCheck[];
   readonly changes: readonly Change[];
@@ -183,8 +221,22 @@ type Context = { readonly client: AemClient; readonly scope: WriteScope; readonl
 
 export const LIVE_COPY_NOTE =
   "A Live Copy inherits its content from the source: editing an inherited component requires an author to cancel inheritance, and a rollout from the source overwrites inherited content. The new page is not published.";
+export const COMPONENT_INHERITANCE_WARNING =
+  "If this page is a Live Copy, the component is inherited: the next rollout from its source overwrites this edit unless an author cancels the component's inheritance in the editor.";
+export const ROLLOUT_WARNING =
+  "A rollout overwrites the inherited content of every target with the source's; components whose inheritance an author cancelled keep their edits. The targets are not published.";
+export const ROLLOUT_CONFIGS_NOTE =
+  "The configs apply to the Live Copy root and to every page below it that does not set its own; nothing is rolled out by this change.";
+export const PUSH_ON_MODIFY_WARNING =
+  "Push on modify rolls out every saved change of the source to this Live Copy, without review. Adobe advises using it sparingly: it can slow down authoring, and the order of the resulting rollouts is not guaranteed.";
+export const EDS_CONFIG_NOTE =
+  "Nothing uses the new configuration yet: point a page's cq:conf at it (page.set-properties) to publish that page and the pages below it to this Edge Delivery site. The site must exist in Edge Delivery Services and map those content paths.";
 export const LOCK_NOTE =
   "A lock stops OTHER users from editing this page and the pages below it; the lock owner — the user this server's token belongs to — can still edit. It does not change permissions.";
+
+function parentOf(path: string): string {
+  return path.slice(0, path.lastIndexOf("/"));
+}
 
 function leafOf(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1);
@@ -219,6 +271,7 @@ async function requireAbsent(ctx: Context, path: string): Promise<void> {
 }
 
 const pageCheck = (page: PageDetails): StateCheck => ({ kind: "page", path: page.path, sha256: fingerprint(page) });
+const componentCheck = (component: ComponentDetails): StateCheck => ({ kind: "component", path: component.path, sha256: fingerprint(component) });
 const sheetCheck = (sheet: Sheet): StateCheck => ({ kind: "sheet", path: sheet.path, sha256: fingerprint(sheet) });
 
 function agents(target: "preview" | "publish" | "both"): readonly ReplicationAgent[] {
@@ -242,6 +295,10 @@ async function draftSetProperties(ctx: Context, op: Extract<PlanOperation, { kin
   // Validate the whole request first, so a forbidden name is rejected before any read.
   buildSetProperties(ctx.scope, { path: op.path, ...(op.set !== undefined ? { set: op.set } : {}), ...(op.remove !== undefined ? { remove: op.remove } : {}) });
   const page = await requirePage(ctx, op.path);
+  const conf = op.set?.["cq:conf"];
+  if (typeof conf === "string" && !(await confExists(ctx.client.http, conf))) {
+    throw new PlanRejection("not-found", `There is no configuration at ${conf}.`);
+  }
   const set: Record<string, unknown> = {};
   const changes: Change[] = [];
   for (const [name, value] of Object.entries(op.set ?? {})) {
@@ -258,7 +315,48 @@ async function draftSetProperties(ctx: Context, op: Extract<PlanOperation, { kin
     return { steps: [], checks: [], changes, targets: [op.path], summary: `${op.path} already has these properties.` };
   }
   const request = buildSetProperties(ctx.scope, { path: op.path, set, remove });
-  return { steps: [{ request }], checks: [pageCheck(page)], changes, targets: [op.path], summary: `Change ${changes.length} page propert${changes.length === 1 ? "y" : "ies"} of ${op.path}.` };
+  return {
+    steps: [{ request }],
+    checks: [pageCheck(page)],
+    changes,
+    targets: [op.path],
+    summary: `Change ${changes.length} page propert${changes.length === 1 ? "y" : "ies"} of ${op.path}.`,
+    ...(changes.some((change) => change.what === "cq:conf") ? { warnings: [CONF_WARNING] } : {}),
+  };
+}
+
+async function draftSetComponentProperties(ctx: Context, op: Extract<PlanOperation, { kind: "component.set-properties" }>): Promise<Draft> {
+  // Validate the whole request first, so a forbidden name or path is rejected before any read.
+  const fields = { ...(op.set !== undefined ? { set: op.set } : {}), ...(op.remove !== undefined ? { remove: op.remove } : {}) };
+  buildSetComponentProperties(ctx.scope, { path: op.path, ...fields });
+  const component = await readComponent(ctx.client.http, op.path);
+  if (component === undefined) {
+    throw new PlanRejection("not-found", `There is no component at ${op.path}. This operation edits an existing component; it never creates one.`);
+  }
+  const set: Record<string, unknown> = {};
+  const changes: Change[] = [];
+  for (const [name, value] of Object.entries(op.set ?? {})) {
+    if (!sameValue(component.properties[name], value)) {
+      set[name] = value;
+      changes.push({ path: op.path, what: name, before: component.properties[name], after: value });
+    }
+  }
+  const remove = (op.remove ?? []).filter((name) => component.properties[name] !== undefined);
+  for (const name of remove) {
+    changes.push({ path: op.path, what: name, before: component.properties[name] });
+  }
+  if (changes.length === 0) {
+    return { steps: [], checks: [], changes, targets: [op.path], summary: `${op.path} already has these fields.` };
+  }
+  const request = buildSetComponentProperties(ctx.scope, { path: op.path, set, remove });
+  return {
+    steps: [{ request }],
+    checks: [componentCheck(component)],
+    changes,
+    targets: [op.path],
+    summary: `Change ${changes.length} field${changes.length === 1 ? "" : "s"} of the component ${op.path}.`,
+    warnings: [COMPONENT_INHERITANCE_WARNING],
+  };
 }
 
 async function draftSetRobots(ctx: Context, op: Extract<PlanOperation, { kind: "page.set-robots" }>): Promise<Draft> {
@@ -417,6 +515,50 @@ async function draftReplicate(ctx: Context, op: Extract<PlanOperation, { kind: "
   };
 }
 
+/** Every page at or below `root`: QueryBuilder matches `path` as a prefix, so `queryPages` re-checks `${root}/`. */
+async function listTree(ctx: Context, root: string): Promise<readonly string[]> {
+  const paths = new Set<string>();
+  let offset = 0;
+  for (let query = 0; query < MAX_TREE_QUERIES; query += 1) {
+    const page = await queryPages(ctx.client.http, { root, limit: 200, offset });
+    for (const hit of page.pages) {
+      paths.add(hit.path);
+    }
+    if (!page.more) {
+      break;
+    }
+    offset += 200;
+  }
+  return [...paths].sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b));
+}
+
+async function draftPublishTree(ctx: Context, op: Extract<PlanOperation, { kind: "page.publish-tree" }>): Promise<Draft> {
+  assertWritable(op.root, ctx.scope.roots);
+  const paths = await listTree(ctx, op.root);
+  if (paths.length === 0) {
+    await requirePage(ctx, op.root);
+  }
+  const steps: PlannedStep[] = [];
+  const checks: StateCheck[] = [];
+  const changes: Change[] = [];
+  let warnings: readonly string[] = [];
+  for (let start = 0; start < paths.length; start += 100) {
+    const chunk = await draftReplicate(ctx, { kind: "page.publish", paths: paths.slice(start, start + 100), target: op.target });
+    steps.push(...chunk.steps);
+    checks.push(...chunk.checks);
+    changes.push(...chunk.changes);
+    warnings = chunk.warnings ?? [];
+  }
+  return {
+    steps,
+    checks,
+    changes,
+    targets: [op.root],
+    summary: `Publish ${paths.length} page${paths.length === 1 ? "" : "s"} at or below ${op.root} on ${agents(op.target).join(" then ")}.`,
+    warnings,
+  };
+}
+
 async function draftCreate(ctx: Context, op: Extract<PlanOperation, { kind: "page.create" }>): Promise<Draft> {
   const path = `${op.parentPath}/${op.name}`;
   const create = buildCreatePage(ctx.scope, op);
@@ -457,22 +599,31 @@ async function draftCopyOrMove(ctx: Context, op: Extract<PlanOperation, { kind: 
 }
 
 async function draftDelete(ctx: Context, op: Extract<PlanOperation, { kind: "page.delete" }>): Promise<Draft> {
-  const request = buildDeletePage(ctx.scope, op.path);
+  const force = op.force === true;
+  const request = buildDeletePage(ctx.scope, op.path, { force });
   const page = await requirePage(ctx, op.path);
   const published = await queryPublishedPages(ctx.client.http, op.path);
-  if (published.length > 0) {
+  const publishedList = `${published.length === 100 ? "At least 100" : published.length} page(s) at or below ${op.path} are published on publish`;
+  const publishedSample = `${published.slice(0, 10).join(", ")}${published.length > 10 ? ` and ${published.length - 10} more` : ""}`;
+  if (published.length > 0 && op.allowPublished !== true) {
     throw new PlanRejection(
       "page-is-published",
-      `${published.length === 100 ? "At least 100" : published.length} page(s) at or below ${op.path} are published on publish and must be unpublished first (aem_plan page.unpublish), e.g. ${published.slice(0, 10).join(", ")}${published.length > 10 ? ` and ${published.length - 10} more` : ""}.`,
+      `${publishedList} and must be unpublished first (aem_plan page.unpublish), e.g. ${publishedSample}. Only if the author refuses that unpublish, plan page.delete again with allowPublished: true and show the user that plan.`,
     );
   }
+  const previewWarning = `Only publish-agent state can be checked; if any of these pages is on preview, unpublish it from preview first (preview state is ${PREVIEW_UNKNOWN}).`;
+  const publishedWarning =
+    published.length > 0
+      ? [`${publishedList}: ${publishedSample}. They are deleted without being unpublished; if they are really live, they stay orphaned on publish (and Edge Delivery Services live).`]
+      : [];
+  const qualifiers = [...(force ? ["with force (references ignored)"] : []), ...(published.length > 0 ? ["including pages still marked as published"] : [])];
   return {
-    steps: [{ request }],
+    steps: [force ? { request } : { request, hints: { 412: DELETE_REFERENCED_HINT } }],
     checks: [pageCheck(page)],
     changes: [{ path: op.path, what: "page", before: page.properties["jcr:title"] ?? op.path }],
     targets: [op.path],
-    summary: `Delete ${op.path} and every page below it.`,
-    warnings: [`Only publish-agent state can be checked; if any of these pages is on preview, unpublish it from preview first (preview state is ${PREVIEW_UNKNOWN}).`],
+    summary: `Delete ${op.path} and every page below it${qualifiers.length > 0 ? `, ${qualifiers.join(", ")}` : ""}.`,
+    warnings: [...publishedWarning, ...(force ? [FORCE_DELETE_WARNING] : []), previewWarning],
   };
 }
 
@@ -504,6 +655,81 @@ async function draftLiveCopy(ctx: Context, op: Extract<PlanOperation, { kind: "l
   };
 }
 
+async function draftRollout(ctx: Context, op: Extract<PlanOperation, { kind: "livecopy.rollout" }>): Promise<Draft> {
+  const deep = op.deep ?? false;
+  const targets = [...new Set(op.targets)];
+  const request = buildRollout(ctx.scope, { path: op.path, targets, deep });
+  await requirePage(ctx, op.path);
+  const before: { path: string; before?: string }[] = [];
+  for (const target of targets) {
+    const page = await readPage(ctx.client.http, target, [...ctx.config.extraProperties, "cq:lastRolledout"]);
+    if (page === undefined) {
+      throw new PlanRejection("not-found", `There is no page at ${target}.`);
+    }
+    const last = page.properties["cq:lastRolledout"];
+    before.push({ path: target, ...(typeof last === "string" ? { before: last } : {}) });
+  }
+  return {
+    steps: [{ request, awaitRollout: before }],
+    checks: [{ kind: "page-present", path: op.path }, ...targets.map((path) => ({ kind: "page-present" as const, path }))],
+    changes: targets.map((path) => ({ path, what: "inherited content", after: `rolled out from ${op.path}` })),
+    targets,
+    summary: `Roll out ${op.path}${deep ? " and its sub-pages" : ""} to ${targets.length} Live Cop${targets.length === 1 ? "y" : "ies"}: ${targets.join(", ")}.`,
+    warnings: [ROLLOUT_WARNING],
+  };
+}
+
+async function draftSetRolloutConfigs(ctx: Context, op: Extract<PlanOperation, { kind: "livecopy.set-rollout-configs" }>): Promise<Draft> {
+  const rolloutConfigs = [...new Set(op.rolloutConfigs)];
+  const request = buildSetRolloutConfigs(ctx.scope, { path: op.path, rolloutConfigs });
+  const page = await requirePage(ctx, op.path);
+  if (page.liveCopy === undefined) {
+    throw new PlanRejection("invalid-operation", `${op.path} is not the root of a Live Copy (it has no cq:LiveSyncConfig); set the configs on the root it belongs to.`);
+  }
+  const before = page.liveCopy.rolloutConfigs;
+  if (sameValue(before, rolloutConfigs)) {
+    return { steps: [], checks: [], changes: [], targets: [op.path], summary: `${op.path} already has these rollout configs.` };
+  }
+  return {
+    steps: [{ request }],
+    checks: [pageCheck(page)],
+    changes: [{ path: op.path, what: "rollout configs", before, after: rolloutConfigs }],
+    targets: [op.path],
+    summary: `Set the rollout configs of the Live Copy ${op.path} (source ${page.liveCopy.master}) to ${rolloutConfigs.join(", ")}.`,
+    warnings: [ROLLOUT_CONFIGS_NOTE, ...(rolloutConfigs.some((config) => config.endsWith("/pushonmodify")) ? [PUSH_ON_MODIFY_WARNING] : [])],
+  };
+}
+
+async function draftCreateEdsConfig(ctx: Context, op: Extract<PlanOperation, { kind: "conf.create-eds-config" }>): Promise<Draft> {
+  const title = op.title ?? leafOf(op.path);
+  buildCreateEdsConfig(ctx.scope, { path: op.path, title, fields: { repo: op.site } });
+  const like = await readEdsConfig(ctx.client.http, op.like);
+  if (like === undefined) {
+    throw new PlanRejection("not-found", `${op.like} has no Edge Delivery configuration (${EDS_CONFIG_NODE}) to copy.`);
+  }
+  const existing = await readEdsConfig(ctx.client.http, op.path);
+  if (existing !== undefined && existing.repo === op.site) {
+    return { steps: [], checks: [], changes: [], targets: [op.path], summary: `${op.path} already has an Edge Delivery configuration for the site ${op.site}.` };
+  }
+  if (await confExists(ctx.client.http, op.path)) {
+    throw new PlanRejection("already-exists", `${op.path} already exists; this operation only creates new configurations.`);
+  }
+  const parent = parentOf(op.path);
+  if (!(await confExists(ctx.client.http, parent))) {
+    throw new PlanRejection("not-found", `There is no configuration at ${parent} to create ${leafOf(op.path)} in.`);
+  }
+  const fields = { ...like, repo: op.site };
+  const request = buildCreateEdsConfig(ctx.scope, { path: op.path, title, fields });
+  return {
+    steps: [{ request }],
+    checks: [{ kind: "conf-absent", path: op.path }],
+    changes: [{ path: `${op.path}/${EDS_CONFIG_NODE}`, what: "Edge Delivery configuration", after: fields }],
+    targets: [op.path],
+    summary: `Create the Edge Delivery configuration ${op.path} for the site ${op.site}, copied from ${op.like}.`,
+    warnings: [EDS_CONFIG_NOTE],
+  };
+}
+
 async function draftLock(ctx: Context, op: Extract<PlanOperation, { kind: "page.lock" | "page.unlock" }>): Promise<Draft> {
   const lock = op.kind === "page.lock";
   const request = buildLockPage(ctx.scope, op.path, lock);
@@ -527,10 +753,12 @@ async function draftLock(ctx: Context, op: Extract<PlanOperation, { kind: "page.
   };
 }
 
-function draftFor(ctx: Context, op: PlanOperation): Promise<Draft> {
+function draftFor(ctx: Context, op: SinglePlanOperation): Promise<Draft> {
   switch (op.kind) {
     case "page.set-properties":
       return draftSetProperties(ctx, op);
+    case "component.set-properties":
+      return draftSetComponentProperties(ctx, op);
     case "page.set-robots":
       return draftSetRobots(ctx, op);
     case "sheet.upsert-row":
@@ -540,6 +768,8 @@ function draftFor(ctx: Context, op: PlanOperation): Promise<Draft> {
     case "page.publish":
     case "page.unpublish":
       return draftReplicate(ctx, op);
+    case "page.publish-tree":
+      return draftPublishTree(ctx, op);
     case "page.create":
       return draftCreate(ctx, op);
     case "page.copy":
@@ -549,10 +779,169 @@ function draftFor(ctx: Context, op: PlanOperation): Promise<Draft> {
       return draftDelete(ctx, op);
     case "livecopy.create":
       return draftLiveCopy(ctx, op);
+    case "livecopy.rollout":
+      return draftRollout(ctx, op);
+    case "livecopy.set-rollout-configs":
+      return draftSetRolloutConfigs(ctx, op);
+    case "conf.create-eds-config":
+      return draftCreateEdsConfig(ctx, op);
     case "page.lock":
     case "page.unlock":
       return draftLock(ctx, op);
   }
+}
+
+/**
+ * What a batch can check before anything runs: the guards every builder
+ * applies (write roots, path grammar, property names, operators, rollout
+ * configs) and the protected-publish rule. Reads wait for apply time, since
+ * an operation may depend on pages an earlier one creates. Returns the
+ * operation's target paths.
+ */
+function staticCheck(ctx: Context, op: SinglePlanOperation): readonly string[] {
+  const { scope } = ctx;
+  const guardPublish = (path: string): void => {
+    const pattern = protectedPatternFor(path, ctx.config.protectedPaths);
+    if (pattern !== undefined && !ctx.config.allowProtectedPublish) {
+      throw new PlanRejection("protected-path-publish", `${path} is under the protected path ${pattern}: publishing it through this server is blocked (AEM_ALLOW_PROTECTED_PUBLISH is not set).`);
+    }
+  };
+  switch (op.kind) {
+    case "page.set-properties":
+      buildSetProperties(scope, { path: op.path, ...(op.set !== undefined ? { set: op.set } : {}), ...(op.remove !== undefined ? { remove: op.remove } : {}) });
+      return [op.path];
+    case "component.set-properties":
+      buildSetComponentProperties(scope, { path: op.path, ...(op.set !== undefined ? { set: op.set } : {}), ...(op.remove !== undefined ? { remove: op.remove } : {}) });
+      return [op.path];
+    case "page.set-robots":
+      for (const path of op.paths) {
+        buildSetRobots(scope, path, op.robots);
+      }
+      return op.paths;
+    case "sheet.upsert-row":
+      assertWritable(op.sheetPath, scope.roots);
+      [op.match.column, ...Object.keys(op.values)].forEach((column) => assertSheetColumn(column));
+      return [op.sheetPath];
+    case "sheet.delete-row":
+      assertWritable(op.sheetPath, scope.roots);
+      assertSheetColumn(op.match.column);
+      return [op.sheetPath];
+    case "page.publish":
+    case "page.unpublish":
+      for (const path of op.paths) {
+        buildReplicate(scope, path, "Activate", "publish");
+        if (op.kind === "page.publish") {
+          guardPublish(path);
+        }
+      }
+      return op.paths;
+    case "page.publish-tree":
+      assertWritable(op.root, scope.roots);
+      guardPublish(op.root);
+      return [op.root];
+    case "page.create": {
+      buildCreatePage(scope, op);
+      const path = `${op.parentPath}/${op.name}`;
+      if (op.properties !== undefined && Object.keys(op.properties).length > 0) {
+        buildSetProperties(scope, { path, set: op.properties });
+      }
+      return [path];
+    }
+    case "page.copy":
+    case "page.move": {
+      const destName = op.destName ?? leafOf(op.srcPath);
+      if (op.kind === "page.copy") {
+        buildCopyPage(scope, { srcPath: op.srcPath, destParentPath: op.destParentPath, destName, shallow: op.shallow ?? false });
+      } else {
+        buildMovePage(scope, { srcPath: op.srcPath, destParentPath: op.destParentPath, destName });
+      }
+      return [`${op.destParentPath}/${destName}`];
+    }
+    case "page.delete":
+      buildDeletePage(scope, op.path, { force: op.force === true });
+      return [op.path];
+    case "livecopy.create":
+      buildCreateLiveCopy(scope, {
+        srcPath: op.srcPath,
+        destParentPath: op.destParentPath,
+        name: op.name,
+        title: op.title,
+        rolloutConfigs: op.rolloutConfigs ?? [BUILTIN_ROLLOUT_CONFIGS[0] as string],
+        shallow: op.shallow ?? false,
+      });
+      return [`${op.destParentPath}/${op.name}`];
+    case "livecopy.rollout":
+      buildRollout(scope, { path: op.path, targets: op.targets, deep: op.deep ?? false });
+      return [...op.targets];
+    case "livecopy.set-rollout-configs":
+      buildSetRolloutConfigs(scope, { path: op.path, rolloutConfigs: op.rolloutConfigs });
+      return [op.path];
+    case "conf.create-eds-config":
+      buildCreateEdsConfig(scope, { path: op.path, title: op.title ?? leafOf(op.path), fields: { repo: op.site } });
+      return [op.path];
+    case "page.lock":
+    case "page.unlock":
+      buildLockPage(scope, op.path, op.kind === "page.lock");
+      return [op.path];
+  }
+}
+
+/** One line per operation in a batch's confirmation: its kind, its target and the options that change what it does. */
+function describeOperation(op: SinglePlanOperation): string {
+  const { kind, ...rest } = op;
+  const target =
+    "path" in rest ? rest.path : "sheetPath" in rest ? rest.sheetPath : "root" in rest ? rest.root : "paths" in rest ? rest.paths.join(", ") : "srcPath" in rest ? `${rest.srcPath} → ${rest.destParentPath}/${"name" in rest ? rest.name : (rest.destName ?? leafOf(rest.srcPath))}` : `${rest.parentPath}/${rest.name}`;
+  const omit = new Set(["path", "sheetPath", "root", "paths", "srcPath", "destParentPath", "name", "destName", "parentPath"]);
+  const options = Object.entries(rest).filter(([key]) => !omit.has(key));
+  return `${kind} ${target}${options.length > 0 ? ` ${JSON.stringify(Object.fromEntries(options))}` : ""}`;
+}
+
+function planBatch(deps: PlanDeps, ctx: Context, env: string, operations: readonly SinglePlanOperation[]): PlanResult {
+  const targetsByOperation: (readonly string[])[] = [];
+  for (const [index, op] of operations.entries()) {
+    try {
+      targetsByOperation.push(staticCheck(ctx, op));
+    } catch (error) {
+      const rejection = rejectionFor(error);
+      if (rejection !== undefined) {
+        throw new PlanRejection(rejection.reason, `operation ${index + 1} (${op.kind}): ${rejection.message}`);
+      }
+      throw error;
+    }
+  }
+  const confirmTarget = confirmTargetFor(deps.config, env, targetsByOperation.flat());
+  const stored: StoredPlan = { env, kind: "batch", steps: [], checks: [], batch: operations, ...(confirmTarget !== undefined ? { confirmTarget } : {}) };
+  const { token, expiresAt } = deps.store.put(stored, { ttlMs: BATCH_TTL_MS });
+  const summary = `Apply ${operations.length} operation${operations.length === 1 ? "" : "s"} in order.`;
+  const lines = [`AEM author "${env}": ${summary}`, "", ...operations.map((op, index) => `${index + 1}. ${describeOperation(op)}`), "", `⚠ ${BATCH_WARNING}`, ""];
+  lines.push(confirmTarget !== undefined ? `This touches a protected ${confirmTarget === env ? "environment" : "path"}. To confirm, type: ${confirmTarget}` : "Reply yes to apply exactly these operations.");
+  return {
+    status: "planned",
+    token,
+    expiresAt: new Date(expiresAt).toISOString(),
+    env,
+    kind: "batch",
+    summary,
+    changes: operations.map((op, index) => ({ path: targetsByOperation[index]?.[0] ?? "", what: op.kind, after: describeOperation(op) })),
+    requests: [],
+    warnings: [BATCH_WARNING],
+    confirmationMessage: lines.join("\n"),
+    instruction: PLAN_INSTRUCTION,
+    requiresConfirmTarget: confirmTarget !== undefined,
+  };
+}
+
+/** Plans one operation of an approved batch when its turn comes; used by `aem_apply`. */
+export async function draftBatchOperation(deps: Pick<PlanDeps, "config" | "clientFor">, env: string, op: SinglePlanOperation): Promise<Draft> {
+  return draftFor(contextFor(deps, env), op);
+}
+
+function contextFor(deps: Pick<PlanDeps, "config" | "clientFor">, env: string): Context {
+  return {
+    client: deps.clientFor(env),
+    scope: { roots: deps.config.writeRoots, extraProperties: deps.config.extraProperties, extraRolloutConfigs: deps.config.extraRolloutConfigs },
+    config: deps.config,
+  };
 }
 
 function confirmTargetFor(config: AemConfig, env: string, targets: readonly string[]): string | undefined {
@@ -590,11 +979,10 @@ export async function planOperation(deps: PlanDeps, input: AemPlanInput): Promis
     if (deps.config.writeRoots.length === 0) {
       throw new PlanRejection("path-outside-write-roots", "No write roots are configured, so nothing can be planned. Set AEM_WRITE_ROOTS (see docs/aem-sites-onboarding.md).");
     }
-    const ctx: Context = {
-      client: deps.clientFor(input.env),
-      scope: { roots: deps.config.writeRoots, extraProperties: deps.config.extraProperties, extraRolloutConfigs: deps.config.extraRolloutConfigs },
-      config: deps.config,
-    };
+    const ctx = contextFor(deps, input.env);
+    if (input.operation.kind === "batch") {
+      return planBatch(deps, ctx, input.env, input.operation.operations);
+    }
     const draft = await draftFor(ctx, input.operation);
     if (draft.steps.length === 0) {
       return { status: "no-changes", env: input.env, kind: input.operation.kind, summary: draft.summary };

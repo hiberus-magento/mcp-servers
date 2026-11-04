@@ -101,6 +101,21 @@ describe("GET", () => {
     expect(sleeps).toEqual([2000, 2000]);
   });
 
+  it("keeps the Sling status message of an HTML error page, and only that", async () => {
+    const page = '<html><head><title>412 Precondition Failed</title></head><body><h1>Error</h1><div id="Message">Page is\n  referenced</div><p>secret-ish detail</p></body></html>';
+    const { http } = createAuthorDouble({ "GET /x.json": { status: 412, body: page } });
+    const error = (await http.send({ method: "GET", path: "/x.json" }).catch((e: unknown) => e)) as AemStatusError;
+    expect(error).toBeInstanceOf(AemStatusError);
+    expect(error.detail).toBe("Page is referenced");
+    expect(error.message).not.toContain("secret-ish");
+  });
+
+  it("drops an HTML error page that has no Sling status message", async () => {
+    const { http } = createAuthorDouble({ "GET /x.json": { status: 404, body: "<html><body>Not here</body></html>" } });
+    const error = (await http.send({ method: "GET", path: "/x.json" }).catch((e: unknown) => e)) as AemStatusError;
+    expect(error.detail).toBeUndefined();
+  });
+
   it("gives up after three throttle retries with a named status error", async () => {
     const { http, calls } = createAuthorDouble({ "GET /x.json": { status: 503 } });
     await expect(http.send({ method: "GET", path: "/x.json" })).rejects.toBeInstanceOf(AemStatusError);

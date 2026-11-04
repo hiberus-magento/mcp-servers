@@ -17,10 +17,19 @@ const propertyValue = z.union([z.string(), z.number(), z.boolean(), z.array(z.st
 const target = z.enum(["preview", "publish", "both"]);
 const sheetMatch = z.object({ column: z.string().min(1), value: z.string() }).strict();
 
-const operationSchema = z.discriminatedUnion("kind", [
+const singleOperationSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("page.set-properties"),
+      path: z.string().min(1),
+      set: z.record(z.string(), propertyValue).optional(),
+      remove: z.array(z.string().min(1)).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("component.set-properties"),
+      /** A component node: `<page>/jcr:content/<node>[/<node>…]`. */
       path: z.string().min(1),
       set: z.record(z.string(), propertyValue).optional(),
       remove: z.array(z.string().min(1)).optional(),
@@ -46,6 +55,8 @@ const operationSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("sheet.delete-row"), sheetPath: z.string().min(1), match: sheetMatch }).strict(),
   z.object({ kind: z.literal("page.publish"), paths: plannedPaths, target }).strict(),
   z.object({ kind: z.literal("page.unpublish"), paths: plannedPaths, target }).strict(),
+  /** Every page at or below `root`, listed when the plan is made (inside a batch: when it is applied). */
+  z.object({ kind: z.literal("page.publish-tree"), root: z.string().min(1), target }).strict(),
   z
     .object({
       kind: z.literal("page.create"),
@@ -66,7 +77,16 @@ const operationSchema = z.discriminatedUnion("kind", [
     })
     .strict(),
   z.object({ kind: z.literal("page.move"), srcPath: z.string().min(1), destParentPath: z.string().min(1), destName: z.string().min(1).optional() }).strict(),
-  z.object({ kind: z.literal("page.delete"), path: z.string().min(1) }).strict(),
+  z
+    .object({
+      kind: z.literal("page.delete"),
+      path: z.string().min(1),
+      /** The Sites console's Force Delete: delete even when other pages or Live Copies reference it. */
+      force: z.boolean().optional(),
+      /** Delete even when the author still marks pages of the subtree as published (their unpublish was refused). */
+      allowPublished: z.boolean().optional(),
+    })
+    .strict(),
   z
     .object({
       kind: z.literal("livecopy.create"),
@@ -80,10 +100,57 @@ const operationSchema = z.discriminatedUnion("kind", [
       shallow: z.boolean().optional(),
     })
     .strict(),
+  z
+    .object({
+      kind: z.literal("livecopy.rollout"),
+      /** The source page (a Live Copy's master, or a page below it). */
+      path: z.string().min(1),
+      /** The matching pages of its Live Copies to update. */
+      targets: z.array(z.string().min(1)).min(1).max(100),
+      /** Roll out the source's sub-pages too. */
+      deep: z.boolean().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("livecopy.set-rollout-configs"),
+      /** The root of an existing Live Copy. */
+      path: z.string().min(1),
+      /** Replaces the current list, in order. */
+      rolloutConfigs: z.array(z.string().min(1)).min(1).max(10),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("conf.create-eds-config"),
+      /** The new /conf tree, below /conf/<tenant of a write root>; it must not exist. */
+      path: z.string().min(1),
+      /** The Edge Delivery Services site it points to (its `repo`). */
+      site: z.string().min(1),
+      /** An existing /conf tree whose Edge Delivery configuration is copied (owner, ref, project type…); only the site changes. */
+      like: z.string().min(1),
+      title: z.string().min(1).max(200).optional(),
+    })
+    .strict(),
   z.object({ kind: z.literal("page.lock"), path: z.string().min(1) }).strict(),
   z.object({ kind: z.literal("page.unlock"), path: z.string().min(1) }).strict(),
 ]);
 
+/** At most 300 operations per batch; a batch never contains a batch. */
+export const MAX_BATCH_OPERATIONS = 300;
+
+const operationSchema = z.discriminatedUnion("kind", [
+  ...singleOperationSchema.options,
+  z
+    .object({
+      kind: z.literal("batch"),
+      /** Applied in order; each one is planned against the author's state when its turn comes. */
+      operations: z.array(singleOperationSchema).min(1).max(MAX_BATCH_OPERATIONS),
+    })
+    .strict(),
+]);
+
+export type SinglePlanOperation = z.infer<typeof singleOperationSchema>;
 export type PlanOperation = z.infer<typeof operationSchema>;
 export type OperationKind = PlanOperation["kind"];
 

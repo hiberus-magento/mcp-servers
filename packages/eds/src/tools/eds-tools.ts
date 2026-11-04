@@ -191,7 +191,10 @@ export function createEdsTools(config: EdsToolsConfig): readonly EdsMcpTool[] {
       }
       const finalJob = await client.jobs.waitForJob({ self: submitted.links.self });
       const job = { name: finalJob.name, topic: finalJob.topic, state: finalJob.state };
-      const polled = readBulkStatusResults(finalJob, args.paths);
+      // A job's status carries no `data`; its results are under `/details` (observed live, 2026-10-30).
+      const polled =
+        readBulkStatusResults(finalJob, args.paths) ??
+        readBulkStatusResults((await client.jobs.fetchJobEnvelope(`${submitted.links.self}/details`)).body.job, args.paths);
       return polled !== undefined
         ? { job, results: polled.results, missingPaths: polled.missingPaths, ...present("progress", finalJob.progress) }
         : { job, ...present("progress", finalJob.progress) };

@@ -4,7 +4,8 @@
 // exposed raw: each read builds its own predicates from typed input, and
 // every response is projected field by field — a property the author adds
 // never reaches a caller, because nothing here spreads a parsed object.
-import { assertAemPath } from "../guard/paths.js";
+import { assertAemPath, assertConfPath } from "../guard/paths.js";
+import { EDS_CONFIG_FIELDS, EDS_CONFIG_NODE, type EdsConfigField, type EdsConfigFields } from "./builders.js";
 import type { AuthorHttp } from "./http.js";
 
 const QUERY_BUILDER = "/bin/querybuilder.json";
@@ -115,6 +116,7 @@ const PAGE_FIELDS = [
   "cq:canonicalUrl",
   "sling:alias",
   "cq:redirectTarget",
+  "cq:conf",
   "cq:template",
   "cq:lastModified",
   "cq:lastModifiedBy",
@@ -339,6 +341,29 @@ function projectNode(name: string, node: Record<string, unknown>): ComponentNode
   return { name, ...present("resourceType", str(node, "sling:resourceType")), properties, children };
 }
 
+export interface ComponentDetails {
+  readonly path: string;
+  readonly resourceType?: string;
+  /** The node's own fields; child nodes and bookkeeping are left out. */
+  readonly properties: Readonly<Record<string, string | number | boolean | readonly string[]>>;
+}
+
+/** One component node's own fields (`<path>.json`, depth 0), or `undefined` when it does not exist. */
+/** Whether a configuration node exists (`cq:conf` targets); its content is not read. */
+export async function confExists(http: AuthorHttp, path: string): Promise<boolean> {
+  const { status } = await http.readJson({ method: "GET", path: `${path}.json`, label: `the configuration ${path}`, expectedStatuses: [404] });
+  return status !== 404;
+}
+
+export async function readComponent(http: AuthorHttp, path: string): Promise<ComponentDetails | undefined> {
+  const { status, body } = await http.readJson({ method: "GET", path: `${path}.json`, label: `the component ${path}`, expectedStatuses: [404] });
+  if (status === 404 || !isRecord(body)) {
+    return undefined;
+  }
+  const node = projectNode(path, body);
+  return { path, ...present("resourceType", node.resourceType), properties: node.properties };
+}
+
 export async function readPageTree(http: AuthorHttp, path: string, depth: number): Promise<ComponentNode | undefined> {
   assertAemPath(path);
   const bounded = Math.min(Math.max(Math.trunc(depth), 1), 4);
@@ -374,4 +399,22 @@ export async function readCurrentUser(http: AuthorHttp): Promise<string> {
     throw new Error("The author did not say which user this token belongs to (currentuser.json without authorizableId).");
   }
   return id;
+}
+
+/** The Edge Delivery Services configuration of a /conf tree, or `undefined` when it has none. */
+export async function readEdsConfig(http: AuthorHttp, confPath: string): Promise<EdsConfigFields | undefined> {
+  assertConfPath(confPath);
+  const path = `${confPath}/${EDS_CONFIG_NODE}/jcr:content`;
+  const { status, body } = await http.readJson({ method: "GET", path: `${path}.json`, label: `the Edge Delivery configuration of ${confPath}`, expectedStatuses: [404] });
+  if (status === 404 || !isRecord(body)) {
+    return undefined;
+  }
+  const fields: Partial<Record<EdsConfigField, string | readonly string[]>> = {};
+  for (const field of EDS_CONFIG_FIELDS) {
+    const value = body[field];
+    if (typeof value === "string" || (Array.isArray(value) && value.every((item) => typeof item === "string"))) {
+      fields[field] = value as string | readonly string[];
+    }
+  }
+  return fields;
 }

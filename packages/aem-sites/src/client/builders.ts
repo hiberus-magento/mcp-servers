@@ -8,8 +8,15 @@
 // The only Sling POST operators that ever appear in a request are emitted
 // here as constants — `@TypeHint`, `@Delete` and `:operation=delete` — next
 // to names that already passed `assertWritableProperty`/`assertSheetColumn`.
-import { assertAemPath, assertReadable, assertRolloutConfig, assertWritable } from "../guard/paths.js";
-import { assertPropertyValue, assertRobotsTokens, assertSheetColumn, assertWritableProperty, type PropertyValue } from "../guard/properties.js";
+import { assertAemPath, assertComponentPath, assertReadable, assertRolloutConfig, assertWritable, assertWritableConf } from "../guard/paths.js";
+import {
+  assertPropertyValue,
+  assertRobotsTokens,
+  assertSheetColumn,
+  assertWritableComponentProperty,
+  assertWritableProperty,
+  type PropertyValue,
+} from "../guard/properties.js";
 import type { FormFields } from "./http.js";
 
 /** An operation that is well-formed JSON but not something this server will build (empty change, self-move, …). */
@@ -38,6 +45,7 @@ export interface WriteScope {
 
 const CHARSET: readonly [string, string] = ["_charset_", "utf-8"];
 const WCM_COMMAND = "/bin/wcmcommand";
+const ASYNC_COMMAND = "/bin/asynccommand";
 const SEGMENT = /^[A-Za-z0-9_-]+$/;
 
 /** The sheet template the field CLI created `metadata` sheets from (EDS on AEM Sites). */
@@ -104,6 +112,33 @@ export function buildSetProperties(scope: WriteScope, input: SetPropertiesInput)
   }
   form.push(CHARSET);
   return { method: "POST", path: `${path}/jcr:content`, form, label: `page properties of ${path}` };
+}
+
+/**
+ * Writes the fields of one existing component node (a block, a section…).
+ * The node path is `<page>/jcr:content/<node>…`; its page must be writable.
+ */
+export function buildSetComponentProperties(scope: WriteScope, input: SetPropertiesInput): PlannedRequest {
+  const { path } = assertComponentPath(input.path, scope.roots);
+  const form: (readonly [string, string])[] = [];
+  const set = Object.entries(input.set ?? {});
+  const remove = input.remove ?? [];
+  if (set.length === 0 && remove.length === 0) {
+    throw new InvalidOperationError("Nothing to change: give at least one field to set or remove.");
+  }
+  for (const [name, raw] of set) {
+    assertWritableComponentProperty(name);
+    form.push(...valueFields(name, assertPropertyValue(name, raw)));
+  }
+  for (const name of remove) {
+    assertWritableComponentProperty(name);
+    if (set.some(([setName]) => setName === name)) {
+      throw new InvalidOperationError(`"${name}" cannot be both set and removed.`);
+    }
+    form.push([`${name}@Delete`, ""]);
+  }
+  form.push(CHARSET);
+  return { method: "POST", path, form, label: `component ${path}` };
 }
 
 /**
@@ -257,12 +292,22 @@ export function buildMovePage(scope: WriteScope, input: { readonly srcPath: stri
   };
 }
 
-export function buildDeletePage(scope: WriteScope, path: string): PlannedRequest {
+/**
+ * `force: true` is the Sites console's *Force Delete*: the author deletes the
+ * page even when other pages or Live Copies reference it (412 otherwise).
+ */
+export function buildDeletePage(scope: WriteScope, path: string, options: { readonly force?: boolean } = {}): PlannedRequest {
   assertWritable(path, scope.roots);
   if (scope.roots.includes(path)) {
     throw new InvalidOperationError(`${path} is a write root; deleting a whole root is not offered.`);
   }
-  return { method: "POST", path: WCM_COMMAND, form: [["cmd", "deletePage"], CHARSET, ["path", path], ["force", "false"]], label: `delete ${path}` };
+  const force = options.force === true;
+  return {
+    method: "POST",
+    path: WCM_COMMAND,
+    form: [["cmd", "deletePage"], CHARSET, ["path", path], ["force", String(force)]],
+    label: `${force ? "force-delete" : "delete"} ${path}`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -307,6 +352,144 @@ export function buildCreateLiveCopy(scope: WriteScope, input: CreateLiveCopyInpu
       ...configs.map((config) => ["cq:rolloutConfigs", config] as const),
     ],
     label: `create the Live Copy ${dest} of ${input.srcPath}`,
+  };
+}
+
+/** Where a /conf tree keeps its Edge Delivery Services configuration page. */
+export const EDS_CONFIG_NODE = "settings/cloudconfigs/edge-delivery-service-configuration";
+
+/** The fields of an Edge Delivery Services configuration this server reads and writes; bookkeeping is left out. */
+export const EDS_CONFIG_FIELDS = ["owner", "repo", "ref", "projectType", "edgeHost", "auxiliaryScripts", "sling:resourceType"] as const;
+export type EdsConfigField = (typeof EDS_CONFIG_FIELDS)[number];
+export type EdsConfigFields = Partial<Readonly<Record<EdsConfigField, string | readonly string[]>>>;
+
+const EDS_SITE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+// eslint-disable-next-line no-control-regex -- refusing control characters is the point.
+const EDS_FIELD_VALUE = /^[^\u0000-\u001f]{1,200}$/;
+
+export interface CreateEdsConfigInput {
+  /** The new /conf tree, e.g. `/conf/<tenant>/<name>`; it must not exist yet. */
+  readonly path: string;
+  readonly title: string;
+  /** The Edge Delivery Services site (`repo`) and the other fields of its configuration page. */
+  readonly fields: EdsConfigFields;
+}
+
+/**
+ * Creates a /conf tree holding one Edge Delivery Services configuration, the
+ * same shape as the one the Sites console's Cloud Services wizard writes:
+ * `<path>` and `settings/cloudconfigs` as `sling:Folder`s, then the
+ * configuration as a `cq:Page`. One Sling POST: relative names create the
+ * nodes and their `jcr:primaryType` sets each type.
+ */
+export function buildCreateEdsConfig(scope: WriteScope, input: CreateEdsConfigInput): PlannedRequest {
+  assertWritableConf(input.path, scope.roots);
+  const repo = input.fields.repo;
+  if (typeof repo !== "string" || !EDS_SITE.test(repo)) {
+    throw new InvalidOperationError(`"${String(repo)}" is not an Edge Delivery Services site name (lowercase letters, digits and "-").`);
+  }
+  const values = (field: string, value: string | readonly string[]): readonly string[] => {
+    const list = typeof value === "string" ? [value] : value;
+    for (const item of list) {
+      if (!EDS_FIELD_VALUE.test(item)) {
+        throw new InvalidOperationError(`The ${field} of an Edge Delivery configuration must be 1–200 characters without control characters.`);
+      }
+    }
+    return list;
+  };
+  values("title", input.title);
+  const page = EDS_CONFIG_NODE;
+  const content = `${page}/jcr:content`;
+  const form: (readonly [string, string])[] = [
+    CHARSET,
+    ["jcr:primaryType", "sling:Folder"],
+    ["jcr:title", input.title],
+    ["settings/jcr:primaryType", "sling:Folder"],
+    ["settings/cloudconfigs/jcr:primaryType", "sling:Folder"],
+    [`${page}/jcr:primaryType`, "cq:Page"],
+    [`${content}/jcr:primaryType`, "cq:PageContent"],
+    [`${content}/jcr:title`, "Edge Delivery Service Configuration"],
+  ];
+  for (const field of EDS_CONFIG_FIELDS) {
+    const value = input.fields[field];
+    if (value === undefined) {
+      continue;
+    }
+    for (const item of values(field, value)) {
+      form.push([`${content}/${field}`, item]);
+    }
+    if (typeof value !== "string") {
+      form.push([`${content}/${field}@TypeHint`, "String[]"]);
+    }
+  }
+  return { method: "POST", path: input.path, form, label: `create the Edge Delivery configuration ${input.path} for the site ${repo}` };
+}
+
+export interface SetRolloutConfigsInput {
+  /** The root of a Live Copy (the page that holds `jcr:content/cq:LiveSyncConfig`). */
+  readonly path: string;
+  /** The configs to keep, in order; they replace the current list. */
+  readonly rolloutConfigs: readonly string[];
+}
+
+/**
+ * Replaces the rollout configs of an existing Live Copy: a plain Sling POST to
+ * its `cq:LiveSyncConfig` node, which is where the Sites console's Live Copy
+ * properties keep them. Pages below the root without their own node follow it.
+ */
+export function buildSetRolloutConfigs(scope: WriteScope, input: SetRolloutConfigsInput): PlannedRequest {
+  assertWritable(input.path, scope.roots);
+  if (input.rolloutConfigs.length === 0) {
+    throw new InvalidOperationError("A Live Copy needs at least one rollout config.");
+  }
+  const configs = [...new Set(input.rolloutConfigs)].map((config) => assertRolloutConfig(config, scope.extraRolloutConfigs ?? []));
+  return {
+    method: "POST",
+    path: `${input.path}/jcr:content/cq:LiveSyncConfig`,
+    form: [CHARSET, ...configs.map((config) => ["cq:rolloutConfigs", config] as const), ["cq:rolloutConfigs@TypeHint", "String[]"]],
+    label: `set the rollout configs of the Live Copy ${input.path} to ${configs.join(", ")}`,
+  };
+}
+
+export interface RolloutInput {
+  /** The source page; any readable page, like a Live Copy's source. */
+  readonly path: string;
+  /** Pages of Live Copies of `path` to update; all inside the write roots. */
+  readonly targets: readonly string[];
+  /** Roll out the source's sub-pages too. */
+  readonly deep: boolean;
+}
+
+/**
+ * The Sites console's rollout request (both its rollout dialog and the
+ * References rail): an async job on `/bin/asynccommand`. The job runs after
+ * the response, so apply waits for each target's `cq:lastRolledout`.
+ */
+export function buildRollout(scope: WriteScope, input: RolloutInput): PlannedRequest {
+  assertReadable(input.path);
+  if (input.targets.length === 0) {
+    throw new InvalidOperationError("A rollout needs at least one target.");
+  }
+  for (const target of input.targets) {
+    assertWritable(target, scope.roots);
+    if (`${target}/`.startsWith(`${input.path}/`) || `${input.path}/`.startsWith(`${target}/`)) {
+      throw new InvalidOperationError(`A rollout target cannot be its source, nor inside or above it (${input.path} → ${target}).`);
+    }
+  }
+  return {
+    method: "POST",
+    path: ASYNC_COMMAND,
+    form: [
+      ["cmd", "rollout"],
+      ["operation", "asyncRollout"],
+      CHARSET,
+      ["path", input.path],
+      ["type", input.deep ? "deep" : "page"],
+      ["paras", "[]"],
+      ["msm:targetPath", JSON.stringify([...new Set(input.targets)])],
+      ["reportSchedule", "now"],
+    ],
+    label: `roll out ${input.path}${input.deep ? " and its sub-pages" : ""} to ${input.targets.join(", ")}`,
   };
 }
 

@@ -47,8 +47,14 @@ for (const tool of createAemTools({ getRuntime })) {
   server.registerTool(
     tool.name,
     { description: tool.description, inputSchema: tool.inputSchema.shape, annotations: tool.annotations },
-    async (args: unknown) => {
-      const result = redactResult(await tool.invoke(args, {}));
+    async (args: unknown, extra) => {
+      const progressToken = extra._meta?.progressToken;
+      const reportProgress =
+        progressToken === undefined
+          ? undefined
+          : (progress: number, total: number | undefined, message: string) =>
+              extra.sendNotification({ method: "notifications/progress", params: { progressToken, progress, ...(total !== undefined ? { total } : {}), message } });
+      const result = redactResult(await tool.invoke(args, { signal: extra.signal, ...(reportProgress !== undefined ? { reportProgress } : {}) }));
       return { content: [...result.content], isError: result.isError };
     },
   );

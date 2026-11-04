@@ -17,12 +17,20 @@ export interface RecordedRequest {
 export interface FakeAuthor {
   readonly pages: Map<string, Record<string, unknown>>;
   readonly sheets: Map<string, Record<string, unknown>>;
+  /** Component nodes by path (`<page>/jcr:content/…`), read as `<path>.json`. */
+  readonly components: Map<string, Record<string, unknown>>;
+  /** Configuration nodes under /conf, read as `<path>.json`. */
+  readonly confs: Set<string>;
+  /** The jcr:content of Edge Delivery configuration pages, keyed by their /conf tree. */
+  readonly edsConfigs: Map<string, Record<string, unknown>>;
   readonly requests: RecordedRequest[];
   readonly sleeps: number[];
   /** Status for POSTs whose path starts with the key; default 200. */
   readonly postStatus: Map<string, number>;
   /** The user `currentuser.json` reports for the token. */
   readonly currentUser: { id: string };
+  /** Whether a rollout job reaches its targets (stamps `cq:lastRolledout`); default true. */
+  readonly rollout: { delivers: boolean };
   readonly client: AemClient;
   posts(): RecordedRequest[];
 }
@@ -33,10 +41,15 @@ const json = (status: number, body?: unknown): Response =>
 export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAuthor {
   const pages = new Map<string, Record<string, unknown>>();
   const sheets = new Map<string, Record<string, unknown>>();
+  const components = new Map<string, Record<string, unknown>>();
+  const confs = new Set<string>();
+  const edsConfigs = new Map<string, Record<string, unknown>>();
   const requests: RecordedRequest[] = [];
   const sleeps: number[] = [];
   const postStatus = new Map<string, number>();
   const currentUser = { id: "demo-user@example-domain.invalid" };
+  const rollout = { delivers: true };
+  let rolloutStamp = 0;
 
   const fetch = (async (input: URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(input.toString());
@@ -45,6 +58,34 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
     requests.push({ method, path, body: typeof init?.body === "string" ? init.body : undefined });
     if (method === "POST") {
       const status = [...postStatus.entries()].find(([prefix]) => path.startsWith(prefix))?.[1] ?? 200;
+      const form = new URLSearchParams(typeof init?.body === "string" ? init.body : "");
+      if (status === 200 && url.pathname === "/bin/asynccommand" && form.get("cmd") === "rollout" && rollout.delivers) {
+        rolloutStamp += 1;
+        for (const target of JSON.parse(form.get("msm:targetPath") ?? "[]") as string[]) {
+          pages.set(target, { ...pages.get(target), "cq:lastRolledout": `rolled-out-${rolloutStamp}` });
+        }
+      }
+      const sync = /^(.*)\/jcr:content\/cq:LiveSyncConfig$/.exec(url.pathname)?.[1];
+      const body = sync === undefined ? undefined : pages.get(sync);
+      const config = body?.["cq:LiveSyncConfig"];
+      if (status === 200 && sync !== undefined && body !== undefined && typeof config === "object" && config !== null) {
+        pages.set(sync, { ...body, "cq:LiveSyncConfig": { ...config, "cq:rolloutConfigs": form.getAll("cq:rolloutConfigs") } });
+      }
+      if (status === 200 && url.pathname.startsWith("/conf/")) {
+        confs.add(url.pathname);
+        const prefix = "settings/cloudconfigs/edge-delivery-service-configuration/jcr:content/";
+        const content: Record<string, unknown> = {};
+        for (const [name, value] of form.entries()) {
+          if (name.startsWith(prefix) && !name.endsWith("@TypeHint")) {
+            const field = name.slice(prefix.length);
+            const previous = content[field];
+            content[field] = previous === undefined ? value : [...(Array.isArray(previous) ? previous : [previous]), value];
+          }
+        }
+        if (Object.keys(content).length > 0) {
+          edsConfigs.set(url.pathname, content);
+        }
+      }
       return json(status, {});
     }
     if (url.pathname === "/libs/granite/csrf/token.json") {
@@ -56,7 +97,12 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
         .filter(([p]) => p === root || p.startsWith(`${root}/`))
         .filter(([, body]) => body["cq:lastReplicationAction"] === "Activate" || body["cq:lastReplicationAction_publish"] === "Activate")
         .map(([p]) => ({ path: p }));
-      return json(200, { total: activated.length, hits: url.searchParams.has("group.p.or") ? activated : [] });
+      if (url.searchParams.has("group.p.or")) {
+        return json(200, { total: activated.length, hits: activated });
+      }
+      // A prefix match, like the real QueryBuilder `path` predicate: callers must re-check `${root}/`.
+      const listed = [...pages.keys()].filter((p) => p.startsWith(root)).sort().map((p) => ({ path: p }));
+      return json(200, { total: listed.length, more: false, hits: listed });
     }
     if (url.pathname === "/libs/granite/security/currentuser.json") {
       return json(200, { authorizableId: currentUser.id, name: "Demo user" });
@@ -76,6 +122,20 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
       const dated = typeof body["cq:lastReplicationAction"] === "string" && body["cq:lastReplicated"] === undefined ? { "cq:lastReplicated": "2026-10-01" } : {};
       return json(200, { "jcr:primaryType": "cq:PageContent", ...dated, ...body });
     }
+    const eds = /^(\/conf\/.*)\/settings\/cloudconfigs\/edge-delivery-service-configuration\/jcr:content\.json$/.exec(url.pathname);
+    if (eds?.[1] !== undefined) {
+      const body = edsConfigs.get(eds[1]);
+      return body === undefined ? json(404) : json(200, { "jcr:primaryType": "cq:PageContent", ...body });
+    }
+    const conf = /^(\/conf\/.*)\.json$/.exec(url.pathname);
+    if (conf?.[1] !== undefined) {
+      return confs.has(conf[1]) ? json(200, { "jcr:primaryType": "sling:Folder" }) : json(404);
+    }
+    const component = /^(.*\/jcr:content\/.*)\.json$/.exec(url.pathname);
+    if (component?.[1] !== undefined) {
+      const body = components.get(component[1]);
+      return body === undefined ? json(404) : json(200, body);
+    }
     return json(404);
   }) as unknown as typeof globalThis.fetch;
 
@@ -89,5 +149,5 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
     origin,
   });
 
-  return { pages, sheets, requests, sleeps, postStatus, currentUser, client, posts: () => requests.filter((r) => r.method === "POST") };
+  return { pages, sheets, components, confs, edsConfigs, requests, sleeps, postStatus, currentUser, rollout, client, posts: () => requests.filter((r) => r.method === "POST") };
 }

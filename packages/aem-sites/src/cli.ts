@@ -172,11 +172,18 @@ async function planOrApply(deps: CliDeps, flags: Record<string, string>, applyIt
     { config: runtime.config, clientFor: runtime.clientFor, store: runtime.store, sleep: runtime.sleep },
     { token: plan.token, env: plan.env, kind: plan.kind, ...(flags["confirm-target"] !== undefined ? { confirmTarget: flags["confirm-target"] } : {}) },
   );
-  if (result.status === "applied") {
-    return ok(`${plan.confirmationMessage}\n\n${result.results.map((step) => `✓ ${step.label} → HTTP ${step.status}`).join("\n")}`);
-  }
   if (result.status === "rejected") {
     return fail(`Not applied (${result.reason}): ${result.message}`);
+  }
+  if ("operations" in result) {
+    const lines = result.operations.map((op) => `✓ ${op.index}. ${op.kind}: ${op.summary} (${op.ok}/${op.sent} requests)`);
+    if (result.status === "applied") {
+      return ok(`${plan.confirmationMessage}\n\n${lines.join("\n")}`);
+    }
+    return fail(`${lines.join("\n")}\n✗ ${result.failed.index}. ${result.failed.kind}: ${result.failed.message}\n${result.notRun} operation(s) not run.`);
+  }
+  if (result.status === "applied") {
+    return ok(`${plan.confirmationMessage}\n\n${result.results.map((step) => `✓ ${step.label} → HTTP ${step.status}`).join("\n")}`);
   }
   return fail(
     `${result.completed.map((step) => `✓ ${step.label} → HTTP ${step.status}`).join("\n")}\n✗ ${result.failed.label}: ${result.failed.message}\n${result.notSent} request(s) not sent.`,

@@ -110,7 +110,17 @@ describe("aem_plan input schema", () => {
   const plan = tools.find((t) => t.name === "aem_plan");
 
   it("rejects a field a kind does not take", async () => {
-    await expect(plan?.invoke({ env: "stage", operation: { kind: "page.delete", path: `${SYNTHETIC_ROOT}/en`, force: true } }, {})).rejects.toThrow();
+    await expect(plan?.invoke({ env: "stage", operation: { kind: "page.lock", path: `${SYNTHETIC_ROOT}/en`, force: true } }, {})).rejects.toThrow();
+  });
+
+  it("takes force and allowPublished on page.delete, and only as booleans", async () => {
+    await expect(plan?.invoke({ env: "stage", operation: { kind: "page.delete", path: `${SYNTHETIC_ROOT}/en`, force: "yes" } }, {})).rejects.toThrow();
+    await expect(plan?.invoke({ env: "stage", operation: { kind: "page.delete", path: `${SYNTHETIC_ROOT}/en`, allowPublished: "yes" } }, {})).rejects.toThrow();
+  });
+
+  it("rejects a batch inside a batch and an empty batch", async () => {
+    await expect(plan?.invoke({ env: "stage", operation: { kind: "batch", operations: [{ kind: "batch", operations: [] }] } }, {})).rejects.toThrow();
+    await expect(plan?.invoke({ env: "stage", operation: { kind: "batch", operations: [] } }, {})).rejects.toThrow();
   });
 
   it("rejects more than 100 paths", async () => {
