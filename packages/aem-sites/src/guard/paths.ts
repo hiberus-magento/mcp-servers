@@ -228,3 +228,28 @@ export function assertRolloutConfig(config: string, extra: readonly string[]): s
   }
   return config;
 }
+
+const CONF_PATH = /^\/conf(?:\/[A-Za-z0-9_-]+)+$/;
+
+/** A `/conf` node path with the page-path grammar (no dots, selectors or traversal). */
+export function assertConfPath(path: string): string {
+  if (!CONF_PATH.test(path)) {
+    throw new InvalidAemPathError(path);
+  }
+  return path;
+}
+
+/**
+ * A configuration this server may create: strictly below `/conf/<tenant>`,
+ * where `/content/<tenant>` is (or contains) a write root. `/conf/<tenant>`
+ * itself, `/conf/global` and other tenants stay closed.
+ */
+export function assertWritableConf(path: string, roots: readonly string[]): string {
+  assertConfPath(path);
+  const tenants = [...new Set(roots.map((root) => root.split("/")[2]).filter((tenant): tenant is string => tenant !== undefined))];
+  const allowed = tenants.map((tenant) => `/conf/${tenant}`);
+  if (!allowed.some((conf) => path.startsWith(`${conf}/`))) {
+    throw new PathOutsideWriteRootsError(path, allowed.map((conf) => `${conf}/…`));
+  }
+  return path;
+}

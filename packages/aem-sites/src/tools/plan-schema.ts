@@ -120,6 +120,18 @@ const singleOperationSchema = z.discriminatedUnion("kind", [
       rolloutConfigs: z.array(z.string().min(1)).min(1).max(10),
     })
     .strict(),
+  z
+    .object({
+      kind: z.literal("conf.create-eds-config"),
+      /** The new /conf tree, below /conf/<tenant of a write root>; it must not exist. */
+      path: z.string().min(1),
+      /** The Edge Delivery Services site it points to (its `repo`). */
+      site: z.string().min(1),
+      /** An existing /conf tree whose Edge Delivery configuration is copied (owner, ref, project type…); only the site changes. */
+      like: z.string().min(1),
+      title: z.string().min(1).max(200).optional(),
+    })
+    .strict(),
   z.object({ kind: z.literal("page.lock"), path: z.string().min(1) }).strict(),
   z.object({ kind: z.literal("page.unlock"), path: z.string().min(1) }).strict(),
 ]);

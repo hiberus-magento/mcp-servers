@@ -10,6 +10,9 @@ import {
   buildCreateLiveCopy,
   buildRollout,
   buildSetRolloutConfigs,
+  buildCreateEdsConfig,
+  EDS_CONFIG_NODE,
+  readEdsConfig,
   buildCreatePage,
   buildCreateSheet,
   buildDeletePage,
@@ -98,7 +101,8 @@ export type StateCheck =
   | { readonly kind: "page-absent"; readonly path: string }
   | { readonly kind: "component"; readonly path: string; readonly sha256: string }
   | { readonly kind: "sheet"; readonly path: string; readonly sha256: string }
-  | { readonly kind: "sheet-absent"; readonly path: string };
+  | { readonly kind: "sheet-absent"; readonly path: string }
+  | { readonly kind: "conf-absent"; readonly path: string };
 
 export interface PlannedStep {
   readonly request: PlannedRequest;
@@ -225,8 +229,14 @@ export const ROLLOUT_CONFIGS_NOTE =
   "The configs apply to the Live Copy root and to every page below it that does not set its own; nothing is rolled out by this change.";
 export const PUSH_ON_MODIFY_WARNING =
   "Push on modify rolls out every saved change of the source to this Live Copy, without review. Adobe advises using it sparingly: it can slow down authoring, and the order of the resulting rollouts is not guaranteed.";
+export const EDS_CONFIG_NOTE =
+  "Nothing uses the new configuration yet: point a page's cq:conf at it (page.set-properties) to publish that page and the pages below it to this Edge Delivery site. The site must exist in Edge Delivery Services and map those content paths.";
 export const LOCK_NOTE =
   "A lock stops OTHER users from editing this page and the pages below it; the lock owner — the user this server's token belongs to — can still edit. It does not change permissions.";
+
+function parentOf(path: string): string {
+  return path.slice(0, path.lastIndexOf("/"));
+}
 
 function leafOf(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1);
@@ -690,6 +700,36 @@ async function draftSetRolloutConfigs(ctx: Context, op: Extract<PlanOperation, {
   };
 }
 
+async function draftCreateEdsConfig(ctx: Context, op: Extract<PlanOperation, { kind: "conf.create-eds-config" }>): Promise<Draft> {
+  const title = op.title ?? leafOf(op.path);
+  buildCreateEdsConfig(ctx.scope, { path: op.path, title, fields: { repo: op.site } });
+  const like = await readEdsConfig(ctx.client.http, op.like);
+  if (like === undefined) {
+    throw new PlanRejection("not-found", `${op.like} has no Edge Delivery configuration (${EDS_CONFIG_NODE}) to copy.`);
+  }
+  const existing = await readEdsConfig(ctx.client.http, op.path);
+  if (existing !== undefined && existing.repo === op.site) {
+    return { steps: [], checks: [], changes: [], targets: [op.path], summary: `${op.path} already has an Edge Delivery configuration for the site ${op.site}.` };
+  }
+  if (await confExists(ctx.client.http, op.path)) {
+    throw new PlanRejection("already-exists", `${op.path} already exists; this operation only creates new configurations.`);
+  }
+  const parent = parentOf(op.path);
+  if (!(await confExists(ctx.client.http, parent))) {
+    throw new PlanRejection("not-found", `There is no configuration at ${parent} to create ${leafOf(op.path)} in.`);
+  }
+  const fields = { ...like, repo: op.site };
+  const request = buildCreateEdsConfig(ctx.scope, { path: op.path, title, fields });
+  return {
+    steps: [{ request }],
+    checks: [{ kind: "conf-absent", path: op.path }],
+    changes: [{ path: `${op.path}/${EDS_CONFIG_NODE}`, what: "Edge Delivery configuration", after: fields }],
+    targets: [op.path],
+    summary: `Create the Edge Delivery configuration ${op.path} for the site ${op.site}, copied from ${op.like}.`,
+    warnings: [EDS_CONFIG_NOTE],
+  };
+}
+
 async function draftLock(ctx: Context, op: Extract<PlanOperation, { kind: "page.lock" | "page.unlock" }>): Promise<Draft> {
   const lock = op.kind === "page.lock";
   const request = buildLockPage(ctx.scope, op.path, lock);
@@ -743,6 +783,8 @@ function draftFor(ctx: Context, op: SinglePlanOperation): Promise<Draft> {
       return draftRollout(ctx, op);
     case "livecopy.set-rollout-configs":
       return draftSetRolloutConfigs(ctx, op);
+    case "conf.create-eds-config":
+      return draftCreateEdsConfig(ctx, op);
     case "page.lock":
     case "page.unlock":
       return draftLock(ctx, op);
@@ -833,6 +875,9 @@ function staticCheck(ctx: Context, op: SinglePlanOperation): readonly string[] {
       return [...op.targets];
     case "livecopy.set-rollout-configs":
       buildSetRolloutConfigs(scope, { path: op.path, rolloutConfigs: op.rolloutConfigs });
+      return [op.path];
+    case "conf.create-eds-config":
+      buildCreateEdsConfig(scope, { path: op.path, title: op.title ?? leafOf(op.path), fields: { repo: op.site } });
       return [op.path];
     case "page.lock":
     case "page.unlock":

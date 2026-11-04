@@ -8,7 +8,7 @@
 // The only Sling POST operators that ever appear in a request are emitted
 // here as constants — `@TypeHint`, `@Delete` and `:operation=delete` — next
 // to names that already passed `assertWritableProperty`/`assertSheetColumn`.
-import { assertAemPath, assertComponentPath, assertReadable, assertRolloutConfig, assertWritable } from "../guard/paths.js";
+import { assertAemPath, assertComponentPath, assertReadable, assertRolloutConfig, assertWritable, assertWritableConf } from "../guard/paths.js";
 import {
   assertPropertyValue,
   assertRobotsTokens,
@@ -353,6 +353,76 @@ export function buildCreateLiveCopy(scope: WriteScope, input: CreateLiveCopyInpu
     ],
     label: `create the Live Copy ${dest} of ${input.srcPath}`,
   };
+}
+
+/** Where a /conf tree keeps its Edge Delivery Services configuration page. */
+export const EDS_CONFIG_NODE = "settings/cloudconfigs/edge-delivery-service-configuration";
+
+/** The fields of an Edge Delivery Services configuration this server reads and writes; bookkeeping is left out. */
+export const EDS_CONFIG_FIELDS = ["owner", "repo", "ref", "projectType", "edgeHost", "auxiliaryScripts", "sling:resourceType"] as const;
+export type EdsConfigField = (typeof EDS_CONFIG_FIELDS)[number];
+export type EdsConfigFields = Partial<Readonly<Record<EdsConfigField, string | readonly string[]>>>;
+
+const EDS_SITE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+// eslint-disable-next-line no-control-regex -- refusing control characters is the point.
+const EDS_FIELD_VALUE = /^[^\u0000-\u001f]{1,200}$/;
+
+export interface CreateEdsConfigInput {
+  /** The new /conf tree, e.g. `/conf/<tenant>/<name>`; it must not exist yet. */
+  readonly path: string;
+  readonly title: string;
+  /** The Edge Delivery Services site (`repo`) and the other fields of its configuration page. */
+  readonly fields: EdsConfigFields;
+}
+
+/**
+ * Creates a /conf tree holding one Edge Delivery Services configuration, the
+ * same shape as the one the Sites console's Cloud Services wizard writes:
+ * `<path>` and `settings/cloudconfigs` as `sling:Folder`s, then the
+ * configuration as a `cq:Page`. One Sling POST: relative names create the
+ * nodes and their `jcr:primaryType` sets each type.
+ */
+export function buildCreateEdsConfig(scope: WriteScope, input: CreateEdsConfigInput): PlannedRequest {
+  assertWritableConf(input.path, scope.roots);
+  const repo = input.fields.repo;
+  if (typeof repo !== "string" || !EDS_SITE.test(repo)) {
+    throw new InvalidOperationError(`"${String(repo)}" is not an Edge Delivery Services site name (lowercase letters, digits and "-").`);
+  }
+  const values = (field: string, value: string | readonly string[]): readonly string[] => {
+    const list = typeof value === "string" ? [value] : value;
+    for (const item of list) {
+      if (!EDS_FIELD_VALUE.test(item)) {
+        throw new InvalidOperationError(`The ${field} of an Edge Delivery configuration must be 1–200 characters without control characters.`);
+      }
+    }
+    return list;
+  };
+  values("title", input.title);
+  const page = EDS_CONFIG_NODE;
+  const content = `${page}/jcr:content`;
+  const form: (readonly [string, string])[] = [
+    CHARSET,
+    ["jcr:primaryType", "sling:Folder"],
+    ["jcr:title", input.title],
+    ["settings/jcr:primaryType", "sling:Folder"],
+    ["settings/cloudconfigs/jcr:primaryType", "sling:Folder"],
+    [`${page}/jcr:primaryType`, "cq:Page"],
+    [`${content}/jcr:primaryType`, "cq:PageContent"],
+    [`${content}/jcr:title`, "Edge Delivery Service Configuration"],
+  ];
+  for (const field of EDS_CONFIG_FIELDS) {
+    const value = input.fields[field];
+    if (value === undefined) {
+      continue;
+    }
+    for (const item of values(field, value)) {
+      form.push([`${content}/${field}`, item]);
+    }
+    if (typeof value !== "string") {
+      form.push([`${content}/${field}@TypeHint`, "String[]"]);
+    }
+  }
+  return { method: "POST", path: input.path, form, label: `create the Edge Delivery configuration ${input.path} for the site ${repo}` };
 }
 
 export interface SetRolloutConfigsInput {

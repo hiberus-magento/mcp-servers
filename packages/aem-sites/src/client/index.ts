@@ -10,6 +10,7 @@ import type { PlannedRequest } from "./builders.js";
 
 export {
   buildCopyPage,
+  buildCreateEdsConfig,
   buildCreateLiveCopy,
   buildCreatePage,
   buildCreateSheet,
@@ -35,6 +36,10 @@ export {
   type ReplicationAgent,
   type SetPropertiesInput,
   type SetRolloutConfigsInput,
+  type CreateEdsConfigInput,
+  type EdsConfigFields,
+  EDS_CONFIG_FIELDS,
+  EDS_CONFIG_NODE,
   type WriteScope,
 } from "./builders.js";
 export {
@@ -43,6 +48,7 @@ export {
   queryPages,
   queryPublishedPages,
   confExists,
+  readEdsConfig,
   readComponent,
   readCurrentUser,
   readPage,

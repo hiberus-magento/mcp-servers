@@ -6,7 +6,7 @@
 // known, unexpired and unused, that the echoes match, that a protected plan
 // carries the typed confirmation, and that the state the user reviewed has
 // not changed. Only then is the token consumed and the first request sent.
-import { AemError, readComponent, readPage, readSheet, type AemClient } from "../client/index.js";
+import { AemError, readComponent, readPage, readSheet, confExists, type AemClient } from "../client/index.js";
 import type { AemConfig } from "../config.js";
 import { fingerprint } from "../confirm/fingerprint.js";
 import type { PlanStore } from "../confirm/plan-store.js";
@@ -129,6 +129,8 @@ async function stillHolds(client: AemClient, config: AemConfig, check: StateChec
     }
     case "sheet-absent":
       return (await readSheet(client.http, check.path)) === undefined;
+    case "conf-absent":
+      return !(await confExists(client.http, check.path));
   }
 }
 

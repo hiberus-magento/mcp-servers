@@ -4,7 +4,8 @@
 // exposed raw: each read builds its own predicates from typed input, and
 // every response is projected field by field — a property the author adds
 // never reaches a caller, because nothing here spreads a parsed object.
-import { assertAemPath } from "../guard/paths.js";
+import { assertAemPath, assertConfPath } from "../guard/paths.js";
+import { EDS_CONFIG_FIELDS, EDS_CONFIG_NODE, type EdsConfigField, type EdsConfigFields } from "./builders.js";
 import type { AuthorHttp } from "./http.js";
 
 const QUERY_BUILDER = "/bin/querybuilder.json";
@@ -398,4 +399,22 @@ export async function readCurrentUser(http: AuthorHttp): Promise<string> {
     throw new Error("The author did not say which user this token belongs to (currentuser.json without authorizableId).");
   }
   return id;
+}
+
+/** The Edge Delivery Services configuration of a /conf tree, or `undefined` when it has none. */
+export async function readEdsConfig(http: AuthorHttp, confPath: string): Promise<EdsConfigFields | undefined> {
+  assertConfPath(confPath);
+  const path = `${confPath}/${EDS_CONFIG_NODE}/jcr:content`;
+  const { status, body } = await http.readJson({ method: "GET", path: `${path}.json`, label: `the Edge Delivery configuration of ${confPath}`, expectedStatuses: [404] });
+  if (status === 404 || !isRecord(body)) {
+    return undefined;
+  }
+  const fields: Partial<Record<EdsConfigField, string | readonly string[]>> = {};
+  for (const field of EDS_CONFIG_FIELDS) {
+    const value = body[field];
+    if (typeof value === "string" || (Array.isArray(value) && value.every((item) => typeof item === "string"))) {
+      fields[field] = value as string | readonly string[];
+    }
+  }
+  return fields;
 }

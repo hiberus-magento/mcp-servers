@@ -21,6 +21,8 @@ export interface FakeAuthor {
   readonly components: Map<string, Record<string, unknown>>;
   /** Configuration nodes under /conf, read as `<path>.json`. */
   readonly confs: Set<string>;
+  /** The jcr:content of Edge Delivery configuration pages, keyed by their /conf tree. */
+  readonly edsConfigs: Map<string, Record<string, unknown>>;
   readonly requests: RecordedRequest[];
   readonly sleeps: number[];
   /** Status for POSTs whose path starts with the key; default 200. */
@@ -41,6 +43,7 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
   const sheets = new Map<string, Record<string, unknown>>();
   const components = new Map<string, Record<string, unknown>>();
   const confs = new Set<string>();
+  const edsConfigs = new Map<string, Record<string, unknown>>();
   const requests: RecordedRequest[] = [];
   const sleeps: number[] = [];
   const postStatus = new Map<string, number>();
@@ -67,6 +70,21 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
       const config = body?.["cq:LiveSyncConfig"];
       if (status === 200 && sync !== undefined && body !== undefined && typeof config === "object" && config !== null) {
         pages.set(sync, { ...body, "cq:LiveSyncConfig": { ...config, "cq:rolloutConfigs": form.getAll("cq:rolloutConfigs") } });
+      }
+      if (status === 200 && url.pathname.startsWith("/conf/")) {
+        confs.add(url.pathname);
+        const prefix = "settings/cloudconfigs/edge-delivery-service-configuration/jcr:content/";
+        const content: Record<string, unknown> = {};
+        for (const [name, value] of form.entries()) {
+          if (name.startsWith(prefix) && !name.endsWith("@TypeHint")) {
+            const field = name.slice(prefix.length);
+            const previous = content[field];
+            content[field] = previous === undefined ? value : [...(Array.isArray(previous) ? previous : [previous]), value];
+          }
+        }
+        if (Object.keys(content).length > 0) {
+          edsConfigs.set(url.pathname, content);
+        }
       }
       return json(status, {});
     }
@@ -104,6 +122,11 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
       const dated = typeof body["cq:lastReplicationAction"] === "string" && body["cq:lastReplicated"] === undefined ? { "cq:lastReplicated": "2026-10-01" } : {};
       return json(200, { "jcr:primaryType": "cq:PageContent", ...dated, ...body });
     }
+    const eds = /^(\/conf\/.*)\/settings\/cloudconfigs\/edge-delivery-service-configuration\/jcr:content\.json$/.exec(url.pathname);
+    if (eds?.[1] !== undefined) {
+      const body = edsConfigs.get(eds[1]);
+      return body === undefined ? json(404) : json(200, { "jcr:primaryType": "cq:PageContent", ...body });
+    }
     const conf = /^(\/conf\/.*)\.json$/.exec(url.pathname);
     if (conf?.[1] !== undefined) {
       return confs.has(conf[1]) ? json(200, { "jcr:primaryType": "sling:Folder" }) : json(404);
@@ -126,5 +149,5 @@ export function createFakeAuthor(origin: string = SYNTHETIC_AEM_AUTHOR): FakeAut
     origin,
   });
 
-  return { pages, sheets, components, confs, requests, sleeps, postStatus, currentUser, rollout, client, posts: () => requests.filter((r) => r.method === "POST") };
+  return { pages, sheets, components, confs, edsConfigs, requests, sleeps, postStatus, currentUser, rollout, client, posts: () => requests.filter((r) => r.method === "POST") };
 }

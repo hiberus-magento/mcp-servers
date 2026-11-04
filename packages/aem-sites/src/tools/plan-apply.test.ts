@@ -10,7 +10,7 @@ import { createPlanStore, type PlanStore } from "../confirm/plan-store.js";
 import { SYNTHETIC_AEM_AUTHOR, SYNTHETIC_ROOT } from "../testing/author-double.js";
 import { createFakeAuthor, type FakeAuthor } from "../testing/fake-author.js";
 import { applyPlan, ROLLOUT_POLL_MS, ROLLOUT_TIMEOUT_MS, type ApplyResult } from "./apply.js";
-import { AGENT_PAUSE_MS, BATCH_READ_RETRIES, BATCH_READ_RETRY_MS, BATCH_TTL_MS, COMPONENT_INHERITANCE_WARNING, EDS_LIVE_WARNING, planOperation, PUSH_ON_MODIFY_WARNING, ROLLOUT_WARNING, type PlanResult, type StoredPlan } from "./plan-builder.js";
+import { AGENT_PAUSE_MS, BATCH_READ_RETRIES, BATCH_READ_RETRY_MS, BATCH_TTL_MS, COMPONENT_INHERITANCE_WARNING, EDS_CONFIG_NOTE, EDS_LIVE_WARNING, planOperation, PUSH_ON_MODIFY_WARNING, ROLLOUT_WARNING, type PlanResult, type StoredPlan } from "./plan-builder.js";
 import { OPERATION_KINDS, type AemApplyInput, type OperationKind, type PlanOperation, type SinglePlanOperation } from "./plan-schema.js";
 
 const EN = `${SYNTHETIC_ROOT}/en`;
@@ -25,6 +25,19 @@ const TTL = 1_000;
 const DEFAULT_CONFIG = "/libs/msm/wcm/rolloutconfigs/default";
 const PUSH_ON_MODIFY = "/libs/msm/wcm/rolloutconfigs/pushonmodify";
 const LIVE_COPY = `${FR}/gear-live`;
+const CONF_TENANT = `/conf/${SYNTHETIC_ROOT.split("/")[2] ?? ""}`;
+const LIKE_CONF = `${CONF_TENANT}/us`;
+const NEW_CONF = `${CONF_TENANT}/masters`;
+const EDS_PAGE = "settings/cloudconfigs/edge-delivery-service-configuration";
+const LIKE_FIELDS = {
+  owner: "acme-demo-org",
+  repo: "acme-demo-us",
+  ref: "main",
+  projectType: "5",
+  edgeHost: "preview",
+  auxiliaryScripts: ["module:scripts/editor-support.js"],
+  "sling:resourceType": "core/franklin/shell/components/configuration/page",
+};
 
 function seed(author: FakeAuthor): void {
   author.pages.set(EN, { "jcr:title": "EN" });
@@ -36,6 +49,9 @@ function seed(author: FakeAuthor): void {
     "cq:LiveSyncConfig": { "cq:master": PAGE, "cq:rolloutConfigs": [DEFAULT_CONFIG], "cq:isDeep": true },
   });
   author.pages.set(LOCKED, { "jcr:title": "Locked", "jcr:lockOwner": author.currentUser.id });
+  author.confs.add(CONF_TENANT);
+  author.confs.add(LIKE_CONF);
+  author.edsConfigs.set(LIKE_CONF, { ...LIKE_FIELDS, "jcr:title": "Edge Delivery Service Configuration", "cq:lastReplicated": "2026-10-01" });
   author.components.set(BLOCK, {
     "jcr:primaryType": "nt:unstructured",
     "sling:resourceType": "core/franklin/components/block/v1/block",
@@ -154,6 +170,10 @@ const CASES: Record<SingleKind, { readonly operation: PlanOperation; readonly st
   "livecopy.set-rollout-configs": {
     operation: { kind: "livecopy.set-rollout-configs", path: LIVE_COPY, rolloutConfigs: [DEFAULT_CONFIG, PUSH_ON_MODIFY] },
     stale: (a) => a.pages.set(LIVE_COPY, { ...a.pages.get(LIVE_COPY), "cq:LiveSyncConfig": { "cq:master": PAGE, "cq:rolloutConfigs": ["/libs/msm/wcm/rolloutconfigs/activate"] } }),
+  },
+  "conf.create-eds-config": {
+    operation: { kind: "conf.create-eds-config", path: NEW_CONF, site: "acme-demo-masters", like: LIKE_CONF },
+    stale: (a) => a.confs.add(NEW_CONF),
   },
   "page.lock": {
     operation: { kind: "page.lock", path: OLD },
@@ -564,6 +584,44 @@ describe("livecopy.set-rollout-configs", () => {
     expect(await h.plan({ kind: "livecopy.set-rollout-configs", path: OLD, rolloutConfigs: [DEFAULT_CONFIG] })).toMatchObject({ status: "rejected", reason: "invalid-operation" });
     expect(await h.plan({ kind: "livecopy.set-rollout-configs", path: `${FR}/missing`, rolloutConfigs: [DEFAULT_CONFIG] })).toMatchObject({ status: "rejected", reason: "not-found" });
     expect(await h.plan({ kind: "livecopy.set-rollout-configs", path: LIVE_COPY, rolloutConfigs: ["/apps/acme/x"] })).toMatchObject({ status: "rejected" });
+    expect(h.author.posts()).toEqual([]);
+  });
+});
+
+describe("conf.create-eds-config", () => {
+  it("copies another tree's Edge Delivery configuration with only the site changed, then cq:conf can point at it", async () => {
+    const h = harness();
+    const plan = planned(await h.plan({ kind: "conf.create-eds-config", path: NEW_CONF, site: "acme-demo-masters", like: LIKE_CONF, title: "Masters" }));
+    expect(plan.changes).toEqual([{ path: `${NEW_CONF}/${EDS_PAGE}`, what: "Edge Delivery configuration", after: { ...LIKE_FIELDS, repo: "acme-demo-masters" } }]);
+    expect(plan.warnings).toContain(EDS_CONFIG_NOTE);
+    expect(plan.requests).toEqual([{ method: "POST", path: NEW_CONF, label: expect.stringContaining("acme-demo-masters") }]);
+    expect(await h.apply({ token: plan.token, env: "stage", kind: "conf.create-eds-config" })).toMatchObject({ status: "applied" });
+    const body = new URLSearchParams(h.author.posts()[0]?.body ?? "");
+    expect(body.get("jcr:primaryType")).toBe("sling:Folder");
+    expect(body.get("jcr:title")).toBe("Masters");
+    expect(body.get(`${EDS_PAGE}/jcr:primaryType`)).toBe("cq:Page");
+    expect(body.get(`${EDS_PAGE}/jcr:content/jcr:primaryType`)).toBe("cq:PageContent");
+    expect(body.get(`${EDS_PAGE}/jcr:content/repo`)).toBe("acme-demo-masters");
+    expect(body.get(`${EDS_PAGE}/jcr:content/auxiliaryScripts@TypeHint`)).toBe("String[]");
+    expect([...body.keys()].some((key) => key.includes("lastReplicated"))).toBe(false);
+    expect(await h.plan({ kind: "conf.create-eds-config", path: NEW_CONF, site: "acme-demo-masters", like: LIKE_CONF })).toMatchObject({ status: "no-changes" });
+    expect(planned(await h.plan({ kind: "page.set-properties", path: OLD, set: { "cq:conf": NEW_CONF } })).changes).toEqual([
+      { path: OLD, what: "cq:conf", before: undefined, after: NEW_CONF },
+    ]);
+  });
+
+  it("refuses another tenant, the tenant root, an existing tree, a missing parent or template and a bad site name", async () => {
+    const h = harness();
+    const op = { kind: "conf.create-eds-config", site: "acme-demo-masters", like: LIKE_CONF } as const;
+    expect(await h.plan({ ...op, path: "/conf/other-tenant/masters" })).toMatchObject({ status: "rejected", reason: "path-outside-write-roots" });
+    expect(await h.plan({ ...op, path: "/conf/global/masters" })).toMatchObject({ status: "rejected", reason: "path-outside-write-roots" });
+    expect(await h.plan({ ...op, path: CONF_TENANT })).toMatchObject({ status: "rejected", reason: "path-outside-write-roots" });
+    expect(await h.plan({ ...op, path: `${CONF_TENANT}/../x` })).toMatchObject({ status: "rejected", reason: "invalid-path" });
+    expect(await h.plan({ ...op, path: `${CONF_TENANT}/missing/masters` })).toMatchObject({ status: "rejected", reason: "not-found" });
+    expect(await h.plan({ ...op, path: NEW_CONF, like: `${CONF_TENANT}/none` })).toMatchObject({ status: "rejected", reason: "not-found" });
+    expect(await h.plan({ ...op, path: NEW_CONF, site: "Bad Site" })).toMatchObject({ status: "rejected", reason: "invalid-operation" });
+    h.author.confs.add(NEW_CONF);
+    expect(await h.plan({ ...op, path: NEW_CONF })).toMatchObject({ status: "rejected", reason: "already-exists" });
     expect(h.author.posts()).toEqual([]);
   });
 });

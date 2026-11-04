@@ -247,8 +247,8 @@ follow a redirect.
 
 `aem_plan`'s `operation.kind` MUST be one of: `page.set-properties`, `component.set-properties`, `page.set-robots`,
 `sheet.upsert-row`, `sheet.delete-row`, `page.publish`, `page.publish-tree`, `page.unpublish`, `page.create`,
-`page.copy`, `page.move`, `page.delete`, `livecopy.create`, `livecopy.rollout`, `livecopy.set-rollout-configs`, `page.lock`,
-`page.unlock`, `batch`. Each branch
+`page.copy`, `page.move`, `page.delete`, `livecopy.create`, `livecopy.rollout`, `livecopy.set-rollout-configs`,
+`conf.create-eds-config`, `page.lock`, `page.unlock`, `batch`. Each branch
 is strict: a field a kind does not take is a schema rejection. Every kind MUST pass the same token
 matrix (forged, expired, reused, stale, echo mismatch) before any write.
 
@@ -336,6 +336,22 @@ inside `AEM_WRITE_ROOTS` with a Sling POST to its `jcr:content/cq:LiveSyncConfig
 `String[]`, from the same allowlist as `livecopy.create`. A page without `cq:LiveSyncConfig` MUST
 be rejected with `invalid-operation`; the same list MUST return `no-changes`. The plan MUST show the
 lists before and after, and MUST warn when the new list includes Push on modify.
+
+`conf.create-eds-config` MUST create a new `/conf` tree strictly below `/conf/<tenant>`, where
+`/content/<tenant>` holds a write root, with one Sling POST that writes the tree and
+`settings/cloudconfigs` as `sling:Folder`s and `edge-delivery-service-configuration` as a `cq:Page`.
+Its fields (owner, ref, project type, edge host, auxiliary scripts, resource type) MUST be copied
+from the Edge Delivery configuration of the `like` tree, with only `repo` set to `site`; bookkeeping
+MUST NOT be copied. An existing tree MUST be rejected with `already-exists`, unless it already has a
+configuration for that site (`no-changes`); a missing parent or `like` configuration with
+`not-found`. The plan MUST warn that nothing uses the configuration until a `cq:conf` points at it.
+
+#### Scenario: An Edge Delivery site for the language masters
+
+- GIVEN `/conf/<tenant>/<store>` with an Edge Delivery configuration for a store site
+- WHEN `aem_plan` plans `conf.create-eds-config` for `/conf/<tenant>/masters`, site `masters`, like that store
+- THEN the plan shows the copied fields with `repo: masters`, posts once to the new tree, and a
+  later `page.set-properties` can set `cq:conf` to it
 
 #### Scenario: Push on modify on a store Live Copy
 

@@ -42,7 +42,7 @@ Operation kinds: `page.set-properties`, `component.set-properties`,
 `page.set-robots`, `sheet.upsert-row`, `sheet.delete-row`, `page.publish`,
 `page.publish-tree`, `page.unpublish`, `page.create`, `page.copy`, `page.move`,
 `page.delete`, `livecopy.create`, `livecopy.rollout`, `livecopy.set-rollout-configs`,
-`page.lock`, `page.unlock`, `batch`.
+`conf.create-eds-config`, `page.lock`, `page.unlock`, `batch`.
 
 **Batches.** `kind: "batch"` takes up to 300 operations of any other kind and
 returns one confirmation listing them, under a token that lives 60 minutes.
@@ -88,7 +88,10 @@ until every target's `cq:lastRolledout` changes (up to 5 minutes), so a batch
 can roll out one level of Live Copies and then the next.
 `livecopy.set-rollout-configs` replaces the rollout configs of an existing Live
 Copy root (its `cq:LiveSyncConfig`), from the same allowlist as `livecopy.create`;
-the plan warns when the list includes Push on modify. `page.lock` stops *other* users from
+the plan warns when the list includes Push on modify.
+`conf.create-eds-config` creates a new `/conf/<tenant>/<name>` tree (the tenant of a write root)
+with an Edge Delivery Services configuration copied from the `like` tree, only `repo` set to
+`site`; point pages at it afterwards with `page.set-properties` and `cq:conf`. `page.lock` stops *other* users from
 editing a page; the lock owner is the token's user, who can still edit, and
 `page.unlock` only releases that user's own locks. Neither changes permissions:
 "nobody can edit" is an ACL, which this server does not touch.
