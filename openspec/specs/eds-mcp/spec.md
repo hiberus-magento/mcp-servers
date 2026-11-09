@@ -14,8 +14,8 @@ accident.
 Each tool's `readOnlyHint`, `destructiveHint`, and `idempotentHint` MUST match its documented
 triple: every tool except `eds_apply` — `eds_get_status`, `eds_get_status_bulk`,
 `eds_get_site_config`, `eds_get_audit_log`, `eds_get_snapshots`, `eds_get_job_status`,
-`eds_list_sites`, `eds_get_config_versions`, `eds_get_robots`, `eds_get_code_status`,
-`eds_list_jobs`, `eds_list_api_keys` and `eds_plan` — is `true/false/true`; `eds_apply` is
+`eds_list_sites`, `eds_get_config_versions`, `eds_get_robots`, `eds_get_content_config`,
+`eds_get_code_status`, `eds_list_jobs`, `eds_list_api_keys` and `eds_plan` — is `true/false/true`; `eds_apply` is
 `false/true/false`.
 (Previously: three write tools with three different triples.)
 
@@ -60,12 +60,12 @@ fix it, and MUST NOT hang or prompt for input.
 - THEN the response has `isError: true` with text naming
   `hiberus-eds auth token set` as the remedy, returned without delay
 
-### Requirement: Fourteen-Tool Surface With a Single Write Entry Point
+### Requirement: Fifteen-Tool Surface With a Single Write Entry Point
 
-The server MUST expose exactly these fourteen tools and no others: `eds_get_status`,
+The server MUST expose exactly these fifteen tools and no others: `eds_get_status`,
 `eds_get_status_bulk`, `eds_get_site_config`, `eds_get_audit_log`, `eds_get_snapshots`,
 `eds_get_job_status`, `eds_list_sites`, `eds_get_config_versions`, `eds_get_robots`,
-`eds_get_code_status`, `eds_list_jobs`, `eds_list_api_keys`, `eds_plan`, `eds_apply`. `eds_apply`
+`eds_get_content_config`, `eds_get_code_status`, `eds_list_jobs`, `eds_list_api_keys`, `eds_plan`, `eds_apply`. `eds_apply`
 MUST be the only tool that issues an Admin API write request. Each tool's description MUST state
 when to use it.
 
@@ -73,7 +73,7 @@ when to use it.
 
 - GIVEN the running server
 - WHEN `tools/list` is called
-- THEN the response contains exactly these fourteen tool names, and none of
+- THEN the response contains exactly these fifteen tool names, and none of
   `eds_set_live_state`, `eds_reindex`, `eds_manage_snapshot`
 
 #### Scenario: Read tools never write
@@ -86,10 +86,10 @@ when to use it.
 
 `eds_plan` MUST accept `{ site, ref?, operation }`, where `operation` is a discriminated union on
 `kind` with exactly these kinds: `config.patch`, `site.create`, `site.delete`, `version.restore`,
-`robots.set`, `preview.update`, `preview.delete`, `live.publish`, `live.unpublish`,
+`robots.set`, `content-config.set`, `preview.update`, `preview.delete`, `live.publish`, `live.unpublish`,
 `index.update`, `index.delete`, `index.full-site`, `cache.purge`, `sitemap.rebuild`, `code.sync`,
 `code.delete`, `job.stop`, `snapshot.add`, `snapshot.remove`, `snapshot.publish`,
-`snapshot.review`, `snapshot.delete` — twenty-two kinds. Every branch MUST be strict. `eds_plan` MUST
+`snapshot.review`, `snapshot.delete` — twenty-three kinds. Every branch MUST be strict. `eds_plan` MUST
 NOT issue any write request.
 
 #### Scenario: Planning issues no write
@@ -197,9 +197,25 @@ token MUST be rejected with no request issued. Tokens MUST NOT survive a server 
 - WHEN `eds_apply` is called with it
 - THEN the result is `rejected` with reason `unknown-token`, and no request is issued
 
+### Requirement: Index and Sitemap Definitions Through eds_plan
+
+`content-config.set` MUST take `file` (`query.yaml` or `sitemap.yaml`) and the whole YAML as a
+non-empty `content`. The plan MUST read the current document, show it (or `(none)`) next to the new
+one, warn that a reindex is needed, and record a `text/yaml` `PUT` when the site has none or a
+`POST` when it has one. The same content MUST be `no-changes`. `eds_get_content_config` MUST read
+either file and report `exists: false` with `content: null` for a site without it.
+
+#### Scenario: First index definition of a site
+
+- GIVEN `acme-demo-site-eu` without `content/query.yaml`
+- WHEN `eds_plan` is called with `content-config.set`, `file: query.yaml` and a YAML document
+- THEN the plan records `PUT /config/acme-demo-org/sites/acme-demo-site-eu/content/query.yaml`
+  with `content-type: text/yaml` and exactly that body, shows `query.yaml now: (none)`, and warns
+  that the site needs a reindex
+
 ### Requirement: Stale Configuration Plans Are Rejected
 
-For `config.patch`, `site.delete`, `version.restore` and `robots.set`, `eds_apply`
+For `config.patch`, `site.delete`, `version.restore`, `robots.set` and `content-config.set`, `eds_apply`
 MUST re-read the state the plan was computed from and MUST reject the apply, issuing no write, if
 its canonical-JSON SHA-256 differs from the one recorded at plan time. For `site.create` it MUST
 reject if the site exists at apply time.

@@ -7,7 +7,7 @@
 // package barrel and never `server/index.js` directly (design.md, Decision
 // 1) — so this package's bundle stays clean of express/hono/ajv/etc.
 //
-// This file is intentionally thin: the fourteen tool definitions and their
+// This file is intentionally thin: the fifteen tool definitions and their
 // schemas live in `./tools/eds-tools.ts` (see that file's header for why),
 // so the only things this file does are read `EDS_PROTECTED_SITES`, register
 // the tools and connect the transport UNCONDITIONALLY at module top level — the same way every other

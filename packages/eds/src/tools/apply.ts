@@ -66,6 +66,8 @@ async function isStale(client: EdsClient, org: string, site: string, recorded: F
       return fingerprint(await client.operations.siteConfig.getSiteDocument({ org, site })) !== recorded.sha256;
     case "robots":
       return fingerprint(await client.operations.robots.getRobots({ org, site })) !== recorded.sha256;
+    case "content-config":
+      return fingerprint(await client.operations.contentConfig.getContentConfig({ org, site, file: recorded.file })) !== recorded.sha256;
   }
 }
 

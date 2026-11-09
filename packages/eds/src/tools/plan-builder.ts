@@ -5,7 +5,7 @@
 // the state the user reviews, assembles the confirmation message and stores
 // the plan under a one-time token. It never writes: every client call here
 // is a read, and the writes are only BUILT (`writeRequests`), never sent.
-import { AdminApiAuthError, writeRequests, type EdsClient, type PlannedRequest } from "../client/index.js";
+import { AdminApiAuthError, writeRequests, type ContentConfigFile, type EdsClient, type PlannedRequest } from "../client/index.js";
 import { fingerprint } from "../confirm/fingerprint.js";
 import { diffDocuments, mergeConfigPatch, type ConfigChange } from "../confirm/merge-patch.js";
 import type { PlanStore } from "../confirm/plan-store.js";
@@ -22,6 +22,8 @@ export const PLAN_INSTRUCTION =
 /** How `eds_apply` re-checks the state the user reviewed (Decision 3). */
 export type Fingerprint =
   | { readonly read: "site-document" | "robots"; readonly sha256: string }
+  /** `sha256` of the document, or of `null` when the site had none. */
+  | { readonly read: "content-config"; readonly file: ContentConfigFile; readonly sha256: string }
   | { readonly read: "site-absent" };
 
 /** What the store keeps under a token. Opaque to the store itself. */
@@ -85,6 +87,9 @@ const AEM_WARNING =
 const AEM_UNCHECKED_WARNING =
   "The site configuration could not be read with this key (it needs config_admin), so whether the content source is AEM was not checked. " +
   "If it is, previewing or publishing here leaves no replication record in AEM.";
+const CONTENT_CONFIG_WARNING =
+  "Pages published before this change do not enter the new indexes or sitemaps until they are published again: " +
+  "reindex the site afterwards (index.full-site) and check the index JSON.";
 const FULL_SITE_WARNING =
   "This is a full-site reindex: every published page of the site is reindexed. It is resource-intensive and cannot be narrowed once started.";
 
@@ -252,6 +257,18 @@ async function draftFor(deps: PlanDeps, site: string, ref: string, operation: Pl
         requests: [writeRequests.robotsSet({ ...params, content: operation.content })],
         details: ["robots.txt now:", indent(redact(current)), "robots.txt after:", indent(redact(operation.content))],
         fingerprint: { read: "robots", sha256: fingerprint(current) },
+      };
+    }
+    case "content-config.set": {
+      const { file } = operation;
+      const current = await deps.client.operations.contentConfig.getContentConfig({ ...params, file });
+      if (current === operation.content) return { summary: `${file} of ${site} already has this content`, requests: [], noChanges: true };
+      return {
+        summary: `${current === null ? "Create" : "Replace"} ${file} of ${site}`,
+        requests: [writeRequests.contentConfigSet({ ...params, file, content: operation.content, exists: current !== null })],
+        warnings: [CONTENT_CONFIG_WARNING],
+        details: [`${file} now:`, current === null ? "    (none)" : indent(redact(current)), `${file} after:`, indent(redact(operation.content))],
+        fingerprint: { read: "content-config", file, sha256: fingerprint(current) },
       };
     }
     case "preview.update":

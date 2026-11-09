@@ -21,6 +21,7 @@ const VALID: Record<string, unknown> = {
   "site.delete": { kind: "site.delete" },
   "version.restore": { kind: "version.restore", versionId: "3" },
   "robots.set": { kind: "robots.set", content: "User-agent: *" },
+  "content-config.set": { kind: "content-config.set", file: "query.yaml", content: "version: 1\n" },
   "preview.update": { kind: "preview.update", paths: ["/a"] },
   "preview.delete": { kind: "preview.delete", paths: ["/a"] },
   "live.publish": { kind: "live.publish", paths: ["/a"] },
@@ -40,10 +41,10 @@ const VALID: Record<string, unknown> = {
   "snapshot.delete": { kind: "snapshot.delete", id: "launch-demo" },
 };
 
-describe("edsPlanInput — the 22 kinds", () => {
-  it("declares exactly the 22 kinds in the spec", () => {
+describe("edsPlanInput — the 23 kinds", () => {
+  it("declares exactly the 23 kinds in the spec", () => {
     expect([...OPERATION_KINDS].sort()).toEqual(Object.keys(VALID).sort());
-    expect(OPERATION_KINDS).toHaveLength(22);
+    expect(OPERATION_KINDS).toHaveLength(23);
   });
 
   it.each(Object.entries(VALID))("accepts a minimal valid %s", (_kind, operation) => {
@@ -119,6 +120,15 @@ describe("edsPlanInput — per-kind gates", () => {
     expect(plan({ kind: "snapshot.review", id: "launch-demo" }).success).toBe(false);
     expect(plan({ kind: "snapshot.review", id: "launch-demo", reviewAction: "maybe" }).success).toBe(false);
     expect(plan({ kind: "snapshot.review", id: "launch-demo", reviewAction: "reject", message: "no" }).success).toBe(true);
+  });
+
+  it("content-config.set takes only query.yaml or sitemap.yaml, and requires the content", () => {
+    expect(plan({ kind: "content-config.set", file: "sitemap.yaml", content: "sitemaps: {}\n" }).success).toBe(true);
+    expect(plan({ kind: "content-config.set", file: "robots.txt", content: "x" }).success).toBe(false);
+    expect(plan({ kind: "content-config.set", file: "../site.json", content: "x" }).success).toBe(false);
+    expect(plan({ kind: "content-config.set", file: "query.yaml" }).success).toBe(false);
+    expect(plan({ kind: "content-config.set", file: "query.yaml", content: "" }).success).toBe(false);
+    expect(plan({ kind: "content-config.set", file: "query.yaml", content: "x", paths: ["/a"] }).success).toBe(false);
   });
 
   it("robots.set accepts an empty robots.txt but requires the field", () => {

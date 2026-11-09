@@ -3,7 +3,7 @@
 An MCP (Model Context Protocol) server, and a companion operator CLI, for the
 **Adobe Edge Delivery Services Admin API** — the API documented at
 <https://www.aem.live/docs/admin.html>. It reads a site's state — status,
-configuration, versions, `robots.txt`, code, jobs, the audit log, snapshots —
+configuration, versions, `robots.txt`, index and sitemap definitions, code, jobs, the audit log, snapshots —
 and changes it through one reviewed path: **`eds_plan` shows exactly what would
 happen, the user confirms, and `eds_apply` does exactly that and nothing else.**
 
@@ -47,11 +47,12 @@ npx -y --package @hiberus-magento/eds hiberus-eds-mcp           # the server
 - `eds_list_sites` (read-only) — Use this to find which sites exist in the configured org.
 - `eds_get_config_versions` (read-only) — Use this to see a site's configuration history before planning a version.restore.
 - `eds_get_robots` (read-only) — Use this to read a site's robots.txt as text.
+- `eds_get_content_config` (read-only) — Use this to read a site's index definition (query.yaml) or sitemap definition (sitemap.yaml); exists is false when the site has none.
 - `eds_get_code_status` (read-only) — Use this to check one code file's status; the repository is resolved from the site's configuration.
 - `eds_list_jobs` (read-only) — Use this to list a site's jobs for one topic.
 - `eds_list_api_keys` (read-only) — Use this to see the org's Admin API keys — metadata only. Creating and deleting keys is CLI-only.
 - `eds_plan` (read-only) — Use this for any change to an EDS site. Changes nothing: returns exactly what would happen, a confirmation message for the user and a one-time token.
-- `eds_apply` — Use this only after the user explicitly confirms a plan from eds_plan. Takes the plan's token with its site and kind repeated (they must match) and issues exactly the planned requests. Destructive. **Not verified against a live service** — Run against a live Edge Delivery Services site for site.create, site.delete, config.patch, version.restore and robots.set, and (as the former eds_manage_snapshot) snapshot.add and snapshot.delete. Every other kind, including preview, publish, unpublish, index, cache, sitemap, code and job.stop, is built from the Admin API contract and covered by unit tests only.
+- `eds_apply` — Use this only after the user explicitly confirms a plan from eds_plan. Takes the plan's token with its site and kind repeated (they must match) and issues exactly the planned requests. Destructive. **Not verified against a live service** — Run against a live Edge Delivery Services site for site.create, site.delete, config.patch, version.restore, robots.set and content-config.set, and (as the former eds_manage_snapshot) snapshot.add and snapshot.delete. Every other kind, including preview, publish, unpublish, index, cache, sitemap, code and job.stop, is built from the Admin API contract and covered by unit tests only.
 
 ## Environment
 
@@ -128,11 +129,12 @@ on the status and audit-log endpoints.
 
 **Inferred from the path, not measured:** every other read or write under
 `/config/{org}/` needs `config_admin` too. That covers:
-- `eds_list_sites`, `eds_get_config_versions`, `eds_get_robots` and
-  `eds_list_api_keys`;
+- `eds_list_sites`, `eds_get_config_versions`, `eds_get_robots`,
+  `eds_get_content_config` and `eds_list_api_keys`;
 - `eds_get_code_status` and `code.*` plans, which read the site's `code`
   block;
-- the `config.patch`, `site.*`, `version.restore` and `robots.set` operations.
+- the `config.patch`, `site.*`, `version.restore`, `robots.set` and
+  `content-config.set` operations.
 
 `preview.*` and `live.*` plans also read the site document, to check for an AEM
 content source. With a day-to-day key they skip that check and say so in a
@@ -176,8 +178,8 @@ rejected, so a retry never repeats a write: plan again instead. Tokens live in
 the server's memory only, so restarting the server invalidates every one of
 them.
 
-**Stale plans.** For `config.patch`, `site.delete`, `version.restore` and
-`robots.set`, `eds_apply` re-reads what the user reviewed and writes nothing if
+**Stale plans.** For `config.patch`, `site.delete`, `version.restore`,
+`robots.set` and `content-config.set`, `eds_apply` re-reads what the user reviewed and writes nothing if
 it changed in the meantime (`stale-plan`). For `site.create`, it rejects the
 apply if the site has been created since the plan.
 
@@ -196,11 +198,20 @@ change, to use with `version.restore`.
 
 | Area | Kinds |
 | --- | --- |
-| Site configuration | `config.patch`, `site.create`, `site.delete`, `version.restore`, `robots.set` |
+| Site configuration | `config.patch`, `site.create`, `site.delete`, `version.restore`, `robots.set`, `content-config.set` (`file`: `query.yaml` or `sitemap.yaml`, the whole YAML as `content`) |
 | Content | `preview.update`, `preview.delete`, `live.publish`, `live.unpublish` |
 | Index, cache, sitemap | `index.update`, `index.delete`, `index.full-site` (requires `confirmFullReindex: true`), `cache.purge`, `sitemap.rebuild` |
 | Code | `code.sync`, `code.delete`. The repository is read from the site's own `code` block, never supplied. |
 | Jobs and snapshots | `job.stop`, `snapshot.add`, `snapshot.remove`, `snapshot.publish`, `snapshot.review`, `snapshot.delete` |
+
+**Index and sitemap definitions.** With the configuration service, a site's
+index (`query.yaml`) and sitemap (`sitemap.yaml`) definitions live in the
+service, under `/config/{org}/sites/{site}/content/`, and override any
+`helix-query.yaml` or `helix-sitemap.yaml` in the code repository.
+`content-config.set` replaces one of them as a whole, as `text/yaml`: it creates
+it with `PUT` when the site has none and updates it with `POST` otherwise. Pages
+published before the change only enter the new indexes when they are published
+again, so plan an `index.full-site` afterwards.
 
 `paths` takes 1 to 100 entries and is never read as "everything". `ref`
 defaults to `main` and is accepted only by the kinds that are addressed by
