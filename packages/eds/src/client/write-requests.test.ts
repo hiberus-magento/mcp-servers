@@ -13,6 +13,7 @@ import { sendPlannedRequest, type PlannedRequest } from "./planned-request.js";
 import { writeRequests } from "./write-requests.js";
 import { createSite, deleteSite, getSiteDocument, restoreConfigVersion, siteExists, updateSiteConfig } from "./operations/site-config.js";
 import { setRobots } from "./operations/robots.js";
+import { setContentConfig } from "./operations/content-config.js";
 import { previewBulk, previewPath, unpreviewPath } from "./operations/preview.js";
 import { publishPath, submitBulkJob, unpublishPath } from "./operations/live.js";
 import { indexPath, reindex, unindexPath } from "./operations/index-ops.js";
@@ -92,6 +93,11 @@ describe("writeRequests — each builder records what its typed client function 
   it("robots.set: POST of the text as text/plain", async () => {
     const options = { ...SITE, content: "User-agent: *\nDisallow: /" };
     await compare((http) => setRobots(http, options), writeRequests.robotsSet(options));
+  });
+
+  it.each([true, false])("content-config.set (exists: %s): the YAML as text/yaml, POST to update and PUT to create", async (exists) => {
+    const options = { ...SITE, file: "query.yaml" as const, content: "version: 1\n", exists };
+    await compare((http) => setContentConfig(http, options), writeRequests.contentConfigSet(options));
   });
 
   it.each([

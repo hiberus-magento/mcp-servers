@@ -35,13 +35,14 @@ describe("tools/list on the built server", () => {
     client.close();
   });
 
-  it("lists exactly the fourteen tools", () => {
+  it("lists exactly the fifteen tools", () => {
     expect(tools.map((t) => t.name).sort()).toEqual(
       [
         "eds_apply",
         "eds_get_audit_log",
         "eds_get_code_status",
         "eds_get_config_versions",
+        "eds_get_content_config",
         "eds_get_job_status",
         "eds_get_robots",
         "eds_get_site_config",

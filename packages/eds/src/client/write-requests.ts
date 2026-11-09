@@ -12,6 +12,7 @@ import type { CodePathParams } from "./operations/code.js";
 import type { RestoreConfigVersionOptions, SiteConfigParams } from "./operations/site-config.js";
 import { siteConfigPath } from "./operations/site-config.js";
 import { robotsPath, type SetRobotsOptions } from "./operations/robots.js";
+import { contentConfigPath, type SetContentConfigOptions } from "./operations/content-config.js";
 import type { GetJobStatusOptions } from "./jobs.js";
 import type { AddToSnapshotOptions, RemoveFromSnapshotOptions, ReviewSnapshotOptions, SnapshotRef } from "./operations/snapshots.js";
 
@@ -47,6 +48,12 @@ export const writeRequests = {
     path: `${siteConfigPath(options.org, options.site)}?restoreVersion=${encodeURIComponent(options.versionId)}`,
   }),
   robotsSet: (options: SetRobotsOptions): PlannedRequest => ({ method: "POST", path: robotsPath(options), text: options.content }),
+  contentConfigSet: (options: SetContentConfigOptions): PlannedRequest => ({
+    method: options.exists ? "POST" : "PUT",
+    path: contentConfigPath(options),
+    text: options.content,
+    textType: "text/yaml",
+  }),
 
   /** `POST` (update) or `DELETE` (remove) on one preview/live/index path, never with a body. */
   contentPath: (resource: "preview" | "live" | "index", method: Extract<WriteMethod, "POST" | "DELETE">, address: ContentAddress): PlannedRequest => ({

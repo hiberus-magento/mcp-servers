@@ -19,6 +19,7 @@ import { indexPath, reindex, unindexPath, type ReindexOptions } from "./operatio
 import { publishPath, setLiveState, unpublishPath, type BulkContentOptions, type SetLiveStateOptions } from "./operations/live.js";
 import { previewBulk, previewPath, unpreviewPath } from "./operations/preview.js";
 import { getRobots, setRobots, type SetRobotsOptions } from "./operations/robots.js";
+import { getContentConfig, setContentConfig, type ContentConfigParams, type SetContentConfigOptions } from "./operations/content-config.js";
 import { rebuildSitemap } from "./operations/sitemap.js";
 import type { ContentPathOptions } from "./operations/write-result.js";
 import { sendPlannedRequest, type PlannedRequest } from "./planned-request.js";
@@ -74,6 +75,8 @@ export type { PlannedRequest } from "./planned-request.js";
 export { writeRequests, type BulkAddress, type ContentAddress } from "./write-requests.js";
 export type { CodePathParams } from "./operations/code.js";
 export type { SetRobotsOptions } from "./operations/robots.js";
+export { CONTENT_CONFIG_FILES } from "./operations/content-config.js";
+export type { ContentConfigFile, ContentConfigParams, SetContentConfigOptions } from "./operations/content-config.js";
 export type { FetchPageOptions, Page } from "./cursor.js";
 export { parseSiteList } from "./types.js";
 export type { SiteListEntryWire, SiteListResult, SiteListWire } from "./types.js";
@@ -163,6 +166,10 @@ export interface EdsClient {
       readonly getRobots: (params: SiteConfigParams) => ReturnType<typeof getRobots>;
       readonly setRobots: (options: SetRobotsOptions) => ReturnType<typeof setRobots>;
     };
+    readonly contentConfig: {
+      readonly getContentConfig: (params: ContentConfigParams) => ReturnType<typeof getContentConfig>;
+      readonly setContentConfig: (options: SetContentConfigOptions) => ReturnType<typeof setContentConfig>;
+    };
     readonly preview: {
       readonly previewPath: (options: ContentPathOptions) => ReturnType<typeof previewPath>;
       readonly unpreviewPath: (options: ContentPathOptions) => ReturnType<typeof unpreviewPath>;
@@ -244,6 +251,10 @@ export function createEdsClient(deps: EdsClientDeps): EdsClient {
       robots: {
         getRobots: (params) => getRobots(http, params),
         setRobots: (options) => setRobots(http, options),
+      },
+      contentConfig: {
+        getContentConfig: (params) => getContentConfig(http, params),
+        setContentConfig: (options) => setContentConfig(http, options),
       },
       preview: {
         previewPath: (options) => previewPath(http, options),

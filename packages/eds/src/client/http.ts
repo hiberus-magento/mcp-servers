@@ -32,16 +32,22 @@ export interface EdsClientDeps {
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 
+/** The text content types the Admin API takes. */
+export type TextType = "text/plain" | "text/yaml";
+
 export interface SendOptions {
   readonly method: HttpMethod;
   readonly path: string;
   /** JSON-serializable value. When present, sent as the JSON body with a `content-type` header. */
   readonly body?: unknown;
   /**
-   * A plain-text body, sent byte for byte with `content-type: text/plain`.
-   * Only `robots.txt` takes one. Never combined with `body`.
+   * A text body, sent byte for byte with `content-type: text/plain`, or
+   * `textType` when given. `robots.txt` and the content configuration
+   * (`query.yaml`, `sitemap.yaml`) take one. Never combined with `body`.
    */
   readonly text?: string;
+  /** The content type of `text`. Defaults to `text/plain`. */
+  readonly textType?: TextType;
   readonly headers?: Readonly<Record<string, string>>;
   /** What this request is for, e.g. `"the CDN config"` — named in the failure message so a caller that issues several requests says which one failed. */
   readonly label?: string;
@@ -216,7 +222,7 @@ export function createHttpClient(deps: EdsClientDeps): HttpClient {
       headers.set("content-type", "application/json");
     } else if (options.text !== undefined) {
       init.body = options.text;
-      headers.set("content-type", "text/plain");
+      headers.set("content-type", options.textType ?? "text/plain");
     }
 
     let response: Response;

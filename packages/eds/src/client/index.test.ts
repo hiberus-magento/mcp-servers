@@ -77,6 +77,7 @@ describe("client/index.ts public surface", () => {
     const surface = {
       siteConfig: ["getSiteDocument", "siteExists", "createSite", "updateSiteConfig", "deleteSite", "listSites", "listConfigVersions", "restoreConfigVersion"],
       robots: ["getRobots", "setRobots"],
+      contentConfig: ["getContentConfig", "setContentConfig"],
       preview: ["previewPath", "unpreviewPath", "previewBulk"],
       live: ["setLiveState", "publishPath", "unpublishPath"],
       indexOps: ["reindex", "indexPath", "unindexPath"],

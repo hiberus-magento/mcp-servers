@@ -30,6 +30,7 @@ function defaultReads(): Reads {
     [`GET /config/${TEST_ORG}/sites/${EU}/versions.json`]: { status: 200, body: { current: 7, versions: [] } },
     [`GET /config/${TEST_ORG}/sites/${EU}/robots.txt`]: { status: 200, headers: { "content-type": "text/plain" }, body: "User-agent: *" },
     [`GET ${US_DOC}`]: { status: 404 },
+    [`GET /config/${TEST_ORG}/sites/${EU}/content/query.yaml`]: { status: 404 },
     [`GET /job/${TEST_ORG}/${EU}/main/live/job-demo`]: [
       { status: 200, body: { job: { name: "job-demo", topic: "live", state: "running" }, links: { self: JOB_SELF } } },
       { status: 200, body: { job: { name: "job-demo", topic: "live", state: "completed", progress: { total: 2, processed: 2 } }, links: { self: JOB_SELF } } },
@@ -89,6 +90,7 @@ const EVERY_KIND: readonly EdsPlanInput[] = [
   { site: EU, operation: { kind: "site.delete" } },
   { site: EU, operation: { kind: "version.restore", versionId: "3" } },
   { site: EU, operation: { kind: "robots.set", content: "User-agent: *\nDisallow: /" } },
+  { site: EU, operation: { kind: "content-config.set", file: "query.yaml", content: "version: 1\n" } },
   { site: EU, operation: { kind: "preview.update", paths: ["/a", "/b"] } },
   { site: EU, operation: { kind: "preview.delete", paths: ["/a"] } },
   { site: EU, operation: { kind: "live.publish", paths: ["/a", "/b"] } },
@@ -168,7 +170,7 @@ describe("eds_apply — replay (4.9)", () => {
       method: request.method,
       key: request.path,
       body: request.text ?? (request.body === undefined ? undefined : JSON.stringify(request.body)),
-      contentType: request.text !== undefined ? "text/plain" : request.body === undefined ? undefined : "application/json",
+      contentType: request.text !== undefined ? (request.textType ?? "text/plain") : request.body === undefined ? undefined : "application/json",
     }));
     expect(issued).toEqual(expected);
   });
@@ -242,6 +244,26 @@ describe("eds_apply — stale plans (4.10)", () => {
 
     rejected(await h.apply({ token }), "stale-plan");
     expect(writes(h.calls)).toEqual([]);
+  });
+
+  it("content-config.set: the document changed since the plan is stale-plan", async () => {
+    const reads = defaultReads();
+    reads[`GET /config/${TEST_ORG}/sites/${EU}/content/query.yaml`] = [{ status: 404 }, { status: 200, headers: { "content-type": "text/yaml" }, body: "version: 1\n" }];
+    const h = harness({ reads });
+    const { token } = await h.plan({ site: EU, operation: { kind: "content-config.set", file: "query.yaml", content: "version: 2\n" } });
+
+    rejected(await h.apply({ token }), "stale-plan");
+    expect(writes(h.calls)).toEqual([]);
+  });
+
+  it("content-config.set: a document the site lacks is created with a text/yaml PUT", async () => {
+    const h = harness();
+    const { token } = await h.plan({ site: EU, operation: { kind: "content-config.set", file: "query.yaml", content: "version: 2\n" } });
+
+    expect((await h.apply({ token })).status).toBe("applied");
+    expect(writes(h.calls).map((call) => [call.method, new URL(call.url).pathname, call.headers["content-type"], call.body])).toEqual([
+      ["PUT", `/config/${TEST_ORG}/sites/${EU}/content/query.yaml`, "text/yaml", "version: 2\n"],
+    ]);
   });
 
   it("a stale plan consumes the token: the user must plan again", async () => {

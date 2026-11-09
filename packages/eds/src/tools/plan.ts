@@ -23,6 +23,8 @@ const operationSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("site.delete") }).strict(),
   z.object({ kind: z.literal("version.restore"), versionId: z.string().min(1) }).strict(),
   z.object({ kind: z.literal("robots.set"), content: z.string() }).strict(),
+  /** The index (`query.yaml`) or sitemap (`sitemap.yaml`) definition of the site, replaced as a whole. */
+  z.object({ kind: z.literal("content-config.set"), file: z.enum(["query.yaml", "sitemap.yaml"]), content: z.string().min(1) }).strict(),
   z.object({ kind: z.literal("preview.update"), paths: plannedPaths }).strict(),
   z.object({ kind: z.literal("preview.delete"), paths: plannedPaths }).strict(),
   z.object({ kind: z.literal("live.publish"), paths: plannedPaths }).strict(),

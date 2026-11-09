@@ -1,7 +1,7 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
 // RED-first (tasks.md Phase 7; eds-write-surface tasks.md 4.15, 4.16): the
-// fourteen-tool surface, its annotations, the one write entry point, and the
+// fifteen-tool surface, its annotations, the one write entry point, and the
 // missing-credential failure path — all unit-testable without spawning a
 // process, since `createEdsTools` (in `./tools/eds-tools.ts`, see that file's
 // header for why it is separate from `mcp.ts`) is a pure function of an
@@ -52,6 +52,7 @@ const EXPECTED_ANNOTATIONS: Record<string, { readOnlyHint: boolean; destructiveH
   eds_list_sites: READ_TRIPLE,
   eds_get_config_versions: READ_TRIPLE,
   eds_get_robots: READ_TRIPLE,
+  eds_get_content_config: READ_TRIPLE,
   eds_get_code_status: READ_TRIPLE,
   eds_list_jobs: READ_TRIPLE,
   eds_list_api_keys: READ_TRIPLE,
@@ -60,10 +61,10 @@ const EXPECTED_ANNOTATIONS: Record<string, { readOnlyHint: boolean; destructiveH
 };
 
 describe("createEdsTools — tools/list surface (4.16)", () => {
-  it("returns exactly the fourteen named tools and no others", () => {
+  it("returns exactly the fifteen named tools and no others", () => {
     const names = toolsOver(makeClient()).map((t) => t.name);
     expect([...names].sort()).toEqual(Object.keys(EXPECTED_ANNOTATIONS).sort());
-    expect(names).toHaveLength(14);
+    expect(names).toHaveLength(15);
   });
 
   it.each(["eds_set_live_state", "eds_reindex", "eds_manage_snapshot"])("%s is removed", (name) => {
@@ -187,6 +188,7 @@ describe("eds_apply is the only tool that writes (4.8 source half; eds-mcp spec,
       eds_list_sites: {},
       eds_get_config_versions: { site: EU },
       eds_get_robots: { site: EU },
+      eds_get_content_config: { site: EU, file: "query.yaml" },
       eds_get_code_status: { site: EU, path: "/scripts/a.js" },
       eds_list_jobs: { site: EU, topic: "live" },
       eds_list_api_keys: {},
@@ -217,6 +219,18 @@ describe("new read tools (4.15)", () => {
       makeClient({ [`GET /config/${TEST_ORG}/sites/${EU}/robots.txt`]: { status: 200, headers: { "content-type": "text/plain" }, body: "User-agent: *\nDisallow: /" } }),
     );
     expect(await call(tools, "eds_get_robots", { site: EU })).toEqual({ site: EU, content: "User-agent: *\nDisallow: /" });
+  });
+
+  it("eds_get_content_config returns the YAML unparsed", async () => {
+    const tools = toolsOver(
+      makeClient({ [`GET /config/${TEST_ORG}/sites/${EU}/content/query.yaml`]: { status: 200, headers: { "content-type": "text/yaml" }, body: "version: 1\n" } }),
+    );
+    expect(await call(tools, "eds_get_content_config", { site: EU, file: "query.yaml" })).toEqual({ site: EU, file: "query.yaml", exists: true, content: "version: 1\n" });
+  });
+
+  it("eds_get_content_config reports a site without the document as absent, not as an error", async () => {
+    const tools = toolsOver(makeClient({ [`GET /config/${TEST_ORG}/sites/${EU}/content/sitemap.yaml`]: { status: 404 } }));
+    expect(await call(tools, "eds_get_content_config", { site: EU, file: "sitemap.yaml" })).toEqual({ site: EU, file: "sitemap.yaml", exists: false, content: null });
   });
 
   it("eds_get_code_status resolves the repository from the site, and takes no owner/repo", async () => {

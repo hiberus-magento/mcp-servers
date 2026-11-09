@@ -17,6 +17,10 @@ const EU_DOC = `/config/${TEST_ORG}/sites/${EU}.json`;
 const US_DOC = `/config/${TEST_ORG}/sites/${US}.json`;
 const EU_VERSIONS = `/config/${TEST_ORG}/sites/${EU}/versions.json`;
 const EU_ROBOTS = `/config/${TEST_ORG}/sites/${EU}/robots.txt`;
+const EU_QUERY = `/config/${TEST_ORG}/sites/${EU}/content/query.yaml`;
+const EU_SITEMAP = `/config/${TEST_ORG}/sites/${EU}/content/sitemap.yaml`;
+const QUERY_NOW = "version: 1\nindices:\n  old:\n    target: /old.json\n";
+const QUERY_NEW = "version: 1\nindices:\n  demo:\n    target: /demo.json\n";
 
 const SITE_DOC = {
   version: 1,
@@ -36,6 +40,8 @@ function baseRoutes(doc: unknown = SITE_DOC): Record<string, unknown> {
     [`GET ${EU_VERSIONS}`]: { status: 200, body: { current: 7, versions: [{ version: 7, created: "2026-10-01T00:00:00Z" }] } },
     [`GET ${EU_ROBOTS}`]: { status: 200, headers: { "content-type": "text/plain" }, body: "User-agent: *\nAllow: /" },
     [`GET ${US_DOC}`]: { status: 404 },
+    [`GET ${EU_QUERY}`]: { status: 200, headers: { "content-type": "text/yaml" }, body: QUERY_NOW },
+    [`GET ${EU_SITEMAP}`]: { status: 404 },
   };
 }
 
@@ -75,6 +81,7 @@ const EVERY_KIND: readonly EdsPlanInput[] = [
   { site: EU, operation: { kind: "site.delete" } },
   { site: EU, operation: { kind: "version.restore", versionId: "3" } },
   { site: EU, operation: { kind: "robots.set", content: "User-agent: *\nDisallow: /" } },
+  { site: EU, operation: { kind: "content-config.set", file: "query.yaml", content: QUERY_NEW } },
   { site: EU, operation: { kind: "preview.update", paths: ["/a", "/b"] } },
   { site: EU, operation: { kind: "preview.delete", paths: ["/a"] } },
   { site: EU, operation: { kind: "live.publish", paths: ["/a", "/b"] } },
@@ -95,8 +102,8 @@ const EVERY_KIND: readonly EdsPlanInput[] = [
 ];
 
 describe("buildPlan — recorded requests per kind (4.1)", () => {
-  it("covers all 22 kinds", () => {
-    expect(new Set(EVERY_KIND.map((input) => input.operation.kind)).size).toBe(22);
+  it("covers all 23 kinds", () => {
+    expect(new Set(EVERY_KIND.map((input) => input.operation.kind)).size).toBe(23);
   });
 
   it("config.patch records a POST of the full merged document", async () => {
@@ -128,6 +135,18 @@ describe("buildPlan — recorded requests per kind (4.1)", () => {
   it("robots.set records a text POST", async () => {
     expect(await recorded({ site: EU, operation: { kind: "robots.set", content: "User-agent: *\nDisallow: /" } })).toEqual([
       { method: "POST", path: EU_ROBOTS, text: "User-agent: *\nDisallow: /" },
+    ]);
+  });
+
+  it("content-config.set records a text/yaml POST when the site has the document", async () => {
+    expect(await recorded({ site: EU, operation: { kind: "content-config.set", file: "query.yaml", content: QUERY_NEW } })).toEqual([
+      { method: "POST", path: EU_QUERY, text: QUERY_NEW, textType: "text/yaml" },
+    ]);
+  });
+
+  it("content-config.set records a PUT (create) when the site has none", async () => {
+    expect(await recorded({ site: EU, operation: { kind: "content-config.set", file: "sitemap.yaml", content: "sitemaps: {}\n" } })).toEqual([
+      { method: "PUT", path: EU_SITEMAP, text: "sitemaps: {}\n", textType: "text/yaml" },
     ]);
   });
 
@@ -256,6 +275,11 @@ describe("buildPlan — config plans (4.3)", () => {
     expect(result).not.toHaveProperty("token");
   });
 
+  it("content-config.set with the current content is no-changes", async () => {
+    const result = await harness().plan({ site: EU, operation: { kind: "content-config.set", file: "query.yaml", content: QUERY_NOW } });
+    expect(result.status).toBe("no-changes");
+  });
+
   it("robots.set with the current content is no-changes", async () => {
     const result = await harness().plan({ site: EU, operation: { kind: "robots.set", content: "User-agent: *\nAllow: /" } });
     expect(result.status).toBe("no-changes");
@@ -265,6 +289,8 @@ describe("buildPlan — config plans (4.3)", () => {
     [{ kind: "site.delete" }, "site-document"],
     [{ kind: "version.restore", versionId: "3" }, "site-document"],
     [{ kind: "robots.set", content: "x" }, "robots"],
+    [{ kind: "content-config.set", file: "query.yaml", content: "x" }, "content-config"],
+    [{ kind: "content-config.set", file: "sitemap.yaml", content: "x" }, "content-config"],
   ] as const)("%j is fingerprinted by %s", async (operation, read) => {
     const h = harness();
     const stored = h.stored(await h.plan({ site: EU, operation } as EdsPlanInput));
@@ -318,6 +344,22 @@ describe("buildPlan — every planned result is complete (4.4)", () => {
 
     expect(message).toMatch(/\/b\/c: 2 → 3/);
     expect(message).toMatch(/\/d: \(absent\) → true/);
+  });
+
+  it("content-config.set shows the current and the new YAML, and says it needs a reindex", async () => {
+    const result = await harness().plan({ site: EU, operation: { kind: "content-config.set", file: "query.yaml", content: QUERY_NEW } });
+    const message = result.status === "planned" ? result.confirmationMessage : "";
+
+    expect(message).toContain("/old.json");
+    expect(message).toContain("/demo.json");
+    expect(result.status === "planned" && result.warnings.some((w) => /reindex/i.test(w))).toBe(true);
+  });
+
+  it("content-config.set on a site without the document says so", async () => {
+    const result = await harness().plan({ site: EU, operation: { kind: "content-config.set", file: "sitemap.yaml", content: "sitemaps: {}\n" } });
+    const message = result.status === "planned" ? result.confirmationMessage : "";
+
+    expect(message).toMatch(/sitemap\.yaml now:\s+\(none\)/);
   });
 
   it("robots.set shows the current and the new content", async () => {

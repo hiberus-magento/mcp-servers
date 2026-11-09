@@ -9,12 +9,19 @@
 // It refuses, before any request: a method that is not a write, a path that
 // is not an Admin API path on the configured host (a full URL or `//host`
 // would carry `X-Auth-Token` elsewhere), and a request with two bodies.
-import type { HttpClient } from "./http.js";
+import type { HttpClient, TextType } from "./http.js";
 import { toWriteResult, type WriteResult } from "./operations/write-result.js";
 
 export type PlannedRequest =
   | { readonly method: "POST" | "PUT" | "DELETE"; readonly path: string; readonly body?: unknown; readonly text?: undefined }
-  | { readonly method: "POST" | "PUT" | "DELETE"; readonly path: string; readonly text: string; readonly body?: undefined };
+  | {
+      readonly method: "POST" | "PUT" | "DELETE";
+      readonly path: string;
+      readonly text: string;
+      /** Omitted for `text/plain`. */
+      readonly textType?: TextType;
+      readonly body?: undefined;
+    };
 
 const WRITE_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "DELETE"]);
 
@@ -45,6 +52,7 @@ export async function sendPlannedRequest(http: HttpClient, request: PlannedReque
     path,
     ...(request.body !== undefined ? { body: request.body } : {}),
     ...(request.text !== undefined ? { text: request.text } : {}),
+    ...(request.text !== undefined && request.textType !== undefined ? { textType: request.textType } : {}),
     label: "the planned request",
   });
   return toWriteResult(written);

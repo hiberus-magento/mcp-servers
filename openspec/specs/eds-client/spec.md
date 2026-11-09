@@ -235,6 +235,18 @@ The client MUST read `GET /config/{org}/sites/{site}/robots.txt` as text and wri
 - WHEN the client writes it for `acme-demo-site-eu`
 - THEN the request is a `POST` with `content-type: text/plain` and exactly that body
 
+### Requirement: Content Configuration Read and Write
+
+The client MUST read `GET /config/{org}/sites/{site}/content/{file}` (`file`: `query.yaml` or
+`sitemap.yaml`) as text and return `null` for a 404. It MUST write it as `text/yaml`, with `PUT`
+when the site has no such document and `POST` when it has one.
+
+#### Scenario: A site without an index definition
+
+- GIVEN `acme-demo-site-eu` answers 404 for `content/query.yaml`
+- WHEN the client reads it
+- THEN the result is `null`, not an error
+
 ### Requirement: Single-Path and Bulk Preview, Live and Index Operations
 
 For preview, live and index the client MUST provide single-path operations
