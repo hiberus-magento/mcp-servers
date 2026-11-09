@@ -11,4 +11,5 @@
 
 - [x] 3.1 README, `servers.json`, `eds-client` and `eds-mcp` specs
 - [x] 3.2 The 8 verification commands pass
-- [ ] 3.3 Live: plan and apply `content-config.set` for both files on a real site, read them back with `eds_get_content_config`, and record the result
+- [x] 3.3 Live: plan and apply `content-config.set` for both files on a real site, read them back with `eds_get_content_config`, and record the result
+  - 2026-11-09: applied on 17 sites of a real org (both files created with `PUT`, `text/yaml`), read back identical with `eds_get_content_config` and the Admin API; the plan showed `(none)` → new YAML; the index built after `index.full-site`.

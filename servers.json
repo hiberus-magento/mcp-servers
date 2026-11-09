@@ -111,7 +111,7 @@
           "name": "eds_apply",
           "readOnly": false,
           "description": "Use this only after the user explicitly confirms a plan from eds_plan. Takes the plan's token with its site and kind repeated (they must match) and issues exactly the planned requests. Destructive.",
-          "unverified": "Run against a live Edge Delivery Services site for site.create, site.delete, config.patch, version.restore and robots.set, and (as the former eds_manage_snapshot) snapshot.add and snapshot.delete. Every other kind, including preview, publish, unpublish, index, cache, sitemap, code and job.stop, is built from the Admin API contract and covered by unit tests only."
+          "unverified": "Run against a live Edge Delivery Services site for site.create, site.delete, config.patch, version.restore, robots.set and content-config.set, and (as the former eds_manage_snapshot) snapshot.add and snapshot.delete. Every other kind, including preview, publish, unpublish, index, cache, sitemap, code and job.stop, is built from the Admin API contract and covered by unit tests only."
         }
       ]
     },

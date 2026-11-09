@@ -52,7 +52,7 @@ npx -y --package @hiberus-magento/eds hiberus-eds-mcp           # the server
 - `eds_list_jobs` (read-only) — Use this to list a site's jobs for one topic.
 - `eds_list_api_keys` (read-only) — Use this to see the org's Admin API keys — metadata only. Creating and deleting keys is CLI-only.
 - `eds_plan` (read-only) — Use this for any change to an EDS site. Changes nothing: returns exactly what would happen, a confirmation message for the user and a one-time token.
-- `eds_apply` — Use this only after the user explicitly confirms a plan from eds_plan. Takes the plan's token with its site and kind repeated (they must match) and issues exactly the planned requests. Destructive. **Not verified against a live service** — Run against a live Edge Delivery Services site for site.create, site.delete, config.patch, version.restore and robots.set, and (as the former eds_manage_snapshot) snapshot.add and snapshot.delete. Every other kind, including preview, publish, unpublish, index, cache, sitemap, code and job.stop, is built from the Admin API contract and covered by unit tests only.
+- `eds_apply` — Use this only after the user explicitly confirms a plan from eds_plan. Takes the plan's token with its site and kind repeated (they must match) and issues exactly the planned requests. Destructive. **Not verified against a live service** — Run against a live Edge Delivery Services site for site.create, site.delete, config.patch, version.restore, robots.set and content-config.set, and (as the former eds_manage_snapshot) snapshot.add and snapshot.delete. Every other kind, including preview, publish, unpublish, index, cache, sitemap, code and job.stop, is built from the Admin API contract and covered by unit tests only.
 
 ## Environment
 
