@@ -41,6 +41,15 @@ describe("generated operations", () => {
     expect(h.double.calls).toHaveLength(0);
   });
 
+  it("requires `input` only when the input type has a required field", async () => {
+    const h = buildToolHarness((f) => GENERATED_GROUP_NAMES.flatMap((g) => generatedTools(g)(f)), data({ createGuestCart: { cart: { id: CART } } }));
+    // createGuestCart's input has only optional fields, so an empty call is a real call...
+    expect(await h.call("magentographql_create_guest_cart", {})).toEqual({ cart: { id: CART } });
+    expect(h.lastVariables()).toEqual({});
+    // ...while setGuestEmailOnCart's input has required fields, so an empty call is not.
+    await expect(h.call("magentographql_set_guest_email_on_cart", {})).rejects.toThrow();
+  });
+
   it("reads are read-only queries and mutations are not", () => {
     for (const t of all().tools) expect(t.annotations.readOnlyHint, t.name).toBe(t.access === "read");
     expect(GENERATED_OPERATIONS.filter((o) => o.kind === "query").every((o) => o.effect === "read")).toBe(true);

@@ -94,9 +94,11 @@ catalog, or one not assigned to the website of the store view you asked for is s
 
 ## 6. What has been run against a real Magento
 
-20 of the 216 tools have been, anonymously, against a local Magento with test data (the curated reads of products,
+32 of the 216 tools have been, anonymously, against a local Magento with test data (the curated reads of products,
 categories, CMS and the store, the generic query and schema tools, and seven generated reads: checkout agreements, route,
-attributes list, reCAPTCHA v3 config, gift registry types, e-mail availability and customer group). The other 196 are *not verified*: the customer
+attributes list, reCAPTCHA v3 config, gift registry types, e-mail availability and customer group; and, with the write
+switch on, a guest cart end to end: create, add, update, remove, clear, guest e-mail, shipping address, billing address,
+shipping method, estimates). The other 184 are *not verified*: the customer
 tools, `get_cms_blocks`, `get_cart` and every mutation, plus the rest of those generated from the schema. What was checked for
 all of them is that their document is **valid against that store's schema** (each was sent with a deliberately invalid
 extra field, so nothing executed, and no other error was reported). Each tool carries "Not verified against a live service" until it has been run against

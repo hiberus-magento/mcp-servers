@@ -1133,26 +1133,22 @@
         {
           "name": "magentographql_get_cart",
           "readOnly": true,
-          "description": "Use this to read a cart by its masked id: items with quantities and prices, totals, discounts and applied coupons.",
-          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+          "description": "Use this to read a cart by its masked id: items with quantities and prices, totals, discounts and applied coupons."
         },
         {
           "name": "magentographql_add_products_to_cart",
           "readOnly": false,
-          "description": "Use this to add products to a cart by SKU and quantity. Not idempotent: running it twice adds the quantity twice, and it is never retried. Returns the cart and any user_errors (for example insufficient stock).",
-          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+          "description": "Use this to add products to a cart by SKU and quantity. Not idempotent: running it twice adds the quantity twice, and it is never retried. Returns the cart and any user_errors (for example insufficient stock)."
         },
         {
           "name": "magentographql_update_cart_items",
           "readOnly": false,
-          "description": "Use this to set the quantity of items already in a cart, by cart item uid (from magentographql_get_cart). A quantity of 0 removes the item. Returns the cart.",
-          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+          "description": "Use this to set the quantity of items already in a cart, by cart item uid (from magentographql_get_cart). A quantity of 0 removes the item. Returns the cart."
         },
         {
           "name": "magentographql_remove_cart_item",
           "readOnly": false,
-          "description": "Use this to remove one item from a cart, by cart item uid (from magentographql_get_cart). Returns the cart.",
-          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+          "description": "Use this to remove one item from a cart, by cart item uid (from magentographql_get_cart). Returns the cart."
         },
         {
           "name": "magentographql_apply_coupon",
@@ -1217,8 +1213,7 @@
         {
           "name": "magentographql_clear_cart",
           "readOnly": false,
-          "description": "Use this to remove all items from the specified cart.",
-          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+          "description": "Use this to remove all items from the specified cart."
         },
         {
           "name": "magentographql_clear_customer_cart",
@@ -1229,8 +1224,7 @@
         {
           "name": "magentographql_create_guest_cart",
           "readOnly": false,
-          "description": "Use this to create a new shopping cart.",
-          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+          "description": "Use this to create a new shopping cart."
         },
         {
           "name": "magentographql_merge_carts",
@@ -1270,14 +1264,12 @@
         {
           "name": "magentographql_estimate_shipping_methods",
           "readOnly": false,
-          "description": "Use this to estimate shipping method(s) for cart based on address.",
-          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+          "description": "Use this to estimate shipping method(s) for cart based on address."
         },
         {
           "name": "magentographql_estimate_totals",
           "readOnly": false,
-          "description": "Use this to estimate totals for cart based on the address.",
-          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+          "description": "Use this to estimate totals for cart based on the address."
         },
         {
           "name": "magentographql_place_order",
@@ -1288,14 +1280,12 @@
         {
           "name": "magentographql_set_billing_address_on_cart",
           "readOnly": false,
-          "description": "Use this to set the billing address on a specific cart.",
-          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+          "description": "Use this to set the billing address on a specific cart."
         },
         {
           "name": "magentographql_set_guest_email_on_cart",
           "readOnly": false,
-          "description": "Use this to assign the email address of a guest to the cart.",
-          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+          "description": "Use this to assign the email address of a guest to the cart."
         },
         {
           "name": "magentographql_set_payment_method_on_cart",
@@ -1306,14 +1296,12 @@
         {
           "name": "magentographql_set_shipping_addresses_on_cart",
           "readOnly": false,
-          "description": "Use this to set one or more shipping addresses on a specific cart.",
-          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+          "description": "Use this to set one or more shipping addresses on a specific cart."
         },
         {
           "name": "magentographql_set_shipping_methods_on_cart",
           "readOnly": false,
-          "description": "Use this to set one or more delivery methods on a cart.",
-          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+          "description": "Use this to set one or more delivery methods on a cart."
         },
         {
           "name": "magentographql_get_guest_order",

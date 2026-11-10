@@ -1073,7 +1073,7 @@ export const GENERATED_OPERATIONS: readonly GeneratedOperation[] = [
     effect: "create",
     description: "Use this to create a new compare list. The compare list is saved for logged in customers.",
     document: "mutation CreateCompareList($input: CreateCompareListInput) { createCompareList(input: $input) { item_count uid attributes { code label } items { uid attributes { code value } product { uid sku name url_key stock_status } } } }",
-    input: () => z.object({ input: I_CreateCompareListInput }).strict(),
+    input: () => z.object({ input: I_CreateCompareListInput.optional() }).strict(),
   },
   {
     name: "magentographql_create_customer_address",
@@ -1113,7 +1113,7 @@ export const GENERATED_OPERATIONS: readonly GeneratedOperation[] = [
     effect: "create",
     description: "Use this to create a new shopping cart.",
     document: "mutation CreateGuestCart($input: CreateGuestCartInput) { createGuestCart(input: $input) { cart { id total_quantity is_virtual itemsV2 { total_count items { uid quantity product { sku name stock_status } prices { price { value currency } row_total { value currency } } } } prices { grand_total { value currency } subtotal_excluding_tax { value currency } discounts { label amount { value currency } } } applied_coupons { code } email shipping_addresses { firstname lastname street city region { code label } postcode country { code label } selected_shipping_method { carrier_code method_code carrier_title method_title amount { value currency } } available_shipping_methods { carrier_code method_code carrier_title method_title amount { value currency } available } } billing_address { firstname lastname street city region { code label } postcode country { code label } } selected_payment_method { code title } available_payment_methods { code title } } } }",
-    input: () => z.object({ input: I_CreateGuestCartInput }).strict(),
+    input: () => z.object({ input: I_CreateGuestCartInput.optional() }).strict(),
   },
   {
     name: "magentographql_create_payflow_pro_token",
@@ -2023,7 +2023,7 @@ export const GENERATED_OPERATIONS: readonly GeneratedOperation[] = [
     effect: "update",
     description: "Use this to update the billing or shipping address of a customer or guest. Needs a customer token.",
     document: "mutation UpdateCustomerAddressV2($uid: ID!, $input: CustomerAddressInput) { updateCustomerAddressV2(uid: $uid, input: $input) { city company country_code default_billing default_shipping fax firstname lastname middlename postcode prefix region_id street suffix telephone uid vat_id custom_attributesV2 { __typename code } extension_attributes { attribute_code value } region { region region_code region_id } } }",
-    input: () => z.object({ uid: z.string().describe("The unique ID of the customer address."), input: I_CustomerAddressInput.describe("An input object that contains changes to the customer address.") }).strict(),
+    input: () => z.object({ uid: z.string().describe("The unique ID of the customer address."), input: I_CustomerAddressInput.optional().describe("An input object that contains changes to the customer address.") }).strict(),
   },
   {
     name: "magentographql_update_customer_email",

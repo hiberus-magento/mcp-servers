@@ -107,3 +107,9 @@ package 216 tools (23 hand-written). Every document was walked type by type agai
 fields: none selects a deprecated field. The same run showed that `categories` ignores a filter it cannot decode and answers with
 another category, so `get_category` and `get_category_tree` trust an answer only when it is the one asked for. Tools removed
 (`resolve_url`, `create_empty_cart`) were never published.
+
+**D13 — The write path, run for real (2026-11-10).** With the write switch on, against the same test store, a guest cart went through
+create, add, update, remove, clear, guest e-mail, shipping address, billing address, shipping method and the two estimates, reading the
+cart back after each change; 12 more tools are marked verified (32 of 216). One generator rule changed because of it: `input` is
+required in a tool's schema only when its input type has a required field (`create_guest_cart` has none, so `{}` is a real call).
+`place_order` was deliberately not run. A guest cart is left behind in the store for each run (empty, not purged by these tools).

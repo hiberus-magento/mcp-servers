@@ -243,8 +243,10 @@ for (const [kind, rootName] of [["query", "Query"], ["mutation", "Mutation"]]) {
       if (document.length <= MAX_DOCUMENT) break;
     }
     if (document.length > MAX_DOCUMENT) throw new Error(`${op.name}: document is ${document.length} characters even at depth 1`);
-    // Magento declares `input` nullable on many mutations, but a call without it never means anything: the tool requires it.
-    const requiredForTool = (a) => isRequiredArg(a) || (a.name === "input" && types.get(base(a.type).name)?.kind === "INPUT_OBJECT");
+    // Magento declares `input` nullable on many mutations, but a call without it means nothing when the input has required fields: the tool requires it.
+    // ...unless every field of that input is optional (createGuestCart), where an empty call is meaningful.
+    const hasRequiredField = (a) => (types.get(base(a.type).name)?.inputFields ?? []).some((f) => f.type.kind === "NON_NULL" && (f.defaultValue === null || f.defaultValue === undefined));
+    const requiredForTool = (a) => isRequiredArg(a) || (a.name === "input" && types.get(base(a.type).name)?.kind === "INPUT_OBJECT" && hasRequiredField(a));
     const fields = (op.args ?? []).map((a) => fieldSource(a.name, a.type, requiredForTool(a), a.description));
     operations.push({
       name: `magentographql_${kind === "query" && !/^(get|is)_/.test(snake(op.name)) ? "get_" : ""}${snake(op.name)}`,
