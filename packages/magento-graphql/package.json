@@ -1,0 +1,60 @@
+{
+  "name": "@hiberus-magento/magento-graphql",
+  "version": "0.0.0",
+  "description": "MCP server and CLI for the Magento 2 GraphQL API — storefront catalog, content and store reads, customer reads with an optional token, and opt-in cart mutations.",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "magento",
+    "magento2",
+    "adobe-commerce",
+    "graphql",
+    "ecommerce"
+  ],
+  "homepage": "https://github.com/hiberus-magento/mcp-servers/tree/main/packages/magento-graphql#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hiberus-magento/mcp-servers.git",
+    "directory": "packages/magento-graphql"
+  },
+  "bugs": {
+    "url": "https://github.com/hiberus-magento/mcp-servers/issues"
+  },
+  "author": "Hiberus",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "bin": {
+    "hiberus-magento-graphql": "dist/cli.js",
+    "hiberus-magento-graphql-mcp": "dist/mcp.js"
+  },
+  "files": [
+    "dist",
+    "!dist/metafile-*.json",
+    "LICENSE",
+    "README.md",
+    "THIRD-PARTY-NOTICES.txt"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "verify:package": "node ../../scripts/verify-bundle.mjs",
+    "prepack": "node -e \"require('node:fs').copyFileSync('../../LICENSE','./LICENSE')\""
+  },
+  "devDependencies": {
+    "@hiberus-magento/mcp-core": "workspace:*",
+    "@hiberus-magento/mcp-testing": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "tsup": "^8.5.1",
+    "zod": "^4.5.4"
+  }
+}

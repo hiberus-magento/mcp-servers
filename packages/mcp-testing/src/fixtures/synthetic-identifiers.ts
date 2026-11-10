@@ -61,4 +61,8 @@ export const SYNTHETIC_MAGENTO_ORDER_INCREMENT_ID = "DEMO000000001" as const;
 // that can never route to a real mailbox.
 export const SYNTHETIC_MAGENTO_CUSTOMER_EMAIL = "shopper@demo-host.example" as const;
 
+// magento-graphql-package additions. Same rules as above: short token, intent carried by the name.
+export const SYNTHETIC_MAGENTO_GRAPHQL_URL = `https://demo-host.${SYNTHETIC_DOMAIN}/graphql` as const;
+export const SYNTHETIC_MAGENTO_CUSTOMER_TOKEN = "mg-demo-token" as const;
+
 export type SyntheticMagentoSku = (typeof SYNTHETIC_MAGENTO_SKUS)[number];

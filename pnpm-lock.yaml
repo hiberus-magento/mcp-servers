@@ -123,6 +123,24 @@ importers:
         specifier: ^4.5.4
         version: 4.5.4
 
+  packages/magento-graphql:
+    devDependencies:
+      '@hiberus-magento/mcp-core':
+        specifier: workspace:*
+        version: link:../mcp-core
+      '@hiberus-magento/mcp-testing':
+        specifier: workspace:*
+        version: link:../mcp-testing
+      '@modelcontextprotocol/sdk':
+        specifier: 1.30.0
+        version: 1.30.0(zod@4.5.4)
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
+
   packages/magento-rest:
     devDependencies:
       '@hiberus-magento/mcp-core':

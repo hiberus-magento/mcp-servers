@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "magento-graphql": {
+      "command": "npx",
+      "args": ["-y", "--package", "@hiberus-magento/magento-graphql@<version>", "hiberus-magento-graphql-mcp"],
+      "env": {
+        "MAGENTO_GRAPHQL_BASE_URL": "https://magento.example/graphql",
+        "MAGENTO_GRAPHQL_TOKEN": "",
+        "MAGENTO_GRAPHQL_STORE": "",
+        "MAGENTO_GRAPHQL_ALLOW_WRITES": "false",
+        "MAGENTO_GRAPHQL_GROUPS": ""
+      }
+    }
+  }
+}

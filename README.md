@@ -37,6 +37,7 @@ nothing is resolved from the registry at run time.
 | [`@hiberus-magento/aco`](https://npmjs.com/package/@hiberus-magento/aco) | Adobe Commerce Optimizer (ACO) admin and Merchandising API client — CLI and MCP server. | `0.1.1` · alpha | [README](./packages/aco/README.md) · [setup](./docs/aco-onboarding.md) |
 | [`@hiberus-magento/magento-cloud`](https://npmjs.com/package/@hiberus-magento/magento-cloud) | Magento Cloud CLI wrapper — CLI and MCP server for read-only Magento Cloud project, environment, and database operations. | `0.1.1` · alpha | [README](./packages/magento-cloud/README.md) · [setup](./docs/magento-cloud-onboarding.md) |
 | [`@hiberus-magento/magento-rest`](https://npmjs.com/package/@hiberus-magento/magento-rest) | Magento 2 REST API client — CLI and MCP server for catalog, orders, customers, stock and content, with opt-in write tools. | `0.0.0` · alpha | [README](./packages/magento-rest/README.md) · [setup](./docs/magento-rest-onboarding.md) |
+| [`@hiberus-magento/magento-graphql`](https://npmjs.com/package/@hiberus-magento/magento-graphql) | Magento 2 GraphQL API client — CLI and MCP server covering every core Query and Mutation of the storefront schema (catalog, content, cart, checkout, account, wish lists, returns, payments, B2B), with mutations off unless enabled. | `0.0.0` · alpha | [README](./packages/magento-graphql/README.md) · [setup](./docs/magento-graphql-onboarding.md) |
 
 ## Quickstart
 
