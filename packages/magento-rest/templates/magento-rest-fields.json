@@ -1,0 +1,7 @@
+{
+  "product": {
+    "add": ["cost", "extension_attributes.stock_item.qty"],
+    "remove": ["weight", "attribute_set_id"]
+  },
+  "website": { "add": ["sort_order"] }
+}
