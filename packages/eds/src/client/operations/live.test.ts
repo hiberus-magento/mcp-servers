@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { createFetchDouble } from "../../testing/fetch-double.js";
 import { AdminApiAuthError, AdminApiStatusError } from "../errors.js";
 import { createHttpClient } from "../http.js";
-import { setLiveState } from "./live.js";
+import { publishPath, setLiveState, unpublishPath } from "./live.js";
 
 function makeHttp(routes: Record<string, unknown>) {
   const { fetch, calls } = createFetchDouble(routes as never);
@@ -46,7 +46,24 @@ describe("setLiveState", () => {
     });
 
     expect(result.ignoredPaths).toContain("/.helix/config");
-    expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ paths: ["/index.html", "/.helix/config"], state: "published" });
+    // CHANGED DELIBERATELY (eds-write-surface tasks.md 2.7b): this asserted
+    // `{ paths, state: "published" }`. The contract's bulk body is
+    // `{ paths, delete?, forceUpdate?, forceAsync? }` — there is no `state`
+    // field, so "unpublished" was never sent as anything the API reads.
+    expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ paths: ["/index.html", "/.helix/config"] });
+  });
+
+  // RED-first (tasks.md 2.7b): the defect itself. An unpublish must say
+  // `delete: true` in the body, or the API sees a plain bulk publish.
+  it("sends delete: true for an unpublish, and never a state field", async () => {
+    const path = "/live/acme-demo-org/acme-demo-site-eu/main/*";
+    const { http, calls } = makeHttp({
+      [`POST ${path}`]: { status: 202, body: { job: { name: "job-2", topic: "live", state: "created" }, links: { self: "https://admin.hlx.page/job/2" } } },
+    });
+
+    await setLiveState(http, { org: "acme-demo-org", site: "acme-demo-site-eu", paths: ["/a", "/b"], state: "unpublished" });
+
+    expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ paths: ["/a", "/b"], delete: true });
   });
 
   // RED-first: observed live, publishing a path with nothing in preview
@@ -90,5 +107,29 @@ describe("setLiveState", () => {
 
     expect(error).toBeInstanceOf(AdminApiAuthError);
     expect((error as AdminApiAuthError).message).toContain("EDS_TOKEN");
+  });
+});
+
+// RED-first (eds-write-surface tasks.md 2.7): single-path publish and
+// unpublish beside the bulk job (eds-client spec, "Single-Path and Bulk
+// Preview, Live and Index Operations").
+describe("publishPath / unpublishPath", () => {
+  it("POSTs one path under /live/ with no body", async () => {
+    const { http, calls } = makeHttp({ "POST /live/acme-demo-org/acme-demo-site-eu/main/products/demo": { status: 200, body: { live: { status: 200 } } } });
+
+    const result = await publishPath(http, { org: "acme-demo-org", site: "acme-demo-site-eu", path: "/products/demo" });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.body).toBeUndefined();
+    expect(result).toEqual({ hasResponse: true, response: { live: { status: 200 } } });
+  });
+
+  it("DELETEs one path under /live/ on the requested ref", async () => {
+    const { http, calls } = makeHttp({ "DELETE /live/acme-demo-org/acme-demo-site-eu/feature/products/demo": { status: 204 } });
+
+    await expect(unpublishPath(http, { org: "acme-demo-org", site: "acme-demo-site-eu", ref: "feature", path: "/products/demo" })).resolves.toEqual({
+      hasResponse: false,
+    });
+    expect(calls.map((call) => call.method)).toEqual(["DELETE"]);
   });
 });

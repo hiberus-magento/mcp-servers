@@ -32,11 +32,22 @@ export interface EdsClientDeps {
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 
+/** The text content types the Admin API takes. */
+export type TextType = "text/plain" | "text/yaml";
+
 export interface SendOptions {
   readonly method: HttpMethod;
   readonly path: string;
   /** JSON-serializable value. When present, sent as the JSON body with a `content-type` header. */
   readonly body?: unknown;
+  /**
+   * A text body, sent byte for byte with `content-type: text/plain`, or
+   * `textType` when given. `robots.txt` and the content configuration
+   * (`query.yaml`, `sitemap.yaml`) take one. Never combined with `body`.
+   */
+  readonly text?: string;
+  /** The content type of `text`. Defaults to `text/plain`. */
+  readonly textType?: TextType;
   readonly headers?: Readonly<Record<string, string>>;
   /** What this request is for, e.g. `"the CDN config"` — named in the failure message so a caller that issues several requests says which one failed. */
   readonly label?: string;
@@ -85,6 +96,8 @@ export interface HttpClient {
    * unparseable is still an error: this tolerates absence, not nonsense.
    */
   readOptionalJson<T = unknown>(options: SendOptions): Promise<OptionalJsonBody<T>>;
+  /** `send`, then the body as text, unparsed — `""` for an empty body, which is a valid document here. */
+  readText(options: SendOptions): Promise<string>;
 }
 
 const GATEWAY_STATUSES = new Set([502, 504]);
@@ -201,9 +214,15 @@ export function createHttpClient(deps: EdsClientDeps): HttpClient {
     headers.set("X-Auth-Token", credential.value);
 
     const init: RequestInit = { method: options.method, headers };
+    if (options.body !== undefined && options.text !== undefined) {
+      throw new Error(`Internal error: ${options.method} ${options.path} was given both a JSON body and a text body.`);
+    }
     if (options.body !== undefined) {
       init.body = JSON.stringify(options.body);
       headers.set("content-type", "application/json");
+    } else if (options.text !== undefined) {
+      init.body = options.text;
+      headers.set("content-type", options.textType ?? "text/plain");
     }
 
     let response: Response;
@@ -251,5 +270,6 @@ export function createHttpClient(deps: EdsClientDeps): HttpClient {
     send,
     readJson: async <T = unknown>(options: SendOptions): Promise<T> => readJsonBody<T>(await send(options), options),
     readOptionalJson: async <T = unknown>(options: SendOptions): Promise<OptionalJsonBody<T>> => readOptionalJsonBody<T>(await send(options), options),
+    readText: async (options: SendOptions): Promise<string> => readBodyText(await send(options)),
   };
 }

@@ -1,13 +1,17 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
-// Reindex operation (design.md, Decision 7). Both branches of the
-// discriminated request ALWAYS send an explicit JSON body — never a
-// bodyless POST, which the old Python CLI's own behavior suggests would be
-// silently interpreted as "index everything" (the same inferred-only
-// pattern as the snapshot-POST hazard).
+// Index operations (design.md, Decision 7; eds-write-surface design.md D1).
+// The contract documents a bulk index `POST` with no body as "re-index
+// every published resource", and its body schema has only `paths`. So the
+// full-site branch sends exactly that bodyless POST — reachable only
+// through the `confirmFullReindex: true` literal — and the paths branch
+// sends exactly `{ paths }`. (The `{ scope }` bodies this module used to
+// send were never in the contract.) Removal has no bulk form: one path at
+// a time.
 import type { HttpClient } from "../http.js";
 import { sitePath } from "../paths.js";
 import type { JobRef } from "./live.js";
+import { writeContentPath, type ContentPathOptions, type WriteResult } from "./write-result.js";
 
 export type ReindexRequest =
   | { readonly scope: "paths"; readonly paths: readonly [string, ...string[]] }
@@ -25,17 +29,20 @@ export interface ReindexResult {
   readonly links: { readonly self: string };
 }
 
-function reindexBody(request: ReindexRequest): { scope: string; paths?: readonly string[] } {
-  if (request.scope === "full-site") {
-    return { scope: "full-site" };
-  }
-  return { scope: "paths", paths: request.paths };
-}
 
 export async function reindex(http: HttpClient, options: ReindexOptions): Promise<ReindexResult> {
   const ref = options.ref ?? "main";
   const path = sitePath({ resource: "index", org: options.org, site: options.site, ref, suffix: "*" });
   // Like `setLiveState`, the job envelope is the whole result: without it
   // there is nothing to poll, so an empty body is a failure.
-  return http.readJson<ReindexResult>({ method: "POST", path, body: reindexBody(options.request), label: "the reindex job" });
+  const body = options.request.scope === "full-site" ? {} : { body: { paths: options.request.paths } };
+  return http.readJson<ReindexResult>({ method: "POST", path, ...body, label: "the reindex job" });
+}
+
+export async function indexPath(http: HttpClient, options: ContentPathOptions): Promise<WriteResult> {
+  return writeContentPath(http, "index", "POST", options);
+}
+
+export async function unindexPath(http: HttpClient, options: ContentPathOptions): Promise<WriteResult> {
+  return writeContentPath(http, "index", "DELETE", options);
 }

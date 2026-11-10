@@ -158,7 +158,8 @@ export function readBulkStatusResults(job: unknown, requestedPaths: readonly str
     results.push(projected);
   }
   const present = new Set(results.map((resource) => resource.path));
-  return { results, missingPaths: requestedPaths.filter((path) => !present.has(path)) };
+  // A wildcard (`/folder/*`) asks for whatever exists below it: it is never itself "missing".
+  return { results, missingPaths: requestedPaths.filter((path) => !path.endsWith("/*") && !present.has(path)) };
 }
 
 function projectJobRef(job: unknown): JobRef {

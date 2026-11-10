@@ -6,6 +6,7 @@
 // read-only endpoints and never returns the token value in any shape.
 import type { HttpClient } from "./http.js";
 import { EdsError } from "./errors.js";
+import { toWriteResult, type WriteResult } from "./operations/write-result.js";
 
 /**
  * EDS API keys are managed at the ORG level: `GET /config/{org}/apiKeys.json`
@@ -101,6 +102,21 @@ export async function listApiKeys(http: HttpClient, options: ListApiKeysOptions)
     return [];
   }
   return Object.values(body).map(projectApiKeyRecord);
+}
+
+export interface DeleteApiKeyOptions {
+  readonly org: string;
+  readonly id: string;
+}
+
+/**
+ * Deletes one org-level key by id; the id is encoded so it can only ever
+ * name one document. CLI-only (eds-write-surface design.md D2): API keys are
+ * an org resource and do not fit `eds_plan`'s site-scoped input.
+ */
+export async function deleteApiKey(http: HttpClient, options: DeleteApiKeyOptions): Promise<WriteResult> {
+  const path = `/config/${options.org}/apiKeys/${encodeURIComponent(options.id)}.json`;
+  return toWriteResult(await http.readOptionalJson({ method: "DELETE", path, label: "the API key" }));
 }
 
 export interface AuthStatusOptions {

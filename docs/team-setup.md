@@ -6,7 +6,8 @@ actually needs, and how to tell a working setup from a broken one.
 
 The per-server onboarding docs — [eds](./eds-onboarding.md),
 [aco](./aco-onboarding.md), [magento-cloud](./magento-cloud-onboarding.md),
-[magento-rest](./magento-rest-onboarding.md) —
+[magento-rest](./magento-rest-onboarding.md),
+[aem-sites](./aem-sites-onboarding.md) —
 go deeper on each domain's own bootstrap. This page is the part that is the
 same for everyone, plus the part that is different between the three and that
 people get wrong.
@@ -175,6 +176,22 @@ Give the read-only configuration a read-only integration, and keep a separate
 integration for the one that sets the write switch. The full walk-through, with
 what each tool returns and what the failures mean, is
 [magento-rest-onboarding.md](./magento-rest-onboarding.md).
+
+### `aem-sites` — authors by environment, a token per environment, write roots
+
+- `AEM_AUTHORS` — **required.** `<env>=<author origin>` pairs
+  (`stage=https://author-p<program>-e<environment>.adobeaemcloud.com`). Unset,
+  `tools/list` works and every call names it; set but malformed, the server
+  refuses to start.
+- One token per environment: `AEM_TOKEN_<ENV>` or
+  `hiberus-aem-sites auth token set --env <env>`. It is the Developer Console
+  *local development token* and lasts 24 hours; it is re-read on every call, so
+  renewing it needs no restart.
+- `AEM_WRITE_ROOTS` — without it every `aem_plan` is rejected (reads still
+  work). Set it to the site trees an agent may change, never wider.
+- Configure your client to **always ask** before `aem_apply` — it is the only
+  tool of the server that writes. See
+  [aem-sites-onboarding.md](./aem-sites-onboarding.md#step-5--make-your-client-ask-before-every-apply).
 
 ---
 

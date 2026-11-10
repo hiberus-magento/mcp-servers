@@ -7,9 +7,9 @@
 // "Config Write Existence Check via GET-Before-Write").
 import { describe, expect, it } from "vitest";
 import { createFetchDouble } from "../../testing/fetch-double.js";
-import { AdminApiStatusError } from "../errors.js";
+import { AdminApiStatusError, SiteExistenceError } from "../errors.js";
 import { createHttpClient } from "../http.js";
-import { getSiteConfig, putSiteConfig } from "./site-config.js";
+import { createSite, deleteSite, getSiteConfig, listConfigVersions, listSites, restoreConfigVersion, updateSiteConfig } from "./site-config.js";
 
 function makeHttp(routes: Record<string, unknown>) {
   const { fetch, calls } = createFetchDouble(routes as never);
@@ -29,60 +29,157 @@ function makeHttp(routes: Record<string, unknown>) {
   return { http, calls };
 }
 
-describe("putSiteConfig", () => {
-  it("issues a GET before the PUT, branching on that result — never the PUT's status code", async () => {
-    const configPath = "/config/acme-demo-org/sites/acme-demo-site-eu.json";
+// RED-first (eds-write-surface tasks.md 2.1/2.2): `putSiteConfig` always sent
+// `PUT`, but the contract says `PUT` creates (409 if the site exists) and
+// `POST` updates. Creation and update are now two functions, each with its
+// own GET-before-write precondition, and neither falls through to the other.
+const SITE_PATH = "/config/acme-demo-org/sites/acme-demo-site-eu.json";
+const SITE = { org: "acme-demo-org", site: "acme-demo-site-eu" };
+
+describe("createSite", () => {
+  it("issues a GET answered 404, then a PUT with the config", async () => {
     const { http, calls } = makeHttp({
-      [`GET ${configPath}`]: { status: 200, body: { exists: true } },
-      [`PUT ${configPath}`]: { status: 200, body: { ok: true } },
+      [`GET ${SITE_PATH}`]: { status: 404 },
+      [`PUT ${SITE_PATH}`]: { status: 200, body: { ok: true } },
     });
 
-    await putSiteConfig(http, { org: "acme-demo-org", site: "acme-demo-site-eu" }, { content: { source: { type: "markup" } } });
+    const result = await createSite(http, SITE, { content: { source: { type: "markup" } } });
 
-    expect(calls).toHaveLength(2);
-    expect(calls[0]?.method).toBe("GET");
-    expect(calls[1]?.method).toBe("PUT");
+    expect(calls.map((call) => call.method)).toEqual(["GET", "PUT"]);
+    expect(JSON.parse(calls[1]?.body ?? "null")).toEqual({ content: { source: { type: "markup" } } });
+    expect(result).toEqual({ hasResponse: true, response: { ok: true } });
   });
 
-  it("never treats a caught 409 on the PUT as the existence check — the GET result alone decides", async () => {
-    const configPath = "/config/acme-demo-org/sites/acme-demo-site-eu.json";
+  it("fails naming the existing site, without issuing a PUT, when the GET answers 200", async () => {
     const { http, calls } = makeHttp({
-      [`GET ${configPath}`]: { status: 404, body: { exists: false } },
-      [`PUT ${configPath}`]: { status: 200, body: { ok: true } },
+      [`GET ${SITE_PATH}`]: { status: 200, body: { name: "acme-demo-site-eu" } },
+      [`PUT ${SITE_PATH}`]: { status: 200, body: { ok: true } },
     });
 
-    await putSiteConfig(http, { org: "acme-demo-org", site: "acme-demo-site-eu" }, { content: { source: { type: "markup" } } });
+    const error = await createSite(http, SITE, {}).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
 
-    // The GET happened first regardless of the PUT's eventual status — a
-    // 409-catching implementation would never issue the GET at all.
-    expect(calls[0]?.method).toBe("GET");
-    expect(calls[0]?.url).toContain(configPath);
-  });
-
-  // The existence GET is the one place in the client that *asks* for a
-  // non-ok status, so it must opt out explicitly rather than be rescued by
-  // the transport returning failures silently.
-  it("reads a 404 on the existence GET as 'did not exist', not as a transport failure", async () => {
-    const configPath = "/config/acme-demo-org/sites/acme-demo-site-eu.json";
-    const { http } = makeHttp({
-      [`GET ${configPath}`]: { status: 404 },
-      [`PUT ${configPath}`]: { status: 200, body: { ok: true } },
-    });
-
-    const result = await putSiteConfig(http, { org: "acme-demo-org", site: "acme-demo-site-eu" }, { content: { source: { type: "markup" } } });
-
-    expect(result.existed).toBe(false);
-    expect(result.response).toEqual({ ok: true });
+    expect(error).toBeInstanceOf(SiteExistenceError);
+    expect((error as SiteExistenceError).message).toContain("acme-demo-site-eu");
+    expect((error as SiteExistenceError).expected).toBe("absent");
+    expect(calls.map((call) => call.method)).toEqual(["GET"]);
   });
 
   it("fails with the status when the existence GET returns a status it never asked for", async () => {
-    const configPath = "/config/acme-demo-org/sites/acme-demo-site-eu.json";
-    const { http } = makeHttp({
-      [`GET ${configPath}`]: { status: 403 },
-      [`PUT ${configPath}`]: { status: 200, body: { ok: true } },
+    const { http, calls } = makeHttp({
+      [`GET ${SITE_PATH}`]: { status: 403 },
+      [`PUT ${SITE_PATH}`]: { status: 200, body: { ok: true } },
     });
 
-    await expect(putSiteConfig(http, { org: "acme-demo-org", site: "acme-demo-site-eu" }, {})).rejects.toThrowError(/403/);
+    await expect(createSite(http, SITE, {})).rejects.toThrowError(/403/);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("reports a PUT that answers with no body as hasResponse: false", async () => {
+    const { http } = makeHttp({
+      [`GET ${SITE_PATH}`]: { status: 404 },
+      [`PUT ${SITE_PATH}`]: { status: 204 },
+    });
+
+    await expect(createSite(http, SITE, {})).resolves.toEqual({ hasResponse: false });
+  });
+});
+
+describe("updateSiteConfig", () => {
+  it("issues a GET answered 200, then a POST to the same path with the config", async () => {
+    const { http, calls } = makeHttp({
+      [`GET ${SITE_PATH}`]: { status: 200, body: { name: "acme-demo-site-eu" } },
+      [`POST ${SITE_PATH}`]: { status: 200, body: { ok: true } },
+    });
+
+    const result = await updateSiteConfig(http, SITE, { title: "Demo" });
+
+    expect(calls.map((call) => `${call.method} ${new URL(call.url).pathname}`)).toEqual([`GET ${SITE_PATH}`, `POST ${SITE_PATH}`]);
+    expect(JSON.parse(calls[1]?.body ?? "null")).toEqual({ title: "Demo" });
+    expect(result).toEqual({ hasResponse: true, response: { ok: true } });
+  });
+
+  it("fails without issuing a POST when the site does not exist", async () => {
+    const { http, calls } = makeHttp({
+      [`GET ${SITE_PATH}`]: { status: 404 },
+      [`POST ${SITE_PATH}`]: { status: 200, body: { ok: true } },
+    });
+
+    const error = await updateSiteConfig(http, SITE, {}).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(SiteExistenceError);
+    expect((error as SiteExistenceError).expected).toBe("present");
+    expect(calls.map((call) => call.method)).toEqual(["GET"]);
+  });
+});
+
+describe("listSites", () => {
+  it("reads the documented { sites: [{ name }] } shape as names", async () => {
+    const { http, calls } = makeHttp({
+      "GET /config/acme-demo-org/sites.json": { status: 200, body: { sites: [{ name: "acme-demo-site-eu" }, { name: "acme-demo-site-us" }] } },
+    });
+
+    await expect(listSites(http, { org: "acme-demo-org" })).resolves.toEqual({ sites: ["acme-demo-site-eu", "acme-demo-site-us"] });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("reads a bare-array response the same way", async () => {
+    const { http } = makeHttp({
+      "GET /config/acme-demo-org/sites.json": { status: 200, body: ["acme-demo-site-eu"] },
+    });
+
+    await expect(listSites(http, { org: "acme-demo-org" })).resolves.toEqual({ sites: ["acme-demo-site-eu"] });
+  });
+});
+
+describe("deleteSite", () => {
+  it("issues exactly one DELETE on the site document", async () => {
+    const { http, calls } = makeHttp({
+      [`DELETE ${SITE_PATH}`]: { status: 204 },
+    });
+
+    await expect(deleteSite(http, SITE)).resolves.toEqual({ hasResponse: false });
+    expect(calls.map((call) => call.method)).toEqual(["DELETE"]);
+  });
+});
+
+describe("listConfigVersions", () => {
+  it("reads the site's versions document", async () => {
+    const versions = { current: 3, versions: [{ version: 3, created: "2026-01-01T00:00:00Z", name: "v3" }] };
+    const { http } = makeHttp({
+      "GET /config/acme-demo-org/sites/acme-demo-site-eu/versions.json": { status: 200, body: versions },
+    });
+
+    await expect(listConfigVersions(http, SITE)).resolves.toEqual(versions);
+  });
+});
+
+describe("restoreConfigVersion", () => {
+  it("targets the restoreVersion query parameter with a POST and no body", async () => {
+    const { http, calls } = makeHttp({
+      "POST /config/acme-demo-org/sites/acme-demo-site-eu.json?restoreVersion=v-demo-1": { status: 200, body: { version: 4 } },
+    });
+
+    const result = await restoreConfigVersion(http, { ...SITE, versionId: "v-demo-1" });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.body).toBeUndefined();
+    expect(result).toEqual({ hasResponse: true, response: { version: 4 } });
+  });
+
+  it("encodes the version id so it cannot add query parameters", async () => {
+    const { http, calls } = makeHttp({
+      "POST /config/acme-demo-org/sites/acme-demo-site-eu.json?restoreVersion=v%26x%3D1": { status: 200, body: {} },
+    });
+
+    await restoreConfigVersion(http, { ...SITE, versionId: "v&x=1" });
+
+    expect(new URL(calls[0]?.url ?? "").searchParams.get("restoreVersion")).toBe("v&x=1");
   });
 });
 

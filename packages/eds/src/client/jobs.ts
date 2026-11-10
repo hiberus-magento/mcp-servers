@@ -8,6 +8,7 @@
 // operations, so reconstructing it is a known bug source.
 import { readJsonBody, type HttpClient } from "./http.js";
 import { JobTimeoutError } from "./errors.js";
+import { toWriteResult, type WriteResult } from "./operations/write-result.js";
 import { sitePath } from "./paths.js";
 
 export type JobState = "created" | "running" | "stopped" | "completed";
@@ -16,6 +17,8 @@ export interface JobProgress {
   readonly total?: number;
   readonly processed?: number;
   readonly failed?: number;
+  readonly success?: number;
+  readonly notmodified?: number;
 }
 
 export interface JobLinks {
@@ -57,8 +60,21 @@ export async function fetchJobEnvelope(http: HttpClient, self: string): Promise<
   // `job.state` and `links.self` out of it on every poll.
   const context = { method: "GET" as const, path: self, label: "the job envelope" };
   const response = await http.send(context);
-  const body = await readJsonBody<JobBody>(response, context);
-  return { body };
+  const raw = await readJsonBody<JobBody | (JobDescriptor & { readonly links: JobLinks })>(response, context);
+  return { body: normalizeJobBody(raw) };
+}
+
+/**
+ * The response that starts a job wraps it (`{ job, links }`), but a GET on
+ * the job's own URL returns the job flat, with `links` beside its fields
+ * (observed on the Admin API 2026-10-30). Both become `{ job, links }`.
+ */
+export function normalizeJobBody(raw: JobBody | (JobDescriptor & { readonly links: JobLinks })): JobBody {
+  if ("job" in raw && raw.job !== undefined) {
+    return raw;
+  }
+  const { links, ...job } = raw as JobDescriptor & { readonly links: JobLinks };
+  return { job, links };
 }
 
 export interface GetJobStatusOptions {
@@ -82,6 +98,31 @@ export async function getJobStatus(http: HttpClient, options: GetJobStatusOption
   const ref = options.ref ?? "main";
   const self = sitePath({ resource: "job", org: options.org, site: options.site, ref, suffix: `${options.topic}/${options.name}` });
   return fetchJobEnvelope(http, self);
+}
+
+export interface ListJobsOptions {
+  readonly org: string;
+  readonly site: string;
+  readonly ref?: string;
+  readonly topic: string;
+}
+
+/** As the contract documents a topic's job list. */
+export interface JobList {
+  readonly topic: string;
+  readonly jobs: readonly { readonly name: string; readonly state: string; readonly time: string; readonly href: string }[];
+  readonly links: JobLinks;
+}
+
+export async function listJobs(http: HttpClient, options: ListJobsOptions): Promise<JobList> {
+  const path = sitePath({ resource: "job", org: options.org, site: options.site, ref: options.ref ?? "main", suffix: options.topic });
+  return http.readJson<JobList>({ method: "GET", path, label: `the ${options.topic} job list` });
+}
+
+/** Stops a job. Like every job call, success is any 2xx — `readOptionalJson` only throws on a non-ok status. */
+export async function stopJob(http: HttpClient, options: GetJobStatusOptions): Promise<WriteResult> {
+  const path = sitePath({ resource: "job", org: options.org, site: options.site, ref: options.ref ?? "main", suffix: `${options.topic}/${options.name}` });
+  return toWriteResult(await http.readOptionalJson({ method: "DELETE", path, label: "the job" }));
 }
 
 const TERMINAL_STATES: ReadonlySet<JobState> = new Set(["completed", "stopped"]);

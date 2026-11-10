@@ -1,0 +1,504 @@
+// Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
+//
+// Pure request builders (aem-sites-package design.md, D3 and D4). No
+// network: each returns the exact bytes `aem_apply` will later send, and
+// each runs the write guard first, so a request outside the write roots or
+// carrying a non-allowlisted property name is never built at all.
+//
+// The only Sling POST operators that ever appear in a request are emitted
+// here as constants — `@TypeHint`, `@Delete` and `:operation=delete` — next
+// to names that already passed `assertWritableProperty`/`assertSheetColumn`.
+import { assertAemPath, assertComponentPath, assertReadable, assertRolloutConfig, assertWritable, assertWritableConf } from "../guard/paths.js";
+import {
+  assertPropertyValue,
+  assertRobotsTokens,
+  assertSheetColumn,
+  assertWritableComponentProperty,
+  assertWritableProperty,
+  type PropertyValue,
+} from "../guard/properties.js";
+import type { FormFields } from "./http.js";
+
+/** An operation that is well-formed JSON but not something this server will build (empty change, self-move, …). */
+export class InvalidOperationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidOperationError";
+  }
+}
+
+export interface PlannedRequest {
+  readonly method: "POST";
+  /** Path plus query string, relative to the author origin. */
+  readonly path: string;
+  readonly form: FormFields;
+  /** What this request does, in words — shown in the plan and named in a failure. */
+  readonly label: string;
+}
+
+export interface WriteScope {
+  readonly roots: readonly string[];
+  readonly extraProperties: readonly string[];
+  /** Rollout configs beyond AEM's four built-in ones (`AEM_EXTRA_ROLLOUT_CONFIGS`). */
+  readonly extraRolloutConfigs?: readonly string[];
+}
+
+const CHARSET: readonly [string, string] = ["_charset_", "utf-8"];
+const WCM_COMMAND = "/bin/wcmcommand";
+const ASYNC_COMMAND = "/bin/asynccommand";
+const SEGMENT = /^[A-Za-z0-9_-]+$/;
+
+/** The sheet template the field CLI created `metadata` sheets from (EDS on AEM Sites). */
+export const SHEET_TEMPLATE = "/libs/core/franklin/templates/metadata";
+
+function parentOf(path: string): string {
+  return path.slice(0, path.lastIndexOf("/"));
+}
+
+function leafOf(path: string): string {
+  return path.slice(path.lastIndexOf("/") + 1);
+}
+
+function assertSegment(name: string, what: string): string {
+  if (!SEGMENT.test(name)) {
+    throw new InvalidOperationError(`Invalid ${what} "${name}": only letters, digits, "_" and "-".`);
+  }
+  return name;
+}
+
+function valueFields(name: string, value: PropertyValue): FormFields {
+  if (Array.isArray(value)) {
+    return [...value.map((entry) => [name, entry] as const), [`${name}@TypeHint`, "String[]"]];
+  }
+  if (typeof value === "boolean") {
+    return [
+      [name, String(value)],
+      [`${name}@TypeHint`, "Boolean"],
+    ];
+  }
+  if (typeof value === "number") {
+    return [
+      [name, String(value)],
+      [`${name}@TypeHint`, Number.isInteger(value) ? "Long" : "Double"],
+    ];
+  }
+  return [[name, value as string]];
+}
+
+export interface SetPropertiesInput {
+  readonly path: string;
+  readonly set?: Readonly<Record<string, unknown>>;
+  readonly remove?: readonly string[];
+}
+
+export function buildSetProperties(scope: WriteScope, input: SetPropertiesInput): PlannedRequest {
+  const path = assertWritable(input.path, scope.roots);
+  const form: (readonly [string, string])[] = [];
+  const set = Object.entries(input.set ?? {});
+  const remove = input.remove ?? [];
+  if (set.length === 0 && remove.length === 0) {
+    throw new InvalidOperationError("Nothing to change: give at least one property to set or remove.");
+  }
+  for (const [name, raw] of set) {
+    assertWritableProperty(name, scope.extraProperties);
+    form.push(...valueFields(name, assertPropertyValue(name, raw)));
+  }
+  for (const name of remove) {
+    assertWritableProperty(name, scope.extraProperties);
+    if (set.some(([setName]) => setName === name)) {
+      throw new InvalidOperationError(`"${name}" cannot be both set and removed.`);
+    }
+    form.push([`${name}@Delete`, ""]);
+  }
+  form.push(CHARSET);
+  return { method: "POST", path: `${path}/jcr:content`, form, label: `page properties of ${path}` };
+}
+
+/**
+ * Writes the fields of one existing component node (a block, a section…).
+ * The node path is `<page>/jcr:content/<node>…`; its page must be writable.
+ */
+export function buildSetComponentProperties(scope: WriteScope, input: SetPropertiesInput): PlannedRequest {
+  const { path } = assertComponentPath(input.path, scope.roots);
+  const form: (readonly [string, string])[] = [];
+  const set = Object.entries(input.set ?? {});
+  const remove = input.remove ?? [];
+  if (set.length === 0 && remove.length === 0) {
+    throw new InvalidOperationError("Nothing to change: give at least one field to set or remove.");
+  }
+  for (const [name, raw] of set) {
+    assertWritableComponentProperty(name);
+    form.push(...valueFields(name, assertPropertyValue(name, raw)));
+  }
+  for (const name of remove) {
+    assertWritableComponentProperty(name);
+    if (set.some(([setName]) => setName === name)) {
+      throw new InvalidOperationError(`"${name}" cannot be both set and removed.`);
+    }
+    form.push([`${name}@Delete`, ""]);
+  }
+  form.push(CHARSET);
+  return { method: "POST", path, form, label: `component ${path}` };
+}
+
+/**
+ * Writes the `robots` text field of the EDS XWalk `page-metadata` model
+ * (e.g. "noindex, nofollow") — the field the page model declares on the
+ * author, observed 2026-10-28. `tokens: null` removes it.
+ */
+export function buildSetRobots(scope: WriteScope, path: string, tokens: readonly string[] | null): PlannedRequest {
+  assertWritable(path, scope.roots);
+  if (tokens === null) {
+    return { method: "POST", path: `${path}/jcr:content`, form: [["robots@Delete", ""], CHARSET], label: `robots of ${path}` };
+  }
+  const valid = assertRobotsTokens(tokens);
+  return { method: "POST", path: `${path}/jcr:content`, form: [["robots", valid.join(", ")], CHARSET], label: `robots of ${path}` };
+}
+
+/** "noindex, nofollow" → ["noindex", "nofollow"]; undefined for an absent or empty value. */
+export function parseRobots(value: unknown): readonly string[] | undefined {
+  if (typeof value !== "string" || value.trim() === "") {
+    return undefined;
+  }
+  return value
+    .split(",")
+    .map((token) => token.trim().toLowerCase())
+    .filter((token) => token !== "");
+}
+
+// ---------------------------------------------------------------------------
+// Sheets
+// ---------------------------------------------------------------------------
+
+export function buildCreateSheet(scope: WriteScope, sheetPath: string): PlannedRequest {
+  assertWritable(sheetPath, scope.roots);
+  const leaf = leafOf(sheetPath);
+  return {
+    method: "POST",
+    path: WCM_COMMAND,
+    form: [["cmd", "createPage"], CHARSET, ["parentPath", parentOf(sheetPath)], ["label", leaf], ["title", leaf], ["template", SHEET_TEMPLATE]],
+    label: `create the sheet ${sheetPath}`,
+  };
+}
+
+export function buildSheetColumns(scope: WriteScope, sheetPath: string, columns: readonly string[]): PlannedRequest {
+  assertWritable(sheetPath, scope.roots);
+  const valid = columns.map(assertSheetColumn);
+  return {
+    method: "POST",
+    path: `${sheetPath}/jcr:content`,
+    form: [...valid.map((column) => ["columns", column] as const), ["columns@TypeHint", "String[]"], CHARSET],
+    label: `columns of ${sheetPath}`,
+  };
+}
+
+/** `add: true` creates the row node; otherwise it updates the cells of an existing one. An empty value deletes the cell. */
+export function buildSheetRow(scope: WriteScope, sheetPath: string, node: string, values: Readonly<Record<string, string>>, add: boolean): PlannedRequest {
+  assertWritable(sheetPath, scope.roots);
+  assertSegment(node, "row node");
+  const form: (readonly [string, string])[] = add ? [["jcr:primaryType", "nt:unstructured"]] : [];
+  for (const [column, value] of Object.entries(values)) {
+    assertSheetColumn(column);
+    form.push(value === "" && !add ? [`${column}@Delete`, ""] : [column, value]);
+  }
+  form.push(CHARSET);
+  return { method: "POST", path: `${sheetPath}/jcr:content/${node}`, form, label: `${add ? "add" : "update"} row ${node} of ${sheetPath}` };
+}
+
+export function buildSheetDeleteRow(scope: WriteScope, sheetPath: string, node: string): PlannedRequest {
+  assertWritable(sheetPath, scope.roots);
+  assertSegment(node, "row node");
+  return { method: "POST", path: `${sheetPath}/jcr:content/${node}`, form: [[":operation", "delete"], CHARSET], label: `delete row ${node} of ${sheetPath}` };
+}
+
+/** The first free row node name, in the order the field CLI used: `row`, `row0`, `row1`, … */
+export function nextRowNode(existing: readonly string[]): string {
+  if (!existing.includes("row")) {
+    return "row";
+  }
+  for (let i = 0; ; i += 1) {
+    if (!existing.includes(`row${i}`)) {
+      return `row${i}`;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Replication
+// ---------------------------------------------------------------------------
+
+export type ReplicationAgent = "preview" | "publish";
+
+/** Field-proven shape: parameters in the query string, empty body; `type=preview` selects the preview agent. */
+export function buildReplicate(scope: WriteScope, path: string, command: "Activate" | "Deactivate", agent: ReplicationAgent): PlannedRequest {
+  assertWritable(path, scope.roots);
+  const params = new URLSearchParams({ cmd: command, path });
+  if (agent === "preview") {
+    params.set("type", "preview");
+  }
+  return { method: "POST", path: `/bin/replicate?${params.toString()}`, form: [], label: `${command === "Activate" ? "publish" : "unpublish"} ${path} (${agent})` };
+}
+
+// ---------------------------------------------------------------------------
+// Page lifecycle (wcmcommand)
+// ---------------------------------------------------------------------------
+
+export function buildCreatePage(scope: WriteScope, input: { readonly parentPath: string; readonly name: string; readonly title: string; readonly template: string }): PlannedRequest {
+  assertWritable(input.parentPath, scope.roots);
+  assertSegment(input.name, "page name");
+  assertAemPath(input.template);
+  if (!/^\/(?:conf|libs|apps)\//.test(input.template)) {
+    throw new InvalidOperationError(`"${input.template}" is not a template path under /conf, /libs or /apps.`);
+  }
+  return {
+    method: "POST",
+    path: WCM_COMMAND,
+    form: [["cmd", "createPage"], CHARSET, ["parentPath", input.parentPath], ["label", input.name], ["title", input.title], ["template", input.template]],
+    label: `create ${input.parentPath}/${input.name}`,
+  };
+}
+
+export function buildCopyPage(scope: WriteScope, input: { readonly srcPath: string; readonly destParentPath: string; readonly destName: string; readonly shallow: boolean }): PlannedRequest {
+  assertWritable(input.srcPath, scope.roots);
+  assertWritable(input.destParentPath, scope.roots);
+  assertSegment(input.destName, "page name");
+  return {
+    method: "POST",
+    path: WCM_COMMAND,
+    form: [
+      ["cmd", "copyPage"],
+      CHARSET,
+      ["srcPath", input.srcPath],
+      ["destParentPath", input.destParentPath],
+      ["destName", input.destName],
+      ["shallow", String(input.shallow)],
+    ],
+    label: `copy ${input.srcPath} to ${input.destParentPath}/${input.destName}`,
+  };
+}
+
+export function buildMovePage(scope: WriteScope, input: { readonly srcPath: string; readonly destParentPath: string; readonly destName: string }): PlannedRequest {
+  assertWritable(input.srcPath, scope.roots);
+  assertWritable(input.destParentPath, scope.roots);
+  assertSegment(input.destName, "page name");
+  if (`${input.destParentPath}/`.startsWith(`${input.srcPath}/`)) {
+    throw new InvalidOperationError(`Cannot move ${input.srcPath} into itself.`);
+  }
+  return {
+    method: "POST",
+    path: WCM_COMMAND,
+    form: [["cmd", "movePage"], CHARSET, ["srcPath", input.srcPath], ["destParentPath", input.destParentPath], ["destName", input.destName], ["integrity", "true"]],
+    label: `move ${input.srcPath} to ${input.destParentPath}/${input.destName}`,
+  };
+}
+
+/**
+ * `force: true` is the Sites console's *Force Delete*: the author deletes the
+ * page even when other pages or Live Copies reference it (412 otherwise).
+ */
+export function buildDeletePage(scope: WriteScope, path: string, options: { readonly force?: boolean } = {}): PlannedRequest {
+  assertWritable(path, scope.roots);
+  if (scope.roots.includes(path)) {
+    throw new InvalidOperationError(`${path} is a write root; deleting a whole root is not offered.`);
+  }
+  const force = options.force === true;
+  return {
+    method: "POST",
+    path: WCM_COMMAND,
+    form: [["cmd", "deletePage"], CHARSET, ["path", path], ["force", String(force)]],
+    label: `${force ? "force-delete" : "delete"} ${path}`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// MSM and locks (aem-sites-msm exploration.md: the Sites console's own requests)
+// ---------------------------------------------------------------------------
+
+export interface CreateLiveCopyInput {
+  /** Any readable page: the source need not be inside the write roots, only the copy. */
+  readonly srcPath: string;
+  readonly destParentPath: string;
+  readonly name: string;
+  readonly title: string;
+  readonly rolloutConfigs: readonly string[];
+  /** Exclude sub-pages of the source. */
+  readonly shallow: boolean;
+}
+
+export function buildCreateLiveCopy(scope: WriteScope, input: CreateLiveCopyInput): PlannedRequest {
+  assertReadable(input.srcPath);
+  assertWritable(input.destParentPath, scope.roots);
+  assertSegment(input.name, "page name");
+  if (input.rolloutConfigs.length === 0) {
+    throw new InvalidOperationError("A Live Copy needs at least one rollout config.");
+  }
+  const configs = [...new Set(input.rolloutConfigs)].map((config) => assertRolloutConfig(config, scope.extraRolloutConfigs ?? []));
+  const dest = `${input.destParentPath}/${input.name}`;
+  if (`${dest}/`.startsWith(`${input.srcPath}/`) || `${input.srcPath}/`.startsWith(`${dest}/`)) {
+    throw new InvalidOperationError(`A Live Copy cannot be created inside its own source, or above it (${input.srcPath} → ${dest}).`);
+  }
+  return {
+    method: "POST",
+    path: WCM_COMMAND,
+    form: [
+      ["cmd", "createLiveCopy"],
+      ["operation", "asyncCreateLiveCopy"],
+      CHARSET,
+      ["srcPath", input.srcPath],
+      ["destPath", input.destParentPath],
+      ["label", input.name],
+      ["title", input.title],
+      ["shallow", String(input.shallow)],
+      ...configs.map((config) => ["cq:rolloutConfigs", config] as const),
+    ],
+    label: `create the Live Copy ${dest} of ${input.srcPath}`,
+  };
+}
+
+/** Where a /conf tree keeps its Edge Delivery Services configuration page. */
+export const EDS_CONFIG_NODE = "settings/cloudconfigs/edge-delivery-service-configuration";
+
+/** The fields of an Edge Delivery Services configuration this server reads and writes; bookkeeping is left out. */
+export const EDS_CONFIG_FIELDS = ["owner", "repo", "ref", "projectType", "edgeHost", "auxiliaryScripts", "sling:resourceType"] as const;
+export type EdsConfigField = (typeof EDS_CONFIG_FIELDS)[number];
+export type EdsConfigFields = Partial<Readonly<Record<EdsConfigField, string | readonly string[]>>>;
+
+const EDS_SITE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+// eslint-disable-next-line no-control-regex -- refusing control characters is the point.
+const EDS_FIELD_VALUE = /^[^\u0000-\u001f]{1,200}$/;
+
+export interface CreateEdsConfigInput {
+  /** The new /conf tree, e.g. `/conf/<tenant>/<name>`; it must not exist yet. */
+  readonly path: string;
+  readonly title: string;
+  /** The Edge Delivery Services site (`repo`) and the other fields of its configuration page. */
+  readonly fields: EdsConfigFields;
+}
+
+/**
+ * Creates a /conf tree holding one Edge Delivery Services configuration, the
+ * same shape as the one the Sites console's Cloud Services wizard writes:
+ * `<path>` and `settings/cloudconfigs` as `sling:Folder`s, then the
+ * configuration as a `cq:Page`. One Sling POST: relative names create the
+ * nodes and their `jcr:primaryType` sets each type.
+ */
+export function buildCreateEdsConfig(scope: WriteScope, input: CreateEdsConfigInput): PlannedRequest {
+  assertWritableConf(input.path, scope.roots);
+  const repo = input.fields.repo;
+  if (typeof repo !== "string" || !EDS_SITE.test(repo)) {
+    throw new InvalidOperationError(`"${String(repo)}" is not an Edge Delivery Services site name (lowercase letters, digits and "-").`);
+  }
+  const values = (field: string, value: string | readonly string[]): readonly string[] => {
+    const list = typeof value === "string" ? [value] : value;
+    for (const item of list) {
+      if (!EDS_FIELD_VALUE.test(item)) {
+        throw new InvalidOperationError(`The ${field} of an Edge Delivery configuration must be 1–200 characters without control characters.`);
+      }
+    }
+    return list;
+  };
+  values("title", input.title);
+  const page = EDS_CONFIG_NODE;
+  const content = `${page}/jcr:content`;
+  const form: (readonly [string, string])[] = [
+    CHARSET,
+    ["jcr:primaryType", "sling:Folder"],
+    ["jcr:title", input.title],
+    ["settings/jcr:primaryType", "sling:Folder"],
+    ["settings/cloudconfigs/jcr:primaryType", "sling:Folder"],
+    [`${page}/jcr:primaryType`, "cq:Page"],
+    [`${content}/jcr:primaryType`, "cq:PageContent"],
+    [`${content}/jcr:title`, "Edge Delivery Service Configuration"],
+  ];
+  for (const field of EDS_CONFIG_FIELDS) {
+    const value = input.fields[field];
+    if (value === undefined) {
+      continue;
+    }
+    for (const item of values(field, value)) {
+      form.push([`${content}/${field}`, item]);
+    }
+    if (typeof value !== "string") {
+      form.push([`${content}/${field}@TypeHint`, "String[]"]);
+    }
+  }
+  return { method: "POST", path: input.path, form, label: `create the Edge Delivery configuration ${input.path} for the site ${repo}` };
+}
+
+export interface SetRolloutConfigsInput {
+  /** The root of a Live Copy (the page that holds `jcr:content/cq:LiveSyncConfig`). */
+  readonly path: string;
+  /** The configs to keep, in order; they replace the current list. */
+  readonly rolloutConfigs: readonly string[];
+}
+
+/**
+ * Replaces the rollout configs of an existing Live Copy: a plain Sling POST to
+ * its `cq:LiveSyncConfig` node, which is where the Sites console's Live Copy
+ * properties keep them. Pages below the root without their own node follow it.
+ */
+export function buildSetRolloutConfigs(scope: WriteScope, input: SetRolloutConfigsInput): PlannedRequest {
+  assertWritable(input.path, scope.roots);
+  if (input.rolloutConfigs.length === 0) {
+    throw new InvalidOperationError("A Live Copy needs at least one rollout config.");
+  }
+  const configs = [...new Set(input.rolloutConfigs)].map((config) => assertRolloutConfig(config, scope.extraRolloutConfigs ?? []));
+  return {
+    method: "POST",
+    path: `${input.path}/jcr:content/cq:LiveSyncConfig`,
+    form: [CHARSET, ...configs.map((config) => ["cq:rolloutConfigs", config] as const), ["cq:rolloutConfigs@TypeHint", "String[]"]],
+    label: `set the rollout configs of the Live Copy ${input.path} to ${configs.join(", ")}`,
+  };
+}
+
+export interface RolloutInput {
+  /** The source page; any readable page, like a Live Copy's source. */
+  readonly path: string;
+  /** Pages of Live Copies of `path` to update; all inside the write roots. */
+  readonly targets: readonly string[];
+  /** Roll out the source's sub-pages too. */
+  readonly deep: boolean;
+}
+
+/**
+ * The Sites console's rollout request (both its rollout dialog and the
+ * References rail): an async job on `/bin/asynccommand`. The job runs after
+ * the response, so apply waits for each target's `cq:lastRolledout`.
+ */
+export function buildRollout(scope: WriteScope, input: RolloutInput): PlannedRequest {
+  assertReadable(input.path);
+  if (input.targets.length === 0) {
+    throw new InvalidOperationError("A rollout needs at least one target.");
+  }
+  for (const target of input.targets) {
+    assertWritable(target, scope.roots);
+    if (`${target}/`.startsWith(`${input.path}/`) || `${input.path}/`.startsWith(`${target}/`)) {
+      throw new InvalidOperationError(`A rollout target cannot be its source, nor inside or above it (${input.path} → ${target}).`);
+    }
+  }
+  return {
+    method: "POST",
+    path: ASYNC_COMMAND,
+    form: [
+      ["cmd", "rollout"],
+      ["operation", "asyncRollout"],
+      CHARSET,
+      ["path", input.path],
+      ["type", input.deep ? "deep" : "page"],
+      ["paras", "[]"],
+      ["msm:targetPath", JSON.stringify([...new Set(input.targets)])],
+      ["reportSchedule", "now"],
+    ],
+    label: `roll out ${input.path}${input.deep ? " and its sub-pages" : ""} to ${input.targets.join(", ")}`,
+  };
+}
+
+export function buildLockPage(scope: WriteScope, path: string, lock: boolean): PlannedRequest {
+  assertWritable(path, scope.roots);
+  return {
+    method: "POST",
+    path: WCM_COMMAND,
+    form: [["cmd", lock ? "lockPage" : "unlockPage"], CHARSET, ["path", path]],
+    label: `${lock ? "lock" : "unlock"} ${path}`,
+  };
+}

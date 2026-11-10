@@ -135,3 +135,20 @@ describe(".cloud hostnames", () => {
     expect(violations.filter((v) => v.rule === "unrecognized-domain")).toEqual([]);
   });
 });
+
+describe("AEM as a Cloud Service hostnames", () => {
+  // `author-p<program>-e<environment>.adobeaemcloud.com`: the ids are the
+  // subdomain, exactly like a Magento Cloud project host.
+  it("flags a real-shaped program/environment host", () => {
+    const violations = scanTextForBannedIdentifiers('const h = "https://author-p123456-e654321.adobeaemcloud.com";\n', "probe.ts");
+    expect(violations.some((v) => v.rule === "unrecognized-domain")).toBe(true);
+  });
+
+  it("does not flag the all-zero synthetic author host or the bare vendor domain", () => {
+    const violations = scanTextForBannedIdentifiers(
+      'const h = "https://author-p00000-e00001.adobeaemcloud.com"; // see adobeaemcloud.com\n',
+      "probe.ts",
+    );
+    expect(violations.filter((v) => v.rule === "unrecognized-domain")).toEqual([]);
+  });
+});

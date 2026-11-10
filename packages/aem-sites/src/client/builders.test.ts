@@ -1,0 +1,313 @@
+// Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
+import { describe, expect, it } from "vitest";
+import { SYNTHETIC_ROOT } from "../testing/author-double.js";
+import { InvalidAemPathError, InvalidComponentPathError, PathOutsideWriteRootsError } from "../guard/paths.js";
+import { ForbiddenPropertyNameError, InvalidPropertyValueError } from "../guard/properties.js";
+import { InvalidRolloutConfigError } from "../guard/paths.js";
+import {
+  buildCopyPage,
+  buildCreateLiveCopy,
+  buildRollout,
+  buildSetRolloutConfigs,
+  buildLockPage,
+  buildCreatePage,
+  buildCreateSheet,
+  buildDeletePage,
+  buildMovePage,
+  buildReplicate,
+  buildSetComponentProperties,
+  buildSetProperties,
+  buildSetRobots,
+  buildSheetColumns,
+  buildSheetDeleteRow,
+  buildSheetRow,
+  nextRowNode,
+  type WriteScope,
+} from "./builders.js";
+
+const scope: WriteScope = { roots: [SYNTHETIC_ROOT], extraProperties: ["acmeTeaser"] };
+const PAGE = `${SYNTHETIC_ROOT}/en/outdoor-gear`;
+const SHEET = `${SYNTHETIC_ROOT}/metadata`;
+const OUTSIDE = "/content/acme-demo-site-us/en";
+
+describe("buildSetProperties", () => {
+  it("encodes strings, lists, booleans and removals with client-emitted operators only", () => {
+    expect(buildSetProperties(scope, { path: PAGE, set: { "jcr:title": "Gear", "cq:tags": ["a", "b"], hideInNav: true, acmeTeaser: "t" }, remove: ["navTitle"] })).toEqual({
+      method: "POST",
+      path: `${PAGE}/jcr:content`,
+      form: [
+        ["jcr:title", "Gear"],
+        ["cq:tags", "a"],
+        ["cq:tags", "b"],
+        ["cq:tags@TypeHint", "String[]"],
+        ["hideInNav", "true"],
+        ["hideInNav@TypeHint", "Boolean"],
+        ["acmeTeaser", "t"],
+        ["navTitle@Delete", ""],
+        ["_charset_", "utf-8"],
+      ],
+      label: `page properties of ${PAGE}`,
+    });
+  });
+
+  it("refuses a smuggled operator, a structural property and an unlisted one", () => {
+    expect(() => buildSetProperties(scope, { path: PAGE, set: { "jcr:title@MoveFrom": "/content/x" } })).toThrow(ForbiddenPropertyNameError);
+    expect(() => buildSetProperties(scope, { path: PAGE, set: { "sling:resourceType": "x" } })).toThrow(ForbiddenPropertyNameError);
+    expect(() => buildSetProperties(scope, { path: PAGE, remove: [":operation"] })).toThrow(ForbiddenPropertyNameError);
+    expect(() => buildSetProperties(scope, { path: PAGE, set: { acmeOther: "x" } })).toThrow(ForbiddenPropertyNameError);
+  });
+
+  it("refuses paths outside the roots or outside the grammar, and empty changes", () => {
+    expect(() => buildSetProperties(scope, { path: OUTSIDE, set: { "jcr:title": "x" } })).toThrow(PathOutsideWriteRootsError);
+    expect(() => buildSetProperties(scope, { path: `${SYNTHETIC_ROOT}/../acme-demo-site-us`, set: { "jcr:title": "x" } })).toThrow(InvalidAemPathError);
+    expect(() => buildSetProperties(scope, { path: PAGE })).toThrow(/Nothing to change/);
+    expect(() => buildSetProperties(scope, { path: PAGE, set: { "jcr:title": "x" }, remove: ["jcr:title"] })).toThrow(/both set and removed/);
+  });
+});
+
+describe("buildSetRobots", () => {
+  it("writes the page-metadata robots text field, or deletes it", () => {
+    expect(buildSetRobots(scope, PAGE, ["noindex", "nofollow"]).form).toEqual([
+      ["robots", "noindex, nofollow"],
+      ["_charset_", "utf-8"],
+    ]);
+    expect(buildSetRobots(scope, PAGE, null).form).toEqual([
+      ["robots@Delete", ""],
+      ["_charset_", "utf-8"],
+    ]);
+    expect(() => buildSetRobots(scope, PAGE, ["none"])).toThrow(InvalidPropertyValueError);
+  });
+});
+
+describe("sheet builders", () => {
+  it("creates a sheet from the EDS metadata template (field-proven shape)", () => {
+    expect(buildCreateSheet(scope, SHEET)).toEqual({
+      method: "POST",
+      path: "/bin/wcmcommand",
+      form: [
+        ["cmd", "createPage"],
+        ["_charset_", "utf-8"],
+        ["parentPath", SYNTHETIC_ROOT],
+        ["label", "metadata"],
+        ["title", "metadata"],
+        ["template", "/libs/core/franklin/templates/metadata"],
+      ],
+      label: `create the sheet ${SHEET}`,
+    });
+  });
+
+  it("sets columns as String[]", () => {
+    expect(buildSheetColumns(scope, SHEET, ["URL", "Robots"]).form).toEqual([
+      ["columns", "URL"],
+      ["columns", "Robots"],
+      ["columns@TypeHint", "String[]"],
+      ["_charset_", "utf-8"],
+    ]);
+  });
+
+  it("adds, updates and deletes rows", () => {
+    expect(buildSheetRow(scope, SHEET, "row", { URL: "/**", Robots: "noindex, nofollow" }, true)).toEqual({
+      method: "POST",
+      path: `${SHEET}/jcr:content/row`,
+      form: [
+        ["jcr:primaryType", "nt:unstructured"],
+        ["URL", "/**"],
+        ["Robots", "noindex, nofollow"],
+        ["_charset_", "utf-8"],
+      ],
+      label: `add row row of ${SHEET}`,
+    });
+    expect(buildSheetRow(scope, SHEET, "row0", { Robots: "" }, false).form).toEqual([
+      ["Robots@Delete", ""],
+      ["_charset_", "utf-8"],
+    ]);
+    expect(buildSheetDeleteRow(scope, SHEET, "row0").form).toEqual([
+      [":operation", "delete"],
+      ["_charset_", "utf-8"],
+    ]);
+  });
+
+  it("refuses an operator in a column name or a bad row node", () => {
+    expect(() => buildSheetRow(scope, SHEET, "row", { "URL@MoveFrom": "/x" }, true)).toThrow(ForbiddenPropertyNameError);
+    expect(() => buildSheetRow(scope, SHEET, "../x", { URL: "/x" }, true)).toThrow(/row node/);
+    expect(() => buildSheetColumns(scope, SHEET, [":operation"])).toThrow(ForbiddenPropertyNameError);
+  });
+
+  it("picks row node names in the field CLI's order", () => {
+    expect(nextRowNode([])).toBe("row");
+    expect(nextRowNode(["row"])).toBe("row0");
+    expect(nextRowNode(["row", "row0", "row2"])).toBe("row1");
+  });
+});
+
+describe("buildReplicate", () => {
+  it("uses query parameters and selects the preview agent with type=preview", () => {
+    expect(buildReplicate(scope, PAGE, "Activate", "preview")).toEqual({
+      method: "POST",
+      path: `/bin/replicate?cmd=Activate&path=${encodeURIComponent(PAGE)}&type=preview`,
+      form: [],
+      label: `publish ${PAGE} (preview)`,
+    });
+    expect(buildReplicate(scope, PAGE, "Deactivate", "publish").path).toBe(`/bin/replicate?cmd=Deactivate&path=${encodeURIComponent(PAGE)}`);
+    expect(() => buildReplicate(scope, OUTSIDE, "Activate", "publish")).toThrow(PathOutsideWriteRootsError);
+  });
+});
+
+describe("page lifecycle builders", () => {
+  it("creates a page from a template under /conf, /libs or /apps", () => {
+    expect(buildCreatePage(scope, { parentPath: `${SYNTHETIC_ROOT}/en`, name: "tents", title: "Tents", template: "/conf/acme/settings/wcm/templates/page" }).form).toContainEqual([
+      "template",
+      "/conf/acme/settings/wcm/templates/page",
+    ]);
+    expect(() => buildCreatePage(scope, { parentPath: `${SYNTHETIC_ROOT}/en`, name: "a.b", title: "x", template: "/conf/acme/t" })).toThrow(/page name/);
+    expect(() => buildCreatePage(scope, { parentPath: `${SYNTHETIC_ROOT}/en`, name: "a", title: "x", template: "/content/acme/t" })).toThrow(/template path/);
+  });
+
+  it("copies and moves only inside the roots, never into itself", () => {
+    expect(buildCopyPage(scope, { srcPath: PAGE, destParentPath: `${SYNTHETIC_ROOT}/fr`, destName: "outdoor-gear", shallow: false }).form).toContainEqual(["cmd", "copyPage"]);
+    expect(() => buildCopyPage(scope, { srcPath: PAGE, destParentPath: OUTSIDE, destName: "x", shallow: true })).toThrow(PathOutsideWriteRootsError);
+    expect(() => buildMovePage(scope, { srcPath: PAGE, destParentPath: `${PAGE}/sub`, destName: "x" })).toThrow(/into itself/);
+    expect(buildMovePage(scope, { srcPath: PAGE, destParentPath: `${SYNTHETIC_ROOT}/fr`, destName: "x" }).form).toContainEqual(["cmd", "movePage"]);
+  });
+
+  it("deletes with force=false unless forced, and never a whole root", () => {
+    expect(buildDeletePage(scope, PAGE).form).toEqual([
+      ["cmd", "deletePage"],
+      ["_charset_", "utf-8"],
+      ["path", PAGE],
+      ["force", "false"],
+    ]);
+    expect(buildDeletePage(scope, PAGE, { force: true }).form).toContainEqual(["force", "true"]);
+    expect(() => buildDeletePage(scope, SYNTHETIC_ROOT, { force: true })).toThrow(/write root/);
+  });
+});
+
+describe("MSM and lock builders", () => {
+  const LC = { srcPath: PAGE, destParentPath: SYNTHETIC_ROOT, name: "prueba", title: "Prueba", rolloutConfigs: ["/libs/msm/wcm/rolloutconfigs/default"], shallow: false };
+
+  it("creates a Live Copy with the Sites console's own fields", () => {
+    expect(buildCreateLiveCopy(scope, LC)).toEqual({
+      method: "POST",
+      path: "/bin/wcmcommand",
+      form: [
+        ["cmd", "createLiveCopy"],
+        ["operation", "asyncCreateLiveCopy"],
+        ["_charset_", "utf-8"],
+        ["srcPath", PAGE],
+        ["destPath", SYNTHETIC_ROOT],
+        ["label", "prueba"],
+        ["title", "Prueba"],
+        ["shallow", "false"],
+        ["cq:rolloutConfigs", "/libs/msm/wcm/rolloutconfigs/default"],
+      ],
+      label: `create the Live Copy ${SYNTHETIC_ROOT}/prueba of ${PAGE}`,
+    });
+  });
+
+  it("accepts a source outside the write roots but never a destination", () => {
+    expect(buildCreateLiveCopy(scope, { ...LC, srcPath: "/content/acme-demo-site-us/en" }).form).toContainEqual(["srcPath", "/content/acme-demo-site-us/en"]);
+    expect(() => buildCreateLiveCopy(scope, { ...LC, destParentPath: OUTSIDE })).toThrow(PathOutsideWriteRootsError);
+    expect(() => buildCreateLiveCopy(scope, { ...LC, srcPath: "/apps/acme" })).toThrow(/reads are limited/);
+  });
+
+  it("refuses unknown rollout configs, none at all, and a copy inside its own source", () => {
+    expect(() => buildCreateLiveCopy(scope, { ...LC, rolloutConfigs: ["/apps/acme/evil"] })).toThrow(InvalidRolloutConfigError);
+    expect(() => buildCreateLiveCopy(scope, { ...LC, rolloutConfigs: [] })).toThrow(/at least one rollout config/);
+    expect(() => buildCreateLiveCopy(scope, { ...LC, destParentPath: PAGE })).toThrow(/inside its own source/);
+    expect(() => buildCreateLiveCopy({ ...scope, extraRolloutConfigs: ["/apps/msm/acme/sync"] }, { ...LC, rolloutConfigs: ["/apps/msm/acme/sync"] }).form).not.toThrow();
+  });
+
+  it("rolls out with the Sites console's async rollout fields, targets only inside the roots", () => {
+    const target = `${SYNTHETIC_ROOT}/fr/outdoor-gear`;
+    expect(buildRollout(scope, { path: "/content/acme-demo-site-us/en/gear", targets: [target, target], deep: false })).toEqual({
+      method: "POST",
+      path: "/bin/asynccommand",
+      form: [
+        ["cmd", "rollout"],
+        ["operation", "asyncRollout"],
+        ["_charset_", "utf-8"],
+        ["path", "/content/acme-demo-site-us/en/gear"],
+        ["type", "page"],
+        ["paras", "[]"],
+        ["msm:targetPath", JSON.stringify([target])],
+        ["reportSchedule", "now"],
+      ],
+      label: `roll out /content/acme-demo-site-us/en/gear to ${target}, ${target}`,
+    });
+    expect(buildRollout(scope, { path: PAGE, targets: [target], deep: true }).form).toContainEqual(["type", "deep"]);
+    expect(() => buildRollout(scope, { path: PAGE, targets: [OUTSIDE], deep: false })).toThrow(PathOutsideWriteRootsError);
+    expect(() => buildRollout(scope, { path: PAGE, targets: [`${PAGE}/child`], deep: false })).toThrow(/inside or above/);
+    expect(() => buildRollout(scope, { path: PAGE, targets: [], deep: false })).toThrow(/at least one target/);
+  });
+
+  it("sets a Live Copy's rollout configs on its cq:LiveSyncConfig node, as a String[]", () => {
+    const target = `${SYNTHETIC_ROOT}/fr`;
+    const configs = ["/libs/msm/wcm/rolloutconfigs/default", "/libs/msm/wcm/rolloutconfigs/pushonmodify"];
+    expect(buildSetRolloutConfigs(scope, { path: target, rolloutConfigs: [...configs, configs[0] as string] })).toEqual({
+      method: "POST",
+      path: `${target}/jcr:content/cq:LiveSyncConfig`,
+      form: [
+        ["_charset_", "utf-8"],
+        ["cq:rolloutConfigs", configs[0]],
+        ["cq:rolloutConfigs", configs[1]],
+        ["cq:rolloutConfigs@TypeHint", "String[]"],
+      ],
+      label: `set the rollout configs of the Live Copy ${target} to ${configs.join(", ")}`,
+    });
+  });
+
+  it("refuses rollout configs outside the allowlist, none at all, and a Live Copy outside the roots", () => {
+    const target = `${SYNTHETIC_ROOT}/fr`;
+    expect(() => buildSetRolloutConfigs(scope, { path: target, rolloutConfigs: ["/apps/acme/evil"] })).toThrow(InvalidRolloutConfigError);
+    expect(() => buildSetRolloutConfigs(scope, { path: target, rolloutConfigs: [] })).toThrow(/at least one rollout config/);
+    expect(() => buildSetRolloutConfigs(scope, { path: OUTSIDE, rolloutConfigs: ["/libs/msm/wcm/rolloutconfigs/default"] })).toThrow(PathOutsideWriteRootsError);
+    expect(buildSetRolloutConfigs({ ...scope, extraRolloutConfigs: ["/apps/msm/acme/sync"] }, { path: target, rolloutConfigs: ["/apps/msm/acme/sync"] }).form).toContainEqual(["cq:rolloutConfigs", "/apps/msm/acme/sync"]);
+  });
+
+  it("locks and unlocks only inside the roots", () => {
+    expect(buildLockPage(scope, PAGE, true).form).toEqual([
+      ["cmd", "lockPage"],
+      ["_charset_", "utf-8"],
+      ["path", PAGE],
+    ]);
+    expect(buildLockPage(scope, PAGE, false).form[0]).toEqual(["cmd", "unlockPage"]);
+    expect(() => buildLockPage(scope, OUTSIDE, true)).toThrow(PathOutsideWriteRootsError);
+  });
+});
+
+describe("buildSetComponentProperties", () => {
+  const BLOCK = `${PAGE}/jcr:content/root/section/block`;
+
+  it("posts the fields to the component node with client-emitted operators only", () => {
+    expect(buildSetComponentProperties(scope, { path: BLOCK, set: { "checkout-url": "/checkout", "max-items": 6, "hide-heading": false, tags: ["a"] }, remove: ["start-shopping-url"] })).toEqual({
+      method: "POST",
+      path: BLOCK,
+      form: [
+        ["checkout-url", "/checkout"],
+        ["max-items", "6"],
+        ["max-items@TypeHint", "Long"],
+        ["hide-heading", "false"],
+        ["hide-heading@TypeHint", "Boolean"],
+        ["tags", "a"],
+        ["tags@TypeHint", "String[]"],
+        ["start-shopping-url@Delete", ""],
+        ["_charset_", "utf-8"],
+      ],
+      label: `component ${BLOCK}`,
+    });
+  });
+
+  it("refuses a page property path, a binding field, an operator and a namespaced name", () => {
+    expect(() => buildSetComponentProperties(scope, { path: `${PAGE}/jcr:content`, set: { title: "x" } })).toThrow(InvalidComponentPathError);
+    expect(() => buildSetComponentProperties(scope, { path: BLOCK, set: { model: "x" } })).toThrow(ForbiddenPropertyNameError);
+    expect(() => buildSetComponentProperties(scope, { path: BLOCK, set: { "title@MoveFrom": "/content/x" } })).toThrow(ForbiddenPropertyNameError);
+    expect(() => buildSetComponentProperties(scope, { path: BLOCK, remove: ["sling:resourceType"] })).toThrow(ForbiddenPropertyNameError);
+  });
+
+  it("refuses components outside the roots, empty changes, a field set and removed, and bad values", () => {
+    expect(() => buildSetComponentProperties(scope, { path: `${OUTSIDE}/jcr:content/root`, set: { title: "x" } })).toThrow(PathOutsideWriteRootsError);
+    expect(() => buildSetComponentProperties(scope, { path: BLOCK })).toThrow(/Nothing to change/);
+    expect(() => buildSetComponentProperties(scope, { path: BLOCK, set: { title: "x" }, remove: ["title"] })).toThrow(/both set and removed/);
+    expect(() => buildSetComponentProperties(scope, { path: BLOCK, set: { title: { nested: true } } })).toThrow(InvalidPropertyValueError);
+  });
+});

@@ -86,6 +86,14 @@ const SAFE_DOMAINS = new Set([
   "aem.live",
   "admin.hlx.page",
   "hlx.page",
+  // AEM as a Cloud Service hosts are `author-p<program>-e<environment>.
+  // adobeaemcloud.com`: the program and environment ids ARE the subdomain,
+  // so only the bare vendor domain and the all-zero synthetic hosts
+  // (`SYNTHETIC_AEM_AUTHOR*` in synthetic-identifiers.ts) are safe here.
+  "adobeaemcloud.com",
+  "author-p00000-e00001.adobeaemcloud.com",
+  "author-p00000-e00002.adobeaemcloud.com",
+  "publish-p00000-e00001.adobeaemcloud.com",
 ]);
 
 const DOMAIN_PATTERN = /\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.(com|net|org|io|co|es|dev|app|cloud)\b/gi;
