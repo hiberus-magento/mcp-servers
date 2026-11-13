@@ -7,7 +7,9 @@
 // credentials); every failure exits non-zero, including a `db:sql` guard
 // rejection; untrusted CLI-path stderr is redacted.
 import { EventEmitter } from "node:events";
-import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CliDeps } from "./cli.js";
 import { runCli } from "./cli.js";
 
@@ -241,5 +243,61 @@ describe("exit codes and redaction on failure", () => {
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).not.toContain("abcdefghijklmnopqrstuvwxyz");
     expect(result.stderr).toContain("***");
+  });
+});
+
+describe("db:sql — --relationship / --app select the database target", () => {
+  const BASE = ["db:sql", "--project", "acme-demo-project", "--environment", "acme-demo-env-main", "--query", "SELECT entity_id FROM catalog LIMIT 5"];
+
+  beforeEach(() => {
+    execFileMock.mockReset();
+  });
+
+  function argvOfLastCall(): readonly string[] {
+    return (execFileMock.mock.calls.at(-1)?.[1] ?? []) as readonly string[];
+  }
+
+  it("forwards both flags to the spawned CLI, before --raw", async () => {
+    mockExecFileOnce(0, "entity_id\n1\n", "");
+
+    const result = await runCli([...BASE, "--relationship", "database-slave", "--app", "acme-demo-app"], buildDeps());
+
+    expect(result.exitCode).toBe(0);
+    const argv = argvOfLastCall();
+    expect(argv[argv.indexOf("--relationship") + 1]).toBe("database-slave");
+    expect(argv[argv.indexOf("--app") + 1]).toBe("acme-demo-app");
+    expect(argv.indexOf("--app")).toBeLessThan(argv.indexOf("--raw"));
+  });
+
+  it("without either flag the spawned argv carries neither", async () => {
+    mockExecFileOnce(0, "entity_id\n1\n", "");
+
+    await runCli(BASE, buildDeps());
+
+    expect(argvOfLastCall()).not.toContain("--relationship");
+    expect(argvOfLastCall()).not.toContain("--app");
+  });
+
+  it.each([
+    [["--relationship", "-r"]],
+    [["--relationship=Database"]],
+    [["--app", "acme demo"]],
+    [["--app=-acme"]],
+  ])("rejects %j and never spawns", async (extra) => {
+    const result = await runCli([...BASE, ...extra], buildDeps());
+
+    expect(result.exitCode).not.toBe(0);
+    expect(execFileMock).not.toHaveBeenCalled();
+  });
+
+  it("turns the CLI's 'more than one relationship' refusal into a hint naming --relationship", async () => {
+    const stderr = readFileSync(fileURLToPath(new URL("../test/fake-bin/fixtures/db-relationship-required.txt", import.meta.url)), "utf8");
+    mockExecFileOnce(1, "", stderr);
+
+    const result = await runCli(BASE, buildDeps());
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("--relationship");
+    expect(result.stderr).toContain("database, database-slave");
   });
 });

@@ -183,6 +183,42 @@ const ENVIRONMENT_LIST_COLUMNS = "id,title,status,type,created,machine_name,upda
 const ROUTE_LIST_COLUMNS = "route,type,to,url";
 const SERVICE_LIST_COLUMNS = "name,type,disk,size";
 
+// `--relationship` / `--app` for db:size and db:sql. When an environment
+// exposes more than one database relationship (Magento Cloud commonly has a
+// `database` primary and a `database-slave` read replica) or runs more than
+// one application, the CLI asks interactively which one to use — and with no
+// TTY it refuses instead. These let a caller name the target.
+//
+// The shapes are deliberately narrower than "any string": Platform.sh /
+// Magento Cloud application names and relationship keys are lowercase
+// identifiers (letters, digits, `-`, `_`), and the CLI's own relationship
+// chooser also offers `<name>.<index>` when one relationship points at more
+// than one service. Requiring a leading letter or digit means a value can
+// never be read as an option by the CLI's own parser, and nothing here can
+// carry whitespace, a separator, or shell-meaningful punctuation. Uppercase
+// is rejected rather than lowercased: silently rewriting a name would make
+// the argv disagree with what the caller asked for. 64 characters is far
+// beyond any real name and only bounds the token.
+export const DB_TARGET_NAME_MAX_LENGTH = 64;
+export const DB_RELATIONSHIP_PATTERN = /^[a-z0-9][a-z0-9_-]*(?:\.[0-9]+)?$/;
+export const DB_APP_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
+
+export const dbRelationshipSchema = z.string().max(DB_TARGET_NAME_MAX_LENGTH).regex(DB_RELATIONSHIP_PATTERN);
+export const dbAppSchema = z.string().max(DB_TARGET_NAME_MAX_LENGTH).regex(DB_APP_PATTERN);
+
+const dbTargetShape = {
+  relationship: dbRelationshipSchema.optional(),
+  app: dbAppSchema.optional(),
+};
+
+/** Separate tokens, only when supplied: omitting both keeps argv byte-identical to the pre-selection shape. */
+function dbTargetFlags(args: { readonly relationship?: string | undefined; readonly app?: string | undefined }): readonly string[] {
+  return [
+    ...(args.relationship !== undefined ? ["--relationship", args.relationship] : []),
+    ...(args.app !== undefined ? ["--app", args.app] : []),
+  ];
+}
+
 const activityFilterShape = {
   limit: z.number().int().positive().max(ACTIVITY_LIMIT_MAX).optional(),
   type: z.string().regex(ACTIVITY_TYPE_PATTERN).optional(),
@@ -494,13 +530,13 @@ function appConfigGetSpec(bin: string) {
 }
 
 function dbSizeSpec(bin: string) {
-  const argsSchema = environmentScoped({});
+  const argsSchema = environmentScoped(dbTargetShape);
   return {
     bin,
     subcommand: ["db:size"],
     argsSchema,
     buildArgv: (args: z.infer<typeof argsSchema>) =>
-      withFormatTsv(["db:size", "--project", args.projectId, "--environment", args.environmentId]),
+      withFormatTsv(["db:size", "--project", args.projectId, "--environment", args.environmentId, ...dbTargetFlags(args)]),
     timeoutMs: DEFAULT_TIMEOUT_MS,
     maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
   } satisfies CommandSpec<typeof argsSchema>;
@@ -532,6 +568,7 @@ function dbSqlSpec(bin: string) {
     environmentId: environmentIdSchema,
     query: z.string().min(1),
     maxRows: z.number().int().positive().max(ROW_CAP).optional(),
+    ...dbTargetShape,
   });
   const argsSchema = rawArgsSchema.strict().transform((value, ctx) => {
     const guarded = guardQuery(value.query, { rowCap: value.maxRows ?? ROW_CAP });
@@ -539,7 +576,16 @@ function dbSqlSpec(bin: string) {
       ctx.addIssue({ code: "custom", message: guarded.message });
       return z.NEVER;
     }
-    return { projectId: value.projectId, environmentId: value.environmentId, query: guarded.query };
+    // The guarded query REPLACES the caller's; the target fields are carried
+    // through only when supplied, so the output has no present-but-undefined
+    // keys for buildArgv to trip over.
+    return {
+      projectId: value.projectId,
+      environmentId: value.environmentId,
+      ...(value.relationship !== undefined ? { relationship: value.relationship } : {}),
+      ...(value.app !== undefined ? { app: value.app } : {}),
+      query: guarded.query,
+    };
   });
   return {
     bin,
@@ -551,6 +597,7 @@ function dbSqlSpec(bin: string) {
       args.projectId,
       "--environment",
       args.environmentId,
+      ...dbTargetFlags(args),
       "--raw",
       args.query,
     ],

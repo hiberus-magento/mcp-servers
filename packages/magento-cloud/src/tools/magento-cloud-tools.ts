@@ -28,6 +28,9 @@ import {
   MagentoCloudUnsupportedVersionError,
   buildChildEnv,
   createMagentoCloudAllowlist,
+  dbAppSchema,
+  dbRelationshipSchema,
+  describeDbTargetSelectionFailure,
   ensureBinaryResolved,
   executeReadOnlyCommand,
   parseActivityGet,
@@ -175,9 +178,37 @@ const dbSelectRequest = z
   .object({ kind: z.literal("select"), query: z.string().min(1), maxRows: z.number().int().positive().max(ROW_CAP).optional() })
   .strict();
 
+// `relationship` / `app` sit at the TOP level, next to the ids, because they
+// pick WHICH database both request kinds talk to — they are not part of
+// either request. Their shape is the client's own (`dbRelationshipSchema`,
+// `dbAppSchema`), so the wire gate and the command spec cannot disagree.
 export const magentocloudQueryDatabaseInput = z
-  .object({ ...environmentScoped, request: z.discriminatedUnion("kind", [dbSizeRequest, dbSelectRequest]) })
+  .object({
+    ...environmentScoped,
+    relationship: dbRelationshipSchema.optional(),
+    app: dbAppSchema.optional(),
+    request: z.discriminatedUnion("kind", [dbSizeRequest, dbSelectRequest]),
+  })
   .strict();
+
+/**
+ * Runs one db:size/db:sql call, replacing the CLI's non-interactive
+ * "which relationship/app?" refusal with a remedy that names the tool input
+ * to set. Every other failure propagates untouched.
+ */
+async function executeDbCommand(input: Parameters<typeof executeReadOnlyCommand>[0]): Promise<string> {
+  try {
+    return await executeReadOnlyCommand(input);
+  } catch (error) {
+    if (error instanceof MagentoCloudCommandFailedError && error.kind === "generic") {
+      const hint = describeDbTargetSelectionFailure(error.message);
+      if (hint !== undefined) {
+        throw new MagentoCloudCommandFailedError("generic", hint);
+      }
+    }
+    throw error;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Tool factory.
@@ -424,19 +455,26 @@ function childEnvWithOptionalToken(home: string, path: string): Readonly<Record<
   const queryDatabase = defineTool({
     name: "magentocloud_query_database",
     description:
-      'Use this for a bounded, read-only diagnostic query against an environment\'s database — either { kind: "size" } for usage stats, or { kind: "select", query, maxRows? } for a single guarded SELECT/SHOW/DESCRIBE/EXPLAIN statement. Every write verb, bare "*" projection, and file-exfiltration form is rejected before any process spawns; a SELECT with no LIMIT gets one injected automatically. rowsReturned === rowCap means more rows exist. Read-only.',
+      'Use this for a bounded, read-only diagnostic query against an environment\'s database — either { kind: "size" } for usage stats, or { kind: "select", query, maxRows? } for a single guarded SELECT/SHOW/DESCRIBE/EXPLAIN statement. Optional top-level "relationship" and "app" pick which database relationship and application to use (both kinds); set them when the environment has more than one, and for diagnostics prefer a read replica relationship such as "database-slave" when one exists. Every write verb, bare "*" projection, and file-exfiltration form is rejected before any process spawns; a SELECT with no LIMIT gets one injected automatically. rowsReturned === rowCap means more rows exist. Read-only.',
     inputSchema: magentocloudQueryDatabaseInput,
     annotations: READ_ONLY_ANNOTATIONS,
     handler: async (args) => {
       const { bin, home, path } = getRuntime();
       const env = childEnvWithOptionalToken(home, path);
-      const rawArgs = { projectId: args.projectId, environmentId: args.environmentId };
+      // Field by field, and only when supplied: both specs are `.strict()`.
+      const rawArgs: Record<string, unknown> = { projectId: args.projectId, environmentId: args.environmentId };
+      if (args.relationship !== undefined) {
+        rawArgs["relationship"] = args.relationship;
+      }
+      if (args.app !== undefined) {
+        rawArgs["app"] = args.app;
+      }
 
       if (args.request.kind === "size") {
         // "wraps db:size, issues no db:sql invocation" (magento-cloud-mcp
         // spec) — this branch never touches the dbSqlSpec/guardQuery path.
         const spec = { ...resolveSpec(bin, ["db:size"]), env };
-        const stdout = await executeReadOnlyCommand({ spec, rawArgs, now });
+        const stdout = await executeDbCommand({ spec, rawArgs, now });
         return { kind: "size" as const, ...parseDbSize(stdout) };
       }
 
@@ -449,7 +487,7 @@ function childEnvWithOptionalToken(home: string, path: string): Readonly<Record<
       if (args.request.maxRows !== undefined) {
         selectRawArgs["maxRows"] = args.request.maxRows;
       }
-      const stdout = await executeReadOnlyCommand({ spec, rawArgs: selectRawArgs, now });
+      const stdout = await executeDbCommand({ spec, rawArgs: selectRawArgs, now });
       const rows = parseDbSqlRows(stdout);
       return { kind: "select" as const, rowCap: args.request.maxRows ?? ROW_CAP, rowsReturned: rows.length, rows };
     },

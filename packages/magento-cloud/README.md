@@ -144,6 +144,19 @@ is intentionally narrow: a `{ kind: "size" }` usage check, or one guarded
 `SELECT` with no `LIMIT` gets `LIMIT 200` injected; `rowsReturned === rowCap`
 in the result is your signal that more rows exist.
 
+When an environment has more than one database relationship (typically a
+`database` primary and a `database-slave` read replica) or runs more than one
+application, the upstream CLI cannot choose without a terminal and refuses. Pass
+the optional top-level `relationship` and/or `app` fields — they apply to both
+request kinds and are forwarded as `--relationship` / `--app`. For diagnostics,
+prefer a read replica such as `database-slave` when one exists. Both are
+lowercase names (letters, digits, `-`, `_`; a relationship may also carry the
+CLI's `.<index>` suffix, e.g. `database.1`), at most 64 characters, and a
+malformed value is rejected before any process is spawned. If the CLI refuses
+for lack of one, the tool error says which field to set and lists the
+relationship names the CLI offered. The operator CLI's `db:sql` takes the same
+`--relationship` / `--app` flags.
+
 ## Documentation
 
 - [Magento Cloud onboarding](https://github.com/hiberus-magento/mcp-servers/blob/main/docs/magento-cloud-onboarding.md) — the day-one bootstrap sequence, the three failure modes in full, and the manual acceptance checklist.

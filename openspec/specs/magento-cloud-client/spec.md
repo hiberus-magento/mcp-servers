@@ -308,6 +308,52 @@ structurally unreachable.
 - WHEN the captured spawn options are inspected
 - THEN `stdio` is `"pipe"`, never `"inherit"`
 
+### Requirement: Database Relationship and App Selection
+
+The `db:size` and `db:sql` command specs MUST accept optional
+`relationship` and `app` arguments and forward each, only when supplied,
+as two separate argv tokens (`--relationship <name>`, `--app <name>`)
+placed after `--environment` and before `--raw`/the query (`db:sql`) or the
+format flag (`db:size`). With both omitted, the built argv MUST be
+byte-identical to the argv built without these arguments. Each value MUST
+match a lowercase name shape — `^[a-z0-9][a-z0-9_-]*$`, plus an optional
+`.<digits>` suffix for `relationship` only — of at most 64 characters, and
+a non-matching value MUST fail the spec's own `argsSchema`, so `buildArgv`
+is never called and no process is spawned. For `db:sql` the `guardQuery()`
+transform MUST still run and its output MUST carry the supplied target
+fields through. When the CLI refuses non-interactively because a
+relationship or app choice is required, the client MUST be able to turn
+that stderr into a remedy naming the input to set, listing only offered
+relationship names that themselves match the relationship shape.
+
+#### Scenario: Both target flags are forwarded as separate tokens
+
+- GIVEN `relationship: "database-slave"` and `app: "acme-demo-app"`
+- WHEN the `db:sql` argv is built
+- THEN it contains `--relationship`, `database-slave`, `--app`,
+  `acme-demo-app` as four tokens, all before `--raw`
+
+#### Scenario: Omitted target keeps argv unchanged
+
+- GIVEN neither `relationship` nor `app`
+- WHEN the `db:size` or `db:sql` argv is built
+- THEN it equals the pre-existing argv exactly
+
+#### Scenario: A flag-shaped or malformed name is rejected before spawn
+
+- GIVEN `relationship: "-r"` (or a value with whitespace, uppercase,
+  punctuation, or over 64 characters)
+- WHEN the arguments are validated
+- THEN validation fails and `buildArgv` is never called
+
+#### Scenario: Relationship-required refusal becomes an actionable remedy
+
+- GIVEN the CLI's "More than one relationship found." stderr followed by
+  its offered names `database` and `database-slave`
+- WHEN the failure is described
+- THEN the remedy names the `relationship` input and lists
+  `database, database-slave`
+
 ### Requirement: Timeout-vs-Output-Cap Disambiguation
 
 The client MUST distinguish a wall-clock timeout from a `maxOutputBytes`

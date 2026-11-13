@@ -12,6 +12,7 @@ import {
   TIME_ATTRIBUTION_FACTOR,
   classifyCliFailure,
   classifyKill,
+  describeDbTargetSelectionFailure,
   ensureBinaryResolved,
   parseCliVersion,
   resetCliVersionMemoForTests,
@@ -186,5 +187,72 @@ describe("classifyKill — timeout vs output-cap disambiguation", () => {
     });
 
     expect(result.kind).toBe("output-cap-exceeded");
+  });
+});
+
+// The real CLI's own non-interactive refusals (`Relationships::chooseDatabase`
+// and `CommandBase::selectApp`, read from the installed 1.47.0 binary): with
+// no TTY it cannot ask which relationship/app to use, so it says so on
+// stderr and exits non-zero. The fixtures carry that text verbatim.
+describe("describeDbTargetSelectionFailure — actionable relationship/app hints", () => {
+  const RELATIONSHIP_REQUIRED = readFileSync(join(FIXTURES_DIR, "db-relationship-required.txt"), "utf8");
+  const RELATIONSHIP_NOT_FOUND = readFileSync(join(FIXTURES_DIR, "db-relationship-not-found.txt"), "utf8");
+  const APP_REQUIRED = readFileSync(join(FIXTURES_DIR, "db-app-required.txt"), "utf8");
+
+  it("names the `relationship` input and lists the relationship names the CLI offered", () => {
+    const hint = describeDbTargetSelectionFailure(RELATIONSHIP_REQUIRED);
+
+    expect(hint).toBeDefined();
+    expect(hint).toContain('"relationship"');
+    expect(hint).toContain("database, database-slave");
+  });
+
+  it("suggests a read replica when the CLI offered one", () => {
+    expect(describeDbTargetSelectionFailure(RELATIONSHIP_REQUIRED)).toContain('"database-slave"');
+  });
+
+  it("never lists an offered line that is not a valid relationship name", () => {
+    const hint = describeDbTargetSelectionFailure(
+      "More than one relationship found.\nUse the --relationship (-r) option to specify a relationship. Options:\n    database\n    rm -rf /\n",
+    );
+
+    expect(hint).toContain("database");
+    expect(hint).not.toContain("rm -rf");
+  });
+
+  it("still names the input when no option list could be read", () => {
+    const hint = describeDbTargetSelectionFailure("More than one relationship found.\n");
+
+    expect(hint).toContain('"relationship"');
+  });
+
+  it("explains an unknown relationship name", () => {
+    const hint = describeDbTargetSelectionFailure(RELATIONSHIP_NOT_FOUND);
+
+    expect(hint).toContain('"relationship"');
+    expect(hint).toContain("database-replica");
+  });
+
+  it("names the `app` input when the CLI requires --app", () => {
+    const hint = describeDbTargetSelectionFailure(APP_REQUIRED);
+
+    expect(hint).toBeDefined();
+    expect(hint).toContain('"app"');
+  });
+
+  it("returns undefined for any other failure, so the CLI's own words pass through unchanged", () => {
+    expect(describeDbTargetSelectionFailure(NOT_AUTHENTICATED_STDERR)).toBeUndefined();
+    expect(describeDbTargetSelectionFailure("")).toBeUndefined();
+  });
+});
+
+describe("describeDbTargetSelectionFailure — operator CLI naming", () => {
+  it("names the flags instead of the tool fields when asked to", () => {
+    const stderr = readFileSync(join(FIXTURES_DIR, "db-relationship-required.txt"), "utf8");
+
+    const hint = describeDbTargetSelectionFailure(stderr, { relationship: "--relationship", app: "--app" });
+
+    expect(hint).toContain("Retry with --relationship set to one of: database, database-slave.");
+    expect(hint).not.toContain('"relationship"');
   });
 });

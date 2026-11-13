@@ -1,0 +1,6 @@
+
+                                                              
+  [Symfony\Component\Console\Exception\InvalidArgumentException]  
+  Specifying the --app is required in non-interactive mode    
+                                                              
+

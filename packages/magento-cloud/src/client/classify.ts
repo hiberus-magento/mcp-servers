@@ -5,6 +5,7 @@
 // Actionable Remedy"; tasks.md 2.4, 2.6-2.10).
 import { MagentoCloudNotAuthenticatedError, MagentoCloudNotInstalledError, MagentoCloudOutputCapError } from "./errors.js";
 import { locateBinary } from "./locate-binary.js";
+import { DB_RELATIONSHIP_PATTERN } from "./commands.js";
 
 // PROVISIONAL (design.md Open Questions; tasks.md 2.10): exploration found
 // a `VERSION = '5.3.1'` constant inside the installed binary but could not
@@ -59,6 +60,70 @@ export function classifyCliFailure(input: { readonly exitCode: number; readonly 
     exitCode: input.exitCode,
     message: input.stderr.length > 0 ? input.stderr : `magento-cloud exited with code ${input.exitCode}`,
   };
+}
+
+// db:size / db:sql target selection. Read from the installed CLI 1.47.0's
+// own source (`Relationships::chooseDatabase`, `CommandBase::selectApp`):
+// with no TTY it cannot ask which relationship or application to use, so it
+// prints one of these on stderr and exits non-zero. The relationship refusal
+// is followed by the offered names, one per indented line — names only,
+// never the `user@host` labels the interactive chooser shows.
+const RELATIONSHIP_REQUIRED_MARKER = "More than one relationship found";
+const RELATIONSHIP_NOT_FOUND_PATTERN = /Relationship not found:\s*(\S+)/;
+const APP_REQUIRED_MARKER = "Specifying the --app";
+const READ_REPLICA_HINT_PATTERN = /slave|replica/;
+
+function offeredRelationshipNames(stderr: string): readonly string[] {
+  const optionsIndex = stderr.indexOf("Options:");
+  if (optionsIndex === -1) {
+    return [];
+  }
+  // Only lines that are themselves valid relationship names are echoed back:
+  // the hint must never relay arbitrary upstream text as if it were a name.
+  return stderr
+    .slice(optionsIndex + "Options:".length)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => DB_RELATIONSHIP_PATTERN.test(line));
+}
+
+/** How the remedy names the two inputs: tool fields by default, flags for the operator CLI. */
+export interface DbTargetInputNames {
+  readonly relationship: string;
+  readonly app: string;
+}
+
+const TOOL_INPUT_NAMES: DbTargetInputNames = { relationship: '"relationship"', app: '"app"' };
+
+/**
+ * Turns the CLI's non-interactive relationship/app refusal into a remedy that
+ * names the input to set, listing the relationship names the CLI itself
+ * offered. Returns `undefined` for any other failure, so the caller keeps the
+ * CLI's own words. Pure: string in, string out — no second CLI call.
+ */
+export function describeDbTargetSelectionFailure(stderr: string, inputNames: DbTargetInputNames = TOOL_INPUT_NAMES): string | undefined {
+  const { relationship: relationshipInput, app: appInput } = inputNames;
+  if (stderr.includes(RELATIONSHIP_REQUIRED_MARKER)) {
+    const names = offeredRelationshipNames(stderr);
+    const replica = names.find((name) => READ_REPLICA_HINT_PATTERN.test(name));
+    return (
+      "This environment has more than one database relationship and the Magento Cloud CLI cannot choose one non-interactively. " +
+      (names.length > 0
+        ? `Retry with ${relationshipInput} set to one of: ${names.join(", ")}.`
+        : `Retry with ${relationshipInput} set to the relationship to query.`) +
+      (replica !== undefined ? ` For diagnostics, prefer the read replica "${replica}" to keep load off the primary.` : "")
+    );
+  }
+  const notFound = RELATIONSHIP_NOT_FOUND_PATTERN.exec(stderr);
+  if (notFound !== null) {
+    const name = notFound[1] ?? "";
+    const shown = DB_RELATIONSHIP_PATTERN.test(name) ? ` "${name}"` : "";
+    return `The requested relationship${shown} does not exist on this environment. Retry with ${relationshipInput} set to an existing relationship name, or omit it.`;
+  }
+  if (stderr.includes(APP_REQUIRED_MARKER)) {
+    return `This environment runs more than one application and the Magento Cloud CLI cannot choose one non-interactively. Retry with ${appInput} set to the application name.`;
+  }
+  return undefined;
 }
 
 export interface CliVersionInfo {

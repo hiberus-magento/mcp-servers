@@ -43,3 +43,22 @@ test("the valid { kind: \"select\", query } shape is assignable", () => {
   const input: QueryDatabaseInput = { projectId: "p", environmentId: "e", request: { kind: "select", query: "SELECT 1" } };
   void input;
 });
+
+test("relationship and app are optional top-level strings, beside the ids — not request fields", () => {
+  expectTypeOf<QueryDatabaseInput["relationship"]>().toEqualTypeOf<string | undefined>();
+  expectTypeOf<QueryDatabaseInput["app"]>().toEqualTypeOf<string | undefined>();
+  const input: QueryDatabaseInput = {
+    projectId: "p",
+    environmentId: "e",
+    relationship: "database-slave",
+    app: "acme-demo-app",
+    request: { kind: "size" },
+  };
+  void input;
+});
+
+test("relationship inside the request fails to compile", () => {
+  // @ts-expect-error — relationship picks the database for BOTH kinds, so it lives at the top level.
+  const input: QueryDatabaseInput = { projectId: "p", environmentId: "e", request: { kind: "size", relationship: "database" } };
+  void input;
+});

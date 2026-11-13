@@ -15,7 +15,7 @@
 import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MagentoCloudCommandFailedError,
   MagentoCloudNotInstalledError,
@@ -642,5 +642,125 @@ describe("magentocloud_auth_status — tolerates an absent credential", () => {
     expect(execFileMock).toHaveBeenCalledOnce();
     expect(result.isError).toBeUndefined();
     expect(result.content[0]?.text).toContain('"authenticated":false');
+  });
+});
+
+// An environment with more than one database relationship (a `database`
+// primary and a `database-slave` read replica, typically) or more than one
+// application makes the real CLI refuse to choose without a TTY. The tool
+// takes top-level `relationship` / `app`, applying to both request kinds.
+describe("magentocloud_query_database — relationship / app selection", () => {
+  const SELECT = { kind: "select", query: "SELECT entity_id FROM catalog LIMIT 1" } as const;
+
+  // mockReset, not mockClear: a queued once-implementation a failing test
+  // never consumed must not leak into the next one.
+  beforeEach(() => {
+    execFileMock.mockReset();
+  });
+
+  function argvOfLastCall(): readonly string[] {
+    return (execFileMock.mock.calls.at(-1)?.[1] ?? []) as readonly string[];
+  }
+
+  it("forwards relationship and app to db:size", async () => {
+    mockExecFileOnce(0, "Allocated disk\tEstimated usage\t% used\n2147483648\t1073741824\t50\n", "");
+    const queryDatabase = toolNamed("magentocloud_query_database");
+
+    const result = await queryDatabase.invoke(
+      { projectId: "p", environmentId: "e", relationship: "database-slave", app: "acme-demo-app", request: { kind: "size" } },
+      {},
+    );
+
+    expect(result.isError).toBeUndefined();
+    const argv = argvOfLastCall();
+    expect(argv).toContain("db:size");
+    expect(argv.slice(argv.indexOf("--relationship"), argv.indexOf("--relationship") + 2)).toEqual(["--relationship", "database-slave"]);
+    expect(argv.slice(argv.indexOf("--app"), argv.indexOf("--app") + 2)).toEqual(["--app", "acme-demo-app"]);
+  });
+
+  it("forwards relationship and app to db:sql, before --raw", async () => {
+    mockExecFileOnce(0, "entity_id\n1\n", "");
+    const queryDatabase = toolNamed("magentocloud_query_database");
+
+    await queryDatabase.invoke({ projectId: "p", environmentId: "e", relationship: "database-slave", app: "acme-demo-app", request: SELECT }, {});
+
+    const argv = argvOfLastCall();
+    expect(argv.indexOf("--relationship")).toBeGreaterThan(-1);
+    expect(argv[argv.indexOf("--relationship") + 1]).toBe("database-slave");
+    expect(argv[argv.indexOf("--app") + 1]).toBe("acme-demo-app");
+    expect(argv.indexOf("--relationship")).toBeLessThan(argv.indexOf("--raw"));
+    expect(argv.indexOf("--app")).toBeLessThan(argv.indexOf("--raw"));
+  });
+
+  it("omitting both keeps the db:sql argv byte-identical", async () => {
+    mockExecFileOnce(0, "entity_id\n1\n", "");
+    const queryDatabase = toolNamed("magentocloud_query_database");
+
+    await queryDatabase.invoke({ projectId: "p", environmentId: "e", request: SELECT }, {});
+
+    expect(argvOfLastCall()).toEqual(["db:sql", "--project", "p", "--environment", "e", "--raw", SELECT.query]);
+  });
+
+  it.each([
+    [{ relationship: "-r" }],
+    [{ relationship: "database slave" }],
+    [{ relationship: "Database" }],
+    [{ app: "--app" }],
+    [{ app: "acme;demo" }],
+  ])("rejects %j for both kinds before any process is spawned", async (target) => {
+    const queryDatabase = toolNamed("magentocloud_query_database");
+
+    for (const request of [{ kind: "size" }, SELECT]) {
+      await expect(queryDatabase.invoke({ projectId: "p", environmentId: "e", ...target, request }, {})).rejects.toThrow();
+    }
+    expect(execFileMock).not.toHaveBeenCalled();
+  });
+
+  it("relationship belongs at the top level, not inside request", () => {
+    const parsed = magentocloudQueryDatabaseInput.safeParse({
+      projectId: "p",
+      environmentId: "e",
+      request: { kind: "size", relationship: "database" },
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("turns the CLI's 'more than one relationship' refusal into a hint naming `relationship` and the offered names", async () => {
+    mockExecFileOnce(1, "", readFixture("db-relationship-required.txt"));
+    const queryDatabase = toolNamed("magentocloud_query_database");
+
+    const result = await invokeMagentoCloudTool(queryDatabase, { projectId: "p", environmentId: "e", request: SELECT }, {});
+
+    expect(result.isError).toBe(true);
+    const text = result.content[0]?.text ?? "";
+    expect(text).toContain('"relationship"');
+    expect(text).toContain("database, database-slave");
+  });
+
+  it("does the same for db:size, and for the CLI's --app refusal", async () => {
+    mockExecFileOnce(1, "", readFixture("db-app-required.txt"));
+    const queryDatabase = toolNamed("magentocloud_query_database");
+
+    const result = await invokeMagentoCloudTool(queryDatabase, { projectId: "p", environmentId: "e", request: { kind: "size" } }, {});
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('"app"');
+  });
+
+  it("leaves an unrelated CLI failure's own words unchanged", async () => {
+    mockExecFileOnce(1, "", "[ProjectNotFoundException] Specified project not found: p");
+    const queryDatabase = toolNamed("magentocloud_query_database");
+
+    const result = await invokeMagentoCloudTool(queryDatabase, { projectId: "p", environmentId: "e", request: SELECT }, {});
+
+    expect(result.content[0]?.text).toBe("[ProjectNotFoundException] Specified project not found: p");
+  });
+
+  it("the description tells the agent about relationship and app", () => {
+    const { description } = toolNamed("magentocloud_query_database");
+
+    expect(description).toContain("relationship");
+    expect(description).toContain("app");
+    expect(description).toContain("database-slave");
   });
 });
