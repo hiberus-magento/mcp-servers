@@ -53,6 +53,9 @@ Querying a read replica (`database-slave`) is also the safer default for diagnos
   - Checks: `pnpm lint` 0, `pnpm typecheck` 0, `pnpm test` 0, `pnpm build` 0, `pnpm verify:package` 0, `gen-readme --check` PASS, `check-licenses` PASS, `audit-synthetic-identifiers` PASS.
   - Docs: three openspec specs (new requirement + scenarios each), package README, changeset `.changeset/magento-cloud-db-relationship-app.md` (minor; CHANGELOG is changeset-generated).
 
+- T1 committed as c9003bb. Parent spot check: magento-cloud 437 tests pass; audit-synthetic-identifiers PASS.
+- RDD: assessed high (`high_risk`); consent granted; 4-lens review approved and acknowledged (lineage review-9dc08c1d049f5659). Non-blocking follow-ups: R4 hint drops original stderr (WARNING), R3 CLI usage message changed (WARNING), plus 6 suggestions (classify depends on commands, duplicated hint mapping, unbounded offered-names scan, unanchored marker match, CLI app/not-found hint untested end-to-end).
+
 ## Next step
 
-Parent: review diff, commit T1, run RDD assess.
+Optional follow-up on the two WARNING findings; push/PR is the user's decision.
