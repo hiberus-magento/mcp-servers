@@ -36,8 +36,8 @@ with `magentographql_get_cart` before trying again, or `add_products_to_cart` ma
 
 ### Loading only the tools a project needs (`MAGENTO_GRAPHQL_GROUPS`)
 
-Twenty groups: `products`, `categories`, `cms`, `store`, `customer`, `account`, `cart`, `checkout`, `orders`, `returns`, `wishlist`, `compare`, `payments`, `gift-and-rewards`, `gift-registry`, `company`, `purchase-orders`, `quotes`, `requisition-lists`, `query`. For a content-only project,
-`"products,categories,cms"` shows an agent a handful of tools instead of 216; the Adobe Commerce groups (`returns`,
+Twenty-one groups: `products`, `product-alerts`, `categories`, `cms`, `store`, `customer`, `account`, `cart`, `checkout`, `orders`, `returns`, `wishlist`, `compare`, `payments`, `gift-and-rewards`, `gift-registry`, `company`, `purchase-orders`, `quotes`, `requisition-lists`, `query`. For a content-only project,
+`"products,categories,cms"` shows an agent a handful of tools instead of 247; the Adobe Commerce groups (`returns`,
 `gift-and-rewards`, `gift-registry`, `company`, `purchase-orders`, `quotes`, `requisition-lists`) can be left out of a
 store that is Open Source Magento, where they would only answer "Cannot query field". Names are case-insensitive; a name
 that is not a group stops the server with exit code 1 and the list of valid ones. Loading fewer groups also lowers
@@ -94,7 +94,7 @@ catalog, or one not assigned to the website of the store view you asked for is s
 
 ## 6. What has been run against a real Magento
 
-32 of the 216 tools have been, anonymously, against a local Magento with test data (the curated reads of products,
+32 of the 247 tools have been, anonymously, against a local Magento with test data (the curated reads of products,
 categories, CMS and the store, the generic query and schema tools, and seven generated reads: checkout agreements, route,
 attributes list, reCAPTCHA v3 config, gift registry types, e-mail availability and customer group; and, with the write
 switch on, a guest cart end to end: create, add, update, remove, clear, guest e-mail, shipping address, billing address,

@@ -30,10 +30,10 @@ describe("createMagentoGraphqlTools", () => {
     expect(createMagentoGraphqlTools({ getRuntime, writesEnabled: false, groups: ["cart"] }).map((t) => t.name)).toEqual(["magentographql_get_cart"]);
   });
 
-  it("names the twenty groups", () => {
+  it("names the twenty-one groups", () => {
     expect([...GROUP_NAMES].sort()).toEqual([
       "account", "cart", "categories", "checkout", "cms", "company", "compare", "customer", "gift-and-rewards", "gift-registry",
-      "orders", "payments", "products", "purchase-orders", "query", "quotes", "requisition-lists", "returns", "store", "wishlist",
+      "orders", "payments", "product-alerts", "products", "purchase-orders", "query", "quotes", "requisition-lists", "returns", "store", "wishlist",
     ]);
   });
 
