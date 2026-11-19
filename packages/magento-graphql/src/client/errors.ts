@@ -6,7 +6,17 @@
 // surfaced (a proxy's HTML page can name an internal host), and what is kept goes through `redact`.
 import { redact } from "@hiberus-magento/mcp-core";
 
-export type MagentoGraphqlErrorKind = "unauthorized" | "forbidden" | "not-found" | "invalid-request" | "rate-limited" | "server" | "transport" | "unparseable";
+export type MagentoGraphqlErrorKind =
+  | "unauthorized"
+  | "forbidden"
+  | "not-found"
+  | "invalid-request"
+  | "rate-limited"
+  | "server"
+  | "transport"
+  | "unparseable"
+  /** The connected store's schema lacks the operation a fixed document runs (design D12). */
+  | "unsupported-operation";
 
 const MAX_MESSAGE_CHARS = 240;
 const MAX_MESSAGES = 5;
@@ -118,5 +128,24 @@ export function classifyGraphqlErrors(errors: readonly unknown[]): MagentoGraphq
     kind,
     message: shown.length === 0 ? "Magento GraphQL returned an error without a message." : `Magento GraphQL: ${shown.join(" | ")}${extra > 0 ? ` (+${extra} more)` : ""}`,
     ...(kind === "unauthorized" ? { remedy: UNAUTHORIZED_REMEDY } : {}),
+  });
+}
+
+const UNSUPPORTED_REMEDY =
+  "The store lacks the Magento release or module this tool was written for (Adobe Commerce, B2B or a newer version), so this tool cannot work against it. " +
+  "Use magentographql_list_operations to see what this store offers.";
+
+/**
+ * A fixed document whose root operation the connected store does not have (`missing`), or of which it has none of
+ * the fields the document selects (`nothing-left`). Raised before the document is sent.
+ */
+export function unsupportedOperation(kind: "query" | "mutation", operation: string, reason: "missing" | "nothing-left"): MagentoGraphqlError {
+  return new MagentoGraphqlError({
+    kind: "unsupported-operation",
+    message:
+      reason === "missing"
+        ? `The connected store does not offer the ${kind} \`${operation}\`: its GraphQL schema has no such operation.`
+        : `The connected store offers the ${kind} \`${operation}\`, but none of the fields this tool reads from it.`,
+    remedy: UNSUPPORTED_REMEDY,
   });
 }

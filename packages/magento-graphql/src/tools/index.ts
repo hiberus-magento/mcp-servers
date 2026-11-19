@@ -12,6 +12,7 @@ import { categoryTools } from "./categories-tools.js";
 import { cmsTools } from "./cms-tools.js";
 import { customerTools } from "./customer-tools.js";
 import { GENERATED_GROUP_NAMES, generatedTools } from "./generated-tools.js";
+import type { OffersOperation } from "../client/index.js";
 import { createToolFactory, type MagentoGraphqlTool, type ToolFactory } from "./graphql-tool.js";
 import { productTools } from "./products-tools.js";
 import { queryTools } from "./query-tools.js";
@@ -100,4 +101,12 @@ export function allMagentoGraphqlTools(): readonly MagentoGraphqlTool[] {
   return assemble(() => {
     throw new Error("allMagentoGraphqlTools is for inspection; it has no runtime to call");
   }, Object.keys(GROUPS) as GroupName[]);
+}
+
+/**
+ * The tools whose fixed document runs an operation the connected store does not offer (design D12). A tool without
+ * an `operation` — the generic query tool, and the reads of the schema itself — is never one of them.
+ */
+export function unsupportedTools(tools: readonly MagentoGraphqlTool[], offers: OffersOperation): readonly string[] {
+  return tools.filter((tool) => tool.operation !== undefined && !offers(tool.access === "read" ? "query" : "mutation", tool.operation)).map((tool) => tool.name);
 }

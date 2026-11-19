@@ -12,11 +12,13 @@
 // the store's field lacks, an inline fragment on a type the store lacks, a field (or fragment) whose selection
 // set that left empty, and then each variable definition nothing uses any more. Input-object fields inside an
 // argument's literal are not trimmed: a store that lacks one answers with its own error.
+import { OperationGuardError } from "./operation-guard.js";
 import type { StoreSchema } from "./schema.js";
 
-export class DocumentReadError extends Error {
+/** A document the trimmer cannot read. A refusal of the document, like the guard's, so it is rendered the same way. */
+export class DocumentReadError extends OperationGuardError {
   constructor(message: string) {
-    super(message);
+    super(`The GraphQL document cannot be adapted to the store's schema: ${message}.`);
     this.name = "DocumentReadError";
   }
 }

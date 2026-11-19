@@ -11,10 +11,12 @@
 //     mutation, or a tool with two operations, stops the server at startup instead of surfacing on a call;
 //   - annotations come from the kind of effect, not from hand-typed booleans — `readOnlyHint` is
 //     what makes an MCP client skip a confirmation prompt;
-//   - the client is resolved lazily, per call, so `tools/list` works before the base URL is set.
+//   - the client is resolved lazily, per call, so `tools/list` works before the base URL is set;
+//   - a fixed document is adapted to the connected store's schema on every call (design D12), and must be
+//     readable by the trimmer when the tool is built; the generic query tool's document never is.
 import { defineTool, type RegisteredTool, type ToolAnnotations } from "@hiberus-magento/mcp-core";
 import type { z } from "zod";
-import { OperationGuardError, inspectDocument, type GraphqlResult, type MagentoGraphqlClient } from "../client/index.js";
+import { OperationGuardError, inspectDocument, readDocument, rootOperations, type GraphqlResult, type MagentoGraphqlClient } from "../client/index.js";
 import { LIVE_VERIFIED_TOOLS, UNVERIFIED_DETAIL, UNVERIFIED_MARKER } from "./verification.js";
 
 export type Access = "read" | "write";
@@ -26,8 +28,11 @@ export type Access = "read" | "write";
  */
 export type WriteEffect = "create" | "update" | "delete" | "action";
 
-/** `document` is the fixed document of a curated tool (absent on the generic query tool); tests read it, a server never needs to. */
-export type MagentoGraphqlTool = RegisteredTool<z.ZodObject, unknown> & { readonly access: Access; readonly document?: string };
+/**
+ * `document` is the fixed document of a curated or generated tool (absent on the generic query tool); tests read it.
+ * `operation` is the root field it runs, which the server uses to disable the tool on a store that lacks it.
+ */
+export type MagentoGraphqlTool = RegisteredTool<z.ZodObject, unknown> & { readonly access: Access; readonly document?: string; readonly operation?: string };
 
 type ToolName = `magentographql_${string}`;
 
@@ -96,6 +101,12 @@ export function createToolFactory(getClient: () => MagentoGraphqlClient, options
     if (info.operations !== 1 || info.kind !== expected) {
       throw new OperationGuardError(`${spec.name}: a ${access} tool needs exactly one ${expected}; its document has ${info.operations} operation(s) and is a ${info.kind}.`);
     }
+    let operation: string | undefined;
+    try {
+      operation = rootOperations(readDocument(spec.document))[0];
+    } catch (error) {
+      throw new OperationGuardError(`${spec.name}: ${error instanceof Error ? error.message : "unreadable document"}`);
+    }
     const description = describe(spec.name, spec.description);
     const tool = defineTool({
       name: spec.name,
@@ -107,6 +118,7 @@ export function createToolFactory(getClient: () => MagentoGraphqlClient, options
         const variables = spec.variables?.(args);
         const context = spec.context?.(args);
         const callOptions = {
+          adapt: true,
           ...(variables !== undefined ? { variables } : {}),
           ...(context?.store !== undefined ? { store: context.store } : {}),
           ...(context?.currency !== undefined ? { currency: context.currency } : {}),
@@ -115,7 +127,7 @@ export function createToolFactory(getClient: () => MagentoGraphqlClient, options
         return shapeResult(result, spec.pick, spec.transform === undefined ? undefined : (value) => spec.transform?.(value, args));
       },
     });
-    return { ...tool, access, document: spec.document } as unknown as MagentoGraphqlTool;
+    return { ...tool, access, document: spec.document, ...(operation !== undefined ? { operation } : {}) } as unknown as MagentoGraphqlTool;
   }
 
   /** Bound to the MCP request's signal: when the client cancels the call, its in-flight request is aborted. */

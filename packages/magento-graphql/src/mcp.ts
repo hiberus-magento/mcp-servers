@@ -19,7 +19,7 @@ import { createStdioServer, logger, serverVersion } from "@hiberus-magento/mcp-c
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
-import { createMagentoGraphqlTools, type MagentoGraphqlTool } from "./tools/index.js";
+import { createMagentoGraphqlTools, unsupportedTools, type MagentoGraphqlTool } from "./tools/index.js";
 import { createRuntimeResolver, readGroupsFromEnv, toErrorResult, writesEnabled } from "./tools/runtime.js";
 
 // The SDK constructs a real `AjvJsonSchemaValidator` at server-construction time unless an
@@ -47,7 +47,22 @@ function loadGroups(): readonly string[] {
 
 const groups = loadGroups();
 const writes = writesEnabled();
-const getRuntime = createRuntimeResolver();
+// Filled below as tools are registered. Once the first fixed-document call has read the connected store's schema,
+// every tool whose operation the store lacks is disabled (design D12): the SDK then sends
+// notifications/tools/list_changed, so a client that honours it stops listing them, and a call to one answers that
+// the tool is disabled. Before that — and on a store whose schema cannot be read — such a tool answers, on a call,
+// that the store does not offer its operation.
+const registered = new Map<string, { readonly disable: () => void }>();
+let toolsAssembled: readonly MagentoGraphqlTool[] = [];
+const getRuntime = createRuntimeResolver({
+  onSchema: (offers) => {
+    const unsupported = unsupportedTools(toolsAssembled, offers);
+    for (const name of unsupported) registered.get(name)?.disable();
+    if (unsupported.length > 0) {
+      logger.warn(`magento-graphql: the connected store does not offer the operations of ${unsupported.length} tool(s); they are disabled.`);
+    }
+  },
+});
 
 const server = new McpServer({ name: "magento-graphql", version: serverVersion() }, { jsonSchemaValidator: noElicitationValidator });
 
@@ -61,8 +76,9 @@ function assembleTools(): readonly MagentoGraphqlTool[] {
   }
 }
 
-for (const tool of assembleTools()) {
-  server.registerTool(
+toolsAssembled = assembleTools();
+for (const tool of toolsAssembled) {
+  const handle = server.registerTool(
     tool.name,
     { description: tool.description, inputSchema: tool.inputSchema.shape, annotations: tool.annotations },
     async (args: unknown, extra) => {
@@ -79,6 +95,7 @@ for (const tool of assembleTools()) {
       }
     },
   );
+  registered.set(tool.name, handle);
 }
 
 if (groups.length > 0) {

@@ -9,12 +9,14 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { MagentoGraphqlError, createMagentoGraphqlClient } from "../client/index.js";
 import { createFetchDouble, data, gqlErrors } from "../testing/fetch-double.js";
+import { isIntrospection, schemaDouble } from "../testing/schema-double.js";
 import { createToolFactory } from "./graphql-tool.js";
 import { UNVERIFIED_MARKER } from "./verification.js";
 
-const setup = (responder: Parameters<typeof createFetchDouble>[0], options: Parameters<typeof createToolFactory>[1] = {}) => {
+// Adaptation to the store's schema has its own tests below; here a client without it keeps each request the tool's own.
+const setup = (responder: Parameters<typeof createFetchDouble>[0], options: Parameters<typeof createToolFactory>[1] = {}, adaptToSchema = false) => {
   const double = createFetchDouble(responder);
-  const client = createMagentoGraphqlClient({ fetch: double.fetch, now: () => 0, sleep: async () => undefined, baseUrl: SYNTHETIC_MAGENTO_GRAPHQL_URL, getToken: async () => undefined });
+  const client = createMagentoGraphqlClient({ fetch: double.fetch, now: () => 0, sleep: async () => undefined, baseUrl: SYNTHETIC_MAGENTO_GRAPHQL_URL, getToken: async () => undefined, adaptToSchema });
   return { double, factory: createToolFactory(() => client, options) };
 };
 
@@ -115,5 +117,41 @@ describe("createToolFactory", () => {
     expect(unverified.description).toContain(UNVERIFIED_MARKER);
     const verified = setup(data({}), { liveVerified: new Set(["magentographql_x"]) }).factory.readTool({ name: "magentographql_x", description: "Use this to x.", input, document: "{ a }" });
     expect(verified.description).toBe("Use this to x.");
+  });
+});
+
+describe("fixed documents and the connected store's schema (design D12)", () => {
+  const STORE = { Query: { products: "Products(search)" }, Products: { total_count: "Int" } };
+  const answer = (call: { request?: { query: string } | undefined }) => (isIntrospection(call.request?.query) ? schemaDouble(STORE) : data({ products: { total_count: 1 } }));
+
+  it("a read tool's document is trimmed to what the store has, and its unused variables are not sent", async () => {
+    const { double, factory } = setup(answer, {}, true);
+    const tool = factory.readTool({ name: "magentographql_x", description: "Use this to x.", input, document: "query X($s: String, $p: Int) { products(search: $s, pageSize: $p) { total_count is_new } }", variables: (a) => ({ s: a.term, p: 2 }) });
+    await tool.invoke({ term: "tent" }, {});
+    const sent = double.calls.filter((c) => !isIntrospection(c.request?.query));
+    expect(sent[0]?.request?.query).toBe("query X($s: String) { products(search: $s) { total_count } }");
+    expect(sent[0]?.request?.variables).toEqual({ s: "tent" });
+  });
+
+  it("a tool whose operation the store lacks answers a classified error, and sends nothing beyond the schema read", async () => {
+    const { double, factory } = setup(answer, {}, true);
+    const tool = factory.writeTool({ name: "magentographql_w", description: "Use this to w.", input, document: "mutation W { createCompany { id } }", effect: "create" });
+    expect(tool.operation).toBe("createCompany");
+    await expect(tool.invoke({ term: "" }, {})).rejects.toMatchObject({ kind: "unsupported-operation" });
+    expect(double.calls.every((c) => isIntrospection(c.request?.query))).toBe(true);
+  });
+
+  it("the generic query tool's document is never trimmed, and does not read the schema", async () => {
+    const { double, factory } = setup(answer, {}, true);
+    const document = "query D { products { total_count is_new } }";
+    const dynamic = factory.dynamicQueryTool({ name: "magentographql_d", description: "Use this to d.", input, run: (_a, client) => client.query(document) });
+    await dynamic.invoke({ term: "" }, {});
+    expect(double.calls.map((c) => c.request?.query)).toEqual([document]);
+    expect(dynamic.operation).toBeUndefined();
+  });
+
+  it("refuses at build time a fixed document the trimmer cannot read", () => {
+    const { factory } = setup(answer);
+    expect(() => factory.readTool({ name: "magentographql_a", description: "Use this to a.", input, document: "query A { p: products { total_count } }" })).toThrow(/cannot be adapted/);
   });
 });
