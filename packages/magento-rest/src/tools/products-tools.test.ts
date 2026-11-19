@@ -155,7 +155,7 @@ describe("magentorest_advanced_product_search", () => {
 
 describe("product writes", () => {
   it("create_product wraps the product, puts prose in custom_attributes, and defaults the enums", async () => {
-    const { double, call } = build({ "POST /rest/V1/products": json(200, RAW_PRODUCT) });
+    const { double, call } = build({ "POST /rest/all/V1/products": json(200, RAW_PRODUCT) });
     await call("magentorest_create_product", { sku: SKU, name: "Demo Tent", price: 99.5, description: "A tent." });
     expect(JSON.parse(double.calls[0]?.body ?? "{}")).toEqual({
       product: {
@@ -172,7 +172,7 @@ describe("product writes", () => {
   });
 
   it("update_product sends only the fields given", async () => {
-    const { double, call } = build({ [`PUT /rest/V1/products/${SKU}`]: json(200, RAW_PRODUCT) });
+    const { double, call } = build({ [`PUT /rest/all/V1/products/${SKU}`]: json(200, RAW_PRODUCT) });
     await call("magentorest_update_product", { sku: SKU, price: 10, short_description: "Short." });
     expect(JSON.parse(double.calls[0]?.body ?? "{}")).toEqual({ product: { price: 10, custom_attributes: [{ attribute_code: "short_description", value: "Short." }] } });
   });
@@ -185,8 +185,8 @@ describe("product writes", () => {
 
   it("update_product_attribute writes a custom attribute through custom_attributes", async () => {
     const { double, call } = build({
-      [`GET /rest/V1/products/${SKU}`]: json(200, RAW_PRODUCT),
-      [`PUT /rest/V1/products/${SKU}`]: json(200, RAW_PRODUCT),
+      [`GET /rest/all/V1/products/${SKU}`]: json(200, RAW_PRODUCT),
+      [`PUT /rest/all/V1/products/${SKU}`]: json(200, RAW_PRODUCT),
     });
     await call("magentorest_update_product_attribute", { sku: SKU, attribute_code: "url_key", value: "new-key" });
     expect(JSON.parse(double.calls[1]?.body ?? "{}")).toEqual({ product: { custom_attributes: [{ attribute_code: "url_key", value: "new-key" }] } });
@@ -194,8 +194,8 @@ describe("product writes", () => {
 
   it("update_product_attribute writes a standard attribute at the top level", async () => {
     const { double, call } = build({
-      [`GET /rest/V1/products/${SKU}`]: json(200, RAW_PRODUCT),
-      [`PUT /rest/V1/products/${SKU}`]: json(200, RAW_PRODUCT),
+      [`GET /rest/all/V1/products/${SKU}`]: json(200, RAW_PRODUCT),
+      [`PUT /rest/all/V1/products/${SKU}`]: json(200, RAW_PRODUCT),
     });
     await call("magentorest_update_product_attribute", { sku: SKU, attribute_code: "price", value: 12 });
     expect(JSON.parse(double.calls[1]?.body ?? "{}")).toEqual({ product: { price: 12 } });

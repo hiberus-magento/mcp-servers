@@ -113,4 +113,16 @@ describe("createMagentoRestClient", () => {
       await expect(client.getAllPages("/orders", {}, { maxPages: 1000 })).rejects.toThrow(/maxPages/);
     });
   });
+
+  it("with() returns a view whose requests carry the scope and signal, and leaves the original alone", async () => {
+    const { double, client } = build({ "PUT /rest/all/V1/products/x": json(200, {}), "GET /rest/all/V1/products/x": json(200, {}), "GET /rest/V1/products/x": json(200, {}) });
+    const controller = new AbortController();
+    const scoped = client.with({ signal: controller.signal }).with({ scope: "all" });
+    await scoped.put("/products/x", {});
+    await scoped.get("/products/x");
+    await client.get("/products/x");
+    expect(double.calls.map((call) => new URL(call.url).pathname)).toEqual(["/rest/all/V1/products/x", "/rest/all/V1/products/x", "/rest/V1/products/x"]);
+    controller.abort();
+    await expect(scoped.get("/products/x")).rejects.toThrow(/cancelled/);
+  });
 });

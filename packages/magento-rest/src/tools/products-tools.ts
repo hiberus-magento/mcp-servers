@@ -18,7 +18,7 @@
 // (`tools/index.ts`); this module defines them either way.
 import { z } from "zod";
 import { restPath } from "../client/index.js";
-import { conditionType, currentPage, entityId, fieldName, pageSize, sku, sortDirection, DEFAULT_SEARCH_PAGE_SIZE } from "./inputs.js";
+import { conditionType, currentPage, entityId, fieldName, pageSize, sku, sortDirection, storeCode, inStore, DEFAULT_SEARCH_PAGE_SIZE } from "./inputs.js";
 import type { MagentoRestTool, ToolFactory } from "./rest-tool.js";
 import { listOf } from "./shapes.js";
 
@@ -100,11 +100,12 @@ export function productTools({ readTool, writeTool, shapes }: ToolFactory): read
           meta_title: z.string().max(255).optional().describe("SEO meta title."),
           meta_description: z.string().max(1000).optional().describe("SEO meta description."),
           url_key: z.string().max(255).optional().describe("URL key."),
+          store_code: storeCode,
         })
         .strict(),
       shape: shapes.product,
       run: (args, client) =>
-        client.post("/products", {
+        inStore(client, args.store_code).post("/products", {
           product: {
             sku: args.sku,
             name: args.name,
@@ -139,16 +140,17 @@ export function productTools({ readTool, writeTool, shapes }: ToolFactory): read
           weight: z.number().min(0).optional().describe("New weight."),
           description: z.string().max(65_535).optional().describe("New full description."),
           short_description: z.string().max(65_535).optional().describe("New short description."),
+          store_code: storeCode,
         })
         .strict(),
       shape: shapes.product,
-      run: ({ sku, description, short_description, ...fields }, client) => {
+      run: ({ sku, description, short_description, store_code, ...fields }, client) => {
         const attributes = [...prose("description", description), ...prose("short_description", short_description)];
         const direct = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
         if (Object.keys(direct).length === 0 && attributes.length === 0) {
           throw new Error("magentorest_update_product: nothing to update — pass at least one field besides the SKU.");
         }
-        return client.put(restPath`/products/${sku}`, { product: { ...direct, ...(attributes.length > 0 ? { custom_attributes: attributes } : {}) } });
+        return inStore(client, store_code).put(restPath`/products/${sku}`, { product: { ...direct, ...(attributes.length > 0 ? { custom_attributes: attributes } : {}) } });
       },
     }),
 
@@ -157,17 +159,20 @@ export function productTools({ readTool, writeTool, shapes }: ToolFactory): read
       description:
         "Use this to set ONE attribute of a product by code (name, price, status, description, a custom attribute, ...). Overwrites the current value. The identity attributes sku, id, entity_id and type_id are refused.",
       effect: "update",
-      input: z.object({ sku, attribute_code: fieldName("Attribute code to set, e.g. price or url_key."), value: primitiveValue.describe("New value: a string, number or boolean.") }).strict(),
+      input: z
+        .object({ sku, attribute_code: fieldName("Attribute code to set, e.g. price or url_key."), value: primitiveValue.describe("New value: a string, number or boolean."), store_code: storeCode })
+        .strict(),
       shape: shapes.product,
-      run: async ({ sku, attribute_code, value }, client) => {
+      run: async ({ sku, attribute_code, value, store_code }, client) => {
+        const scoped = inStore(client, store_code);
         if (IDENTITY_ATTRIBUTES.has(attribute_code)) {
           throw new Error(`magentorest_update_product_attribute: "${attribute_code}" is an identity attribute and cannot be changed here.`);
         }
-        const current = await client.get(restPath`/products/${sku}`);
+        const current = await scoped.get(restPath`/products/${sku}`);
         const customs =
           current !== null && typeof current === "object" && "custom_attributes" in current && Array.isArray(current.custom_attributes) ? (current.custom_attributes as unknown[]) : [];
         const isCustom = customs.some((entry) => entry !== null && typeof entry === "object" && "attribute_code" in entry && entry.attribute_code === attribute_code);
-        return client.put(restPath`/products/${sku}`, {
+        return scoped.put(restPath`/products/${sku}`, {
           product: isCustom ? { custom_attributes: [{ attribute_code, value }] } : { [attribute_code]: value },
         });
       },

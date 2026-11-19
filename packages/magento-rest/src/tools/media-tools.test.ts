@@ -61,7 +61,7 @@ describe("media reads", () => {
 
 describe("magentorest_add_product_image", () => {
   it("POSTs an image entry with the content, defaulting type, position, flags and label", async () => {
-    const { double, call } = build({ [`POST /rest/V1/products/${SKU}/media`]: json(200, 12) });
+    const { double, call } = build({ [`POST /rest/all/V1/products/${SKU}/media`]: json(200, 12) });
     expect(await call("magentorest_add_product_image", IMAGE)).toBe(12);
     expect(JSON.parse(double.calls[0]?.body ?? "{}")).toEqual({
       entry: { media_type: "image", label: "demo.jpg", position: 0, disabled: false, types: [], content: { base64_encoded_data: "aGVsbG8=", type: "image/jpeg", name: "demo.jpg" } },
@@ -69,7 +69,7 @@ describe("magentorest_add_product_image", () => {
   });
 
   it("honours label, position, roles, MIME type and the disabled flag", async () => {
-    const { double, call } = build({ [`POST /rest/V1/products/${SKU}/media`]: json(200, 12) });
+    const { double, call } = build({ [`POST /rest/all/V1/products/${SKU}/media`]: json(200, 12) });
     await call("magentorest_add_product_image", { ...IMAGE, image_name: "demo.png", image_type: "image/png", label: "Front", position: 2, types: ["image", "small_image"], disabled: true });
     const entry = (JSON.parse(double.calls[0]?.body ?? "{}") as { entry: Record<string, unknown> }).entry;
     expect(entry).toMatchObject({ label: "Front", position: 2, disabled: true, types: ["image", "small_image"] });
@@ -95,13 +95,13 @@ describe("magentorest_add_product_image", () => {
   });
 
   it("never echoes the image data in an error", async () => {
-    const { tool } = build({ [`POST /rest/V1/products/${SKU}/media`]: json(400, { message: "Invalid image" }) });
+    const { tool } = build({ [`POST /rest/all/V1/products/${SKU}/media`]: json(400, { message: "Invalid image" }) });
     const error = await tool("magentorest_add_product_image").invoke({ ...IMAGE, image_base64: "QUJDREVGRw==" }, {}).catch((e: unknown) => e);
     expect(String((error as Error).message)).not.toContain("QUJDREVGRw==");
   });
 
   it("is sent once on a retryable failure", async () => {
-    const { double, tool } = build({ [`POST /rest/V1/products/${SKU}/media`]: json(503, { message: "busy" }) });
+    const { double, tool } = build({ [`POST /rest/all/V1/products/${SKU}/media`]: json(503, { message: "busy" }) });
     await expect(tool("magentorest_add_product_image").invoke(IMAGE, {})).rejects.toMatchObject({ kind: "server" });
     expect(double.calls).toHaveLength(1);
   });
@@ -113,8 +113,8 @@ describe("magentorest_update_product_media", () => {
   // must carry it. The original never sent it, so its update never worked. The entry is read first and
   // its type (and the fields not being changed) are sent back with the changes applied.
   const routes = (entry: object = RAW_ENTRY) => ({
-    [`GET /rest/V1/products/${SKU}/media/12`]: json(200, entry),
-    [`PUT /rest/V1/products/${SKU}/media/12`]: json(200, true),
+    [`GET /rest/all/V1/products/${SKU}/media/12`]: json(200, entry),
+    [`PUT /rest/all/V1/products/${SKU}/media/12`]: json(200, true),
   });
 
   it("reads the entry, then PUTs it back with its media_type and the changes applied", async () => {

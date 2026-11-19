@@ -164,7 +164,7 @@ describe("magentorest_get_products_in_category", () => {
 
 describe("category writes", () => {
   it("create_category wraps the category, defaults the flags, and puts prose in custom_attributes", async () => {
-    const { double, call } = build({ "POST /rest/V1/categories": json(200, RAW_CATEGORY) });
+    const { double, call } = build({ "POST /rest/all/V1/categories": json(200, RAW_CATEGORY) });
     await call("magentorest_create_category", { name: "Tents", parent_id: 2, description: "All tents.", url_key: "tents" });
     expect(JSON.parse(double.calls[0]?.body ?? "{}")).toEqual({
       category: {
@@ -181,7 +181,7 @@ describe("category writes", () => {
   });
 
   it("update_category sends only the fields given", async () => {
-    const { double, call } = build({ "PUT /rest/V1/categories/5": json(200, RAW_CATEGORY) });
+    const { double, call } = build({ "PUT /rest/all/V1/categories/5": json(200, RAW_CATEGORY) });
     await call("magentorest_update_category", { category_id: 5, is_active: false, position: 3, description: "New." });
     expect(JSON.parse(double.calls[0]?.body ?? "{}")).toEqual({ category: { is_active: false, position: 3, custom_attributes: [{ attribute_code: "description", value: "New." }] } });
   });

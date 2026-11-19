@@ -10,6 +10,11 @@
 //   - a read (GET) is retried with backoff, a write (POST/PUT/DELETE) never
 //     is — replaying `create_invoice` after an ambiguous failure could
 //     capture a payment twice;
+//   - the MCP request's signal aborts the in-flight request, and a cancelled
+//     call is never retried;
+//   - a store scope (`all` or a store code) sends the request to
+//     `/rest/<scope>/V1`: a catalog or CMS write through the base URL's
+//     default store view would change only that store view's values;
 //   - a plaintext base URL is refused unless it is loopback: a Bearer sent
 //     over http is a Bearer on the wire. TLS verification itself is never
 //     switchable from here — there is no option that turns it off.
@@ -30,6 +35,13 @@ export interface RestRequest {
   /** From `buildSearchCriteria` or `URLSearchParams`, no leading `?`. */
   readonly query?: string;
   readonly body?: unknown;
+  /** The MCP request's signal: when the client cancels the tool call, the in-flight request is aborted and not retried. */
+  readonly signal?: AbortSignal;
+  /**
+   * Store scope: a store view code, or `all` for the global (admin) values every store view inherits. The request
+   * goes to `/rest/<scope>/V1` instead of the base URL's own scope. Absent, the base URL is used as configured.
+   */
+  readonly scope?: string;
 }
 
 export interface RestTransportDeps {
@@ -70,10 +82,28 @@ function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
 }
 
+/** `https://host/rest/V1` or `https://host/rest/<code>/V1` -> `https://host/rest`; anything else cannot be re-scoped. */
+const SCOPED_BASE = /^(.*\/rest)(?:\/[A-Za-z0-9_]+)?\/V1$/;
+const STORE_CODE = /^[A-Za-z][A-Za-z0-9_]{0,31}$/;
+
+function scopedBase(restRoot: string | undefined, scope: string): string {
+  if (!STORE_CODE.test(scope)) {
+    throw new Error(`A store scope must be a store code (letters, digits, underscores) or all; got ${JSON.stringify(scope.slice(0, 40))}.`);
+  }
+  if (restRoot === undefined) {
+    throw new Error("A store-scoped request needs a base URL that ends in /rest/V1 or /rest/<store_code>/V1.");
+  }
+  return `${restRoot}/${scope}/V1`;
+}
+
 function assertPath(path: string): void {
   if (!path.startsWith("/") || path.includes("?") || path.includes("#")) {
     throw new Error("A REST path must start with / and carry no query or fragment; build it with restPath().");
   }
+}
+
+function cancelled(cause?: unknown): MagentoRestError {
+  return new MagentoRestError({ kind: "transport", message: "Magento REST request was cancelled by the client.", retryable: false, ...(cause !== undefined ? { cause } : {}) });
 }
 
 function retryAfterMs(response: Response): number | undefined {
@@ -86,11 +116,12 @@ function retryAfterMs(response: Response): number | undefined {
 
 export function createRestTransport(deps: RestTransportDeps): RestTransport {
   const baseUrl = normalizeBaseUrl(deps.baseUrl);
+  const restRoot = SCOPED_BASE.exec(baseUrl)?.[1];
   const random = deps.random ?? Math.random;
   const timeoutMs = deps.timeoutMs ?? DEFAULT_REST_TIMEOUT_MS;
   const rateLimiter = new TokenBucketRateLimiter(REST_PACE, { now: deps.now, sleep: deps.sleep });
 
-  async function attemptOnce(request: RestRequest): Promise<{ readonly value: unknown } | { readonly failure: MagentoRestError; readonly retryAfterMs?: number }> {
+  async function attemptOnce(request: RestRequest, root: string): Promise<{ readonly value: unknown } | { readonly failure: MagentoRestError; readonly retryAfterMs?: number }> {
     await rateLimiter.acquire();
     const credential = await deps.tokenProvider.getToken();
     const headers: Record<string, string> = { Accept: "application/json", Authorization: `Bearer ${credential.value}` };
@@ -102,18 +133,21 @@ export function createRestTransport(deps: RestTransportDeps): RestTransport {
     let response: Response;
     let text: string;
     try {
-      response = await deps.fetch(`${baseUrl}${request.path}${request.query !== undefined && request.query !== "" ? `?${request.query}` : ""}`, {
+      response = await deps.fetch(`${root}${request.path}${request.query !== undefined && request.query !== "" ? `?${request.query}` : ""}`, {
         method: request.method,
         headers,
         // A redirect would re-send the request somewhere the operator never
         // configured; surface it as a failure instead of following it.
         redirect: "manual",
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: request.signal !== undefined ? AbortSignal.any([request.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
         ...(hasBody ? { body: JSON.stringify(request.body) } : {}),
       });
       // Inside the try: the timeout also covers a body that starts and then stalls.
       text = await response.text();
     } catch (cause) {
+      if (request.signal?.aborted === true) {
+        return { failure: cancelled(cause) };
+      }
       const timedOut = cause instanceof Error && cause.name === "TimeoutError";
       return {
         failure: new MagentoRestError({
@@ -144,9 +178,14 @@ export function createRestTransport(deps: RestTransportDeps): RestTransport {
   return {
     async request(request: RestRequest): Promise<unknown> {
       assertPath(request.path);
+      const root = request.scope !== undefined ? scopedBase(restRoot, request.scope) : baseUrl;
       const idempotent = request.method === "GET";
       for (let attempt = 1; ; attempt += 1) {
-        const outcome = await attemptOnce(request);
+        // Checked before every attempt: a call cancelled during a backoff sleep sends nothing more.
+        if (request.signal?.aborted === true) {
+          throw cancelled();
+        }
+        const outcome = await attemptOnce(request, root);
         if ("value" in outcome) {
           return outcome.value;
         }

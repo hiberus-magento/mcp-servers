@@ -10,8 +10,11 @@
 //   - there is NO store-ID argument. The original sent `store_id` on create, and a
 //     live Magento 2.4.8 answers 400 ("%fieldName" is not supported, fieldName
 //     StoreId): the REST body for a block or a page takes no store assignment, so
-//     the original's create never worked there. Without it Magento creates the
-//     record for all store views;
+//     the original's create never worked there. Without one Magento assigns the
+//     record to the CURRENT store, which through `/rest/V1` is the default store
+//     view alone; every CMS write here therefore runs in the `all` scope, so the
+//     record is on all store views (an update too: REST cannot read or keep a
+//     narrower assignment);
 //   - the searches return summaries WITHOUT `content` (an HTML body can be very
 //     large, and the original filtered only on identifier and title anyway);
 //     `get_*_by_id` returns the content;
@@ -115,7 +118,7 @@ export function cmsTools({ readTool, writeTool, shapes }: ToolFactory): readonly
 
     writeTool({
       name: `magentorest_update_cms_${kind.name}`,
-      description: `Use this to change a CMS ${kind.name}'s identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront.`,
+      description: `Use this to change a CMS ${kind.name}'s identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront. The ${kind.name} ends up assigned to all store views: Magento's REST interface cannot keep a narrower store assignment.`,
       effect: "update",
       input: z
         .object({
@@ -132,8 +135,11 @@ export function cmsTools({ readTool, writeTool, shapes }: ToolFactory): readonly
         if (args.identifier === undefined && args.title === undefined && args.content === undefined && args.is_active === undefined) {
           throw new Error(`magentorest_update_cms_${kind.name}: nothing to update — pass at least one field besides the ${kind.idKey.replace("_", " ")}.`);
         }
-        const existing = await client.get(restPath`/${kind.resource}/${id}`);
-        return client.put(restPath`/${kind.resource}/${id}`, {
+        // Always the global scope: Magento assigns a record saved without a store to the current store, and
+        // through the base URL that is the default store view alone.
+        const global = client.with({ scope: "all" });
+        const existing = await global.get(restPath`/${kind.resource}/${id}`);
+        return global.put(restPath`/${kind.resource}/${id}`, {
           [kind.name]: {
             id,
             identifier: args.identifier ?? readString(existing, "identifier"),
@@ -167,7 +173,7 @@ export function cmsTools({ readTool, writeTool, shapes }: ToolFactory): readonly
       input: z.object({ identifier, title, content, is_active: isActive.optional() }).strict(),
       shape: shapes.cms_block,
       run: (args, client) =>
-        client.post("/cmsBlock", {
+        client.with({ scope: "all" }).post("/cmsBlock", {
           block: { identifier: args.identifier, title: args.title, content: args.content, active: args.is_active ?? true },
         }),
     }),
@@ -191,7 +197,7 @@ export function cmsTools({ readTool, writeTool, shapes }: ToolFactory): readonly
         .strict(),
       shape: shapes.cms_page,
       run: (args, client) =>
-        client.post("/cmsPage", {
+        client.with({ scope: "all" }).post("/cmsPage", {
           page: {
             identifier: args.identifier,
             title: args.title,
