@@ -31,7 +31,7 @@ Out of scope: GitHub setting "Allow GitHub Actions to create and approve pull re
 - T7 [S9] store scope on catalog/CMS writes — inline (parent) — status: done (RED: 18 scope tests + 22 old routes → GREEN 1032) — 175f8db; Magento-source premise check running
 - T8 [S10] revenue default status + per-currency totals — delegated (parallel unit with T6/T7, disjoint surface: analytics-tools.ts + test) — status: done (RED 9 → GREEN 58/58, rest 1005 at the time) — 81d485a
 - T9 [S11,S9-docs] docs: SKU slash, store scope, servers.json, README regen, changeset — inline (parent, shared files) — status: done (README sections, onboarding, servers.json mirrors, gen-readme --check OK, changesets) — 1e8c011
-- T10 [S12] introspection fixture + regenerate — inline — status: blocked (waiting on the user's dump)
+- T10 [S12] introspection fixture + regenerate — superseded by feature `odd/tasks/graphql-schema-adaptive.md` (fixture committed in 233de1b)
 
 ## Log
 
