@@ -14,10 +14,11 @@ Branch: `feat/graphql-schema-adaptive`, stacked on `fix/pre-publish-hardening` (
 
 ## Tasks
 
-- T1 [S1-S6] schema-adaptive client, trimmer, tool availability, fixture + regeneration, docs — delegated (writer reason: long-session context backstop; one dependent unit) — status: pending
+- T1 [S1-S6] schema-adaptive client, trimmer, tool availability, fixture + regeneration, docs — delegated (writer reason: long-session context backstop; one dependent unit) — status: done — 233de1b (S1), 730d728 (S3 trimmer), 9a625fb (S2-S5), 54f513b (S6); RED/GREEN in L4
 
 ## Log
 
 - L1 (2026-11-19, user): "porque lo he sacado de un magento en su ultima version y con los modulos de B2B activos, pero es correcto, porque queremos tener todas las tools posibles para poderlo usar de forma generica en cualquier ecommerce, es la tool la que debe ser capaz de validar si ese endpoint o tool está disponible en el magento conectado, lo ves bien asi?" / "como podemos resolver este problema? y poder reutilizar el mismo MCP para todos?"
 - L2 (2026-11-19, user): "si, implementalo antes de publicar magento-graphql"
 - L3 (2026-11-19): probe on the fixture (see `odd/tasks/pre-publish-hardening.md` L11): 913 types, 59 queries, 182 mutations; 34 operations unknown to the generator; with them skipped, ~30 existing documents change and 2 tools disappear (deprecated operations excluded by the introspection). The `resendConfirmationEmail` → action edit is reproduced by the generator.
+- L4 (2026-11-19, writer): T1 done. RED observed before each step: generator stopped at `query commerceOptimizer has no group` and generated-tools tests failed on the count and the 6 new effects; trimmer tests 17 failing against stubs; client adaptation tests 10 failing (no introspection, untrimmed documents, no `unsupported-operation`); factory tests 3 failing; the built-bundle test listed `magentographql_get_company` after the schema was known. GREEN: magento-graphql 567 tests, repo `pnpm test` 16/16 tasks. Deviations: the unknown operations were 33, not 34 (193 - 2 + 33 = 224 generated, 247 tools, 21 groups with the new `product-alerts`); the decision is D14 because D12 and D13 already existed in design.md; the fixture's example addresses were rewritten to `demo-host.example-domain` and three public reference links replaced by a note (recorded in its `x-normalized` key) so the synthetic-identifier audit passes; regeneration from it is byte-identical. Next: parent verification and review of the slice.
