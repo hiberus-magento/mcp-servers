@@ -29,6 +29,8 @@ function routes(scope: string): RouteTable {
   const at = (method: string, path: string) => `${method} /rest/${scope}/V1${path}`;
   return {
     [at("POST", "/products")]: json(200, PRODUCT),
+    "GET /rest/V1/store/websites": json(200, [{ id: 0, code: "admin" }, { id: 1, code: "base" }]),
+    "GET /rest/V1/store/storeViews": json(200, [{ id: 1, code: "default", website_id: 1 }, { id: 3, code: "demo_view", website_id: 1 }]),
     [at("GET", `/products/${SKU}`)]: json(200, PRODUCT),
     [at("PUT", `/products/${SKU}`)]: json(200, PRODUCT),
     [at("POST", `/products/${SKU}/media`)]: json(200, "5"),
@@ -62,7 +64,8 @@ const CMS_WRITES: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ["magentorest_update_cms_page", { page_id: 8, title: "Renamed" }],
 ];
 
-const scopes = (paths: readonly string[]) => paths.map((path) => /^\/rest\/(?:([A-Za-z0-9_]+)\/)?V1\//.exec(new URL(path, "https://x").pathname)?.[1] ?? "(base)");
+// The store lookups `create_product` makes to pick a website are reads on the base URL, not the write under test.
+const scopes = (paths: readonly string[]) => paths.filter((path) => !path.includes("/V1/store/")).map((path) => /^\/rest\/(?:([A-Za-z0-9_]+)\/)?V1\//.exec(new URL(path, "https://x").pathname)?.[1] ?? "(base)");
 
 describe("store scope of catalog and CMS writes", () => {
   it.each(CATALOG_WRITES)("%s runs in the global scope (all) when no store_code is given", async (name, args) => {
@@ -97,14 +100,48 @@ describe("store scope of catalog and CMS writes", () => {
     expect(scopes(harness.paths())).toEqual(["(base)", "(base)"]);
   });
 
-  it("create_product says how it assigns websites, and sends website_ids only when given", async () => {
-    const harness = buildToolHarness(tools, routes("all"));
-    expect(harness.tool("magentorest_create_product").description).toMatch(/every website/);
-    await harness.call("magentorest_create_product", { sku: SKU, name: "Demo", price: 1 });
-    await harness.call("magentorest_create_product", { sku: SKU, name: "Demo", price: 1, website_ids: [1, 2] });
-    const bodies = harness.double.calls.map((call) => JSON.parse(call.body ?? "{}") as { product: { extension_attributes?: unknown } });
-    expect(bodies[0]?.product.extension_attributes).toBeUndefined();
-    expect(bodies[1]?.product.extension_attributes).toEqual({ website_ids: [1, 2] });
+  describe("website of a new product", () => {
+    const WEBSITES = json(200, [{ id: 0, code: "admin" }, { id: 1, code: "base" }]);
+    const TWO_WEBSITES = json(200, [{ id: 0, code: "admin" }, { id: 1, code: "base" }, { id: 2, code: "second" }]);
+    const VIEWS = json(200, [{ id: 0, code: "admin", website_id: 0 }, { id: 1, code: "default", website_id: 1 }, { id: 3, code: "demo_view", website_id: 2 }]);
+    const sentWebsites = (harness: ReturnType<typeof buildToolHarness>) =>
+      harness.double.calls.filter((call) => call.method === "POST").map((call) => (JSON.parse(call.body ?? "{}") as { product: { extension_attributes?: { website_ids?: unknown } } }).product.extension_attributes?.website_ids);
+
+    it("goes to the only website when the store has one, never to every website", async () => {
+      const harness = buildToolHarness(tools, { ...routes("all"), "GET /rest/V1/store/websites": WEBSITES });
+      await harness.call("magentorest_create_product", { sku: SKU, name: "Demo", price: 1 });
+      expect(sentWebsites(harness)).toEqual([[1]]);
+    });
+
+    it("goes to the website of the store view named by store_code", async () => {
+      const harness = buildToolHarness(tools, { ...routes("demo_view"), "GET /rest/V1/store/storeViews": VIEWS });
+      await harness.call("magentorest_create_product", { sku: SKU, name: "Demo", price: 1, store_code: "demo_view" });
+      expect(sentWebsites(harness)).toEqual([[2]]);
+    });
+
+    it("uses website_ids as given, without looking anything up", async () => {
+      const harness = buildToolHarness(tools, routes("all"));
+      await harness.call("magentorest_create_product", { sku: SKU, name: "Demo", price: 1, website_ids: [1, 2] });
+      expect(sentWebsites(harness)).toEqual([[1, 2]]);
+    });
+
+    it("refuses, creating nothing, when there are several websites and nothing says which", async () => {
+      const harness = buildToolHarness(tools, { ...routes("all"), "GET /rest/V1/store/websites": TWO_WEBSITES });
+      await expect(harness.call("magentorest_create_product", { sku: SKU, name: "Demo", price: 1 })).rejects.toThrow(/website_ids/);
+      expect(sentWebsites(harness)).toEqual([]);
+    });
+
+    it("refuses an unknown store_code before creating anything", async () => {
+      const harness = buildToolHarness(tools, { ...routes("nope"), "GET /rest/V1/store/storeViews": VIEWS });
+      await expect(harness.call("magentorest_create_product", { sku: SKU, name: "Demo", price: 1, store_code: "nope" })).rejects.toThrow(/no store view/i);
+      expect(sentWebsites(harness)).toEqual([]);
+    });
+
+    it("says so in its description", () => {
+      const harness = buildToolHarness(tools, {});
+      expect(harness.tool("magentorest_create_product").description).toMatch(/default website/);
+      expect(harness.tool("magentorest_create_product").description).not.toMatch(/every website/);
+    });
   });
 
   it("a CMS block update says it resets the store assignment; a page update says it keeps it", () => {

@@ -296,7 +296,7 @@
         {
           "name": "magentorest_create_product",
           "readOnly": false,
-          "description": "Use this to create a new product. Adds a catalog record; the SKU must be unique. Does not touch stock or categories. Without website_ids, a product created in the global scope (no store_code) is assigned to every website, and one created with store_code to that store view's website."
+          "description": "Use this to create a new product. Adds a catalog record; the SKU must be unique. Does not touch stock or categories. Without website_ids it goes to the default website only: the website of store_code's store view, or the store's only website; with several websites and no store_code it refuses and asks for website_ids (magentorest_get_websites lists them)."
         },
         {
           "name": "magentorest_update_product",

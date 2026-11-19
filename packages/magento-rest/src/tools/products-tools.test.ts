@@ -155,9 +155,9 @@ describe("magentorest_advanced_product_search", () => {
 
 describe("product writes", () => {
   it("create_product wraps the product, puts prose in custom_attributes, and defaults the enums", async () => {
-    const { double, call } = build({ "POST /rest/all/V1/products": json(200, RAW_PRODUCT) });
+    const { double, call } = build({ "POST /rest/all/V1/products": json(200, RAW_PRODUCT), "GET /rest/V1/store/websites": json(200, [{ id: 0 }, { id: 1 }]) });
     await call("magentorest_create_product", { sku: SKU, name: "Demo Tent", price: 99.5, description: "A tent." });
-    expect(JSON.parse(double.calls[0]?.body ?? "{}")).toEqual({
+    expect(JSON.parse(double.calls[1]?.body ?? "{}")).toEqual({
       product: {
         sku: SKU,
         name: "Demo Tent",
@@ -167,6 +167,7 @@ describe("product writes", () => {
         status: 1,
         visibility: 4,
         custom_attributes: [{ attribute_code: "description", value: "A tent." }],
+        extension_attributes: { website_ids: [1] },
       },
     });
   });

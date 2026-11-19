@@ -44,7 +44,7 @@ executable to run`.
 - `magentorest_get_product_by_sku` (read-only) — Use this to read one product by its SKU: name, price, status, visibility, type, timestamps, catalog attributes and category links.
 - `magentorest_search_products` (read-only) — Use this to find products whose name contains a phrase. Returns a bounded page of summaries (id, sku, name, price, status, type) and the total count.
 - `magentorest_advanced_product_search` (read-only) — Use this to filter products on one field with a chosen comparison (eq, like, gt, gteq, lt, lteq, in, ...) and sort the result. Returns a bounded page of summaries and the total count.
-- `magentorest_create_product` — Use this to create a new product. Adds a catalog record; the SKU must be unique. Does not touch stock or categories. Without website_ids, a product created in the global scope (no store_code) is assigned to every website, and one created with store_code to that store view's website.
+- `magentorest_create_product` — Use this to create a new product. Adds a catalog record; the SKU must be unique. Does not touch stock or categories. Without website_ids it goes to the default website only: the website of store_code's store view, or the store's only website; with several websites and no store_code it refuses and asks for website_ids (magentorest_get_websites lists them).
 - `magentorest_update_product` — Use this to change fields of an existing product. Only the fields you pass are sent; at least one is required. Overwrites the current values.
 - `magentorest_update_product_attribute` — Use this to set ONE attribute of a product by code (name, price, status, description, a custom attribute, ...). Overwrites the current value. The identity attributes sku, id, entity_id and type_id are refused.
 - `magentorest_delete_product` — Use this to permanently delete a product by SKU. Irreversible: the product, its images and its URL rewrites are removed.
@@ -221,10 +221,12 @@ store view. So:
   they change the global values every store view inherits. A store view that
   already has its own value keeps it. Pass `store_code` to change one store
   view's own value instead;
-- `create_product` with no `store_code` and no `website_ids` assigns the new
-  product to **every website** (Magento does that for a product created in the
-  global scope); with `store_code`, to that store view's website. Pass
-  `website_ids` to choose;
+- `create_product` always sends the website: `website_ids` when given, else the
+  **default website only** — the website of the `store_code` store view, or the
+  store's only website. Magento's REST API does not say which website is the
+  default, so with several websites and no `store_code` the tool refuses and asks
+  for `website_ids` (left alone, Magento would put a product created in the
+  global scope on every website);
 - the CMS creates and updates always run in `all`, so a new block or page is on
   all store views. A page update keeps the page's store assignment. A **block**
   update does not: Magento resets a block's assignment on every REST update
