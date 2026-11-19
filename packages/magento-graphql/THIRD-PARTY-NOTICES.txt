@@ -1,0 +1,10 @@
+Third-Party Notices
+====================
+
+This package is distributed as a single bundled file with no runtime
+dependencies of its own. It statically bundles the following third-party
+packages:
+
+- @modelcontextprotocol/sdk@1.30.0 — MIT
+- zod@4.5.4 — MIT
+- zod-to-json-schema@3.25.2 — ISC

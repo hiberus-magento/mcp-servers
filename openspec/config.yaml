@@ -10,7 +10,7 @@ context: |
   Tests: vitest. Lint: eslint (no-restricted-imports boundaries + license-header plugin).
   Release: changesets, publish to npm under @hiberus-magento scope, provenance enabled.
   CI: GitHub Actions (ci.yml, release.yml) on ubuntu-latest. License: Apache-2.0.
-  Shape: monorepo, packages/* = mcp-core, mcp-testing, magento-cloud, eds, aco.
+  Shape: monorepo, packages/* = mcp-core, mcp-testing, magento-cloud, eds, aco, magento-rest.
 
 strict_tdd: true
 
@@ -41,6 +41,7 @@ testing:
     - eds
     - aco
     - magento-cloud
+    - magento-rest
 
 rules:
   proposal:

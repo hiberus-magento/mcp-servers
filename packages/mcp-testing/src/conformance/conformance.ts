@@ -12,7 +12,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { STARTUP_CPU_BUDGET_MS, checkStartupCpu, measureStartupCpu } from "./cold-start.js";
+import { checkStartupCpu, measureStartupCpu, resolveStartupCpuBudget, startupCpuTestTitle, type StartupCpuBudgetOverride } from "./cold-start.js";
 import type { RawStdoutLine } from "../jsonrpc-client.js";
 import { JsonRpcClient } from "../jsonrpc-client.js";
 
@@ -224,6 +224,13 @@ export interface ConformanceOptions {
    * argument shape.
    */
   readonly shellOutProbe?: ShellOutProbe;
+  /**
+   * A package-specific startup CPU budget, replacing the shared 75 ms for THIS
+   * package only. It needs a number and a reason; the reason is printed in the
+   * test's title. See `cold-start.ts`, "PER-PACKAGE OVERRIDE", for when this is
+   * warranted and how a figure is derived.
+   */
+  readonly startupCpuBudget?: StartupCpuBudgetOverride;
 }
 
 /** See {@link ConformanceOptions.shellOutProbe}. */
@@ -247,6 +254,9 @@ export const DEFAULT_SHELL_OUT_PROBE: ShellOutProbe = {
 };
 
 export function describeConformance(options: ConformanceOptions): void {
+  // Resolved before any test is registered, so an invalid override fails when
+  // the suite is collected, not three minutes into a run.
+  const startupCpuBudget = resolveStartupCpuBudget(options.startupCpuBudget);
   describe(`MCP conformance: ${options.serverPath}`, () => {
     let client: JsonRpcClient;
     // CHANGED DELIBERATELY: the `initialize` result used to be awaited and
@@ -377,9 +387,9 @@ export function describeConformance(options: ConformanceOptions): void {
     // replaced, and what that assertion no longer covers. Each sample is its
     // own fresh process importing the SAME built entrypoint; the statistic
     // is the minimum, because interference can only add.
-    it(`spends at or under ${STARTUP_CPU_BUDGET_MS} ms of CPU starting up (min of 7 samples)`, async () => {
+    it(startupCpuTestTitle(startupCpuBudget), async () => {
       const { samples, minCpuMs } = await measureStartupCpu(options.serverPath);
-      const violation = checkStartupCpu(minCpuMs, STARTUP_CPU_BUDGET_MS);
+      const violation = checkStartupCpu(minCpuMs, startupCpuBudget.budgetMs);
       expect(
         violation,
         `min CPU ${minCpuMs.toFixed(1)} ms over budget; samples cpu/wall (ms): ${samples

@@ -270,6 +270,1899 @@
       ]
     },
     {
+      "id": "magento-rest",
+      "package": "@hiberus-magento/magento-rest",
+      "bin": "hiberus-magento-rest-mcp",
+      "version": "0.0.0",
+      "domain": "magento-rest",
+      "status": "alpha",
+      "description": "Magento 2 REST API client — CLI and MCP server for catalog, orders, customers, stock and content, with opt-in write tools.",
+      "tools": [
+        {
+          "name": "magentorest_get_product_by_sku",
+          "readOnly": true,
+          "description": "Use this to read one product by its SKU: name, price, status, visibility, type, timestamps, catalog attributes and category links."
+        },
+        {
+          "name": "magentorest_search_products",
+          "readOnly": true,
+          "description": "Use this to find products whose name contains a phrase. Returns a bounded page of summaries (id, sku, name, price, status, type) and the total count."
+        },
+        {
+          "name": "magentorest_advanced_product_search",
+          "readOnly": true,
+          "description": "Use this to filter products on one field with a chosen comparison (eq, like, gt, gteq, lt, lteq, in, ...) and sort the result. Returns a bounded page of summaries and the total count."
+        },
+        {
+          "name": "magentorest_create_product",
+          "readOnly": false,
+          "description": "Use this to create a new product. Adds a catalog record; the SKU must be unique. Does not touch stock or categories."
+        },
+        {
+          "name": "magentorest_update_product",
+          "readOnly": false,
+          "description": "Use this to change fields of an existing product. Only the fields you pass are sent; at least one is required. Overwrites the current values."
+        },
+        {
+          "name": "magentorest_update_product_attribute",
+          "readOnly": false,
+          "description": "Use this to set ONE attribute of a product by code (name, price, status, description, a custom attribute, ...). Overwrites the current value. The identity attributes sku, id, entity_id and type_id are refused."
+        },
+        {
+          "name": "magentorest_delete_product",
+          "readOnly": false,
+          "description": "Use this to permanently delete a product by SKU. Irreversible: the product, its images and its URL rewrites are removed."
+        },
+        {
+          "name": "magentorest_assign_product_to_category",
+          "readOnly": false,
+          "description": "Use this to add a product to a category at a position. Adds a link; it does not move the product out of other categories."
+        },
+        {
+          "name": "magentorest_remove_product_from_category",
+          "readOnly": false,
+          "description": "Use this to remove a product from one category. The product itself and its other category links are kept."
+        },
+        {
+          "name": "magentorest_get_store_configs",
+          "readOnly": true,
+          "description": "Use this to read each store view's configuration: code, locale, base currency, timezone, weight unit and base URLs."
+        },
+        {
+          "name": "magentorest_get_store_views",
+          "readOnly": true,
+          "description": "Use this to list every store view with its code, name, website, store group and whether it is active."
+        },
+        {
+          "name": "magentorest_get_websites",
+          "readOnly": true,
+          "description": "Use this to list every website with its code, name and default store group."
+        },
+        {
+          "name": "magentorest_get_store_groups",
+          "readOnly": true,
+          "description": "Use this to list every store group with its website, root category and default store view."
+        },
+        {
+          "name": "magentorest_get_countries",
+          "readOnly": true,
+          "description": "Use this to list the countries Magento knows, with ISO codes, English names and their regions."
+        },
+        {
+          "name": "magentorest_get_currency_info",
+          "readOnly": true,
+          "description": "Use this to read the base and display currency, the available currency codes and the exchange rates."
+        },
+        {
+          "name": "magentorest_get_category_tree",
+          "readOnly": true,
+          "description": "Use this to read the category structure under a root category as a flat list: each node has its id, parent_id, name, level, position, product count and whether it is active. Capped at 500 nodes; truncated says when the cap cut it short."
+        },
+        {
+          "name": "magentorest_get_category_by_id",
+          "readOnly": true,
+          "description": "Use this to read one category by its numeric ID: name, parent, level, position, product count, children, URL path and catalog attributes."
+        },
+        {
+          "name": "magentorest_list_categories",
+          "readOnly": true,
+          "description": "Use this to find categories, optionally by parent, by a phrase in the name, or by active status. Returns a bounded page and the total count."
+        },
+        {
+          "name": "magentorest_get_products_in_category",
+          "readOnly": true,
+          "description": "Use this to list the products assigned to one category. Returns a bounded page of product summaries (id, sku, name, price, status, type) and the total count."
+        },
+        {
+          "name": "magentorest_create_category",
+          "readOnly": false,
+          "description": "Use this to create a category under a parent. Adds a record; it does not assign any product to it."
+        },
+        {
+          "name": "magentorest_update_category",
+          "readOnly": false,
+          "description": "Use this to change fields of an existing category. Only the fields you pass are sent; at least one is required. Overwrites the current values."
+        },
+        {
+          "name": "magentorest_delete_category",
+          "readOnly": false,
+          "description": "Use this to permanently delete a category and its subcategories by ID. Irreversible; the products stay in the catalog but lose the assignment."
+        },
+        {
+          "name": "magentorest_move_category",
+          "readOnly": false,
+          "description": "Use this to move a category under a different parent, optionally right after a sibling. Changes the category tree and the URL paths below it."
+        },
+        {
+          "name": "magentorest_get_customer_by_id",
+          "readOnly": true,
+          "description": "Use this to read one customer by numeric ID: name, email, group, website, store and the default address IDs. Date of birth, tax number and the address book are not returned."
+        },
+        {
+          "name": "magentorest_search_customers",
+          "readOnly": true,
+          "description": "Use this to find customers by part of the email or name, by group or website, or by creation date range (YYYY-MM-DD). Filters are combined with AND. Returns a bounded page of summaries and the total count."
+        },
+        {
+          "name": "magentorest_get_customer_groups",
+          "readOnly": true,
+          "description": "Use this to list the customer groups with their code and tax class."
+        },
+        {
+          "name": "magentorest_get_customer_addresses",
+          "readOnly": true,
+          "description": "Use this to list a customer's addresses by location: country, region, city, postcode and which is the default billing or shipping address. Street, telephone and the addressee are not returned."
+        },
+        {
+          "name": "magentorest_create_customer",
+          "readOnly": false,
+          "description": "Use this to create a customer account from an email and a name. It takes no password: Magento's own password-reset flow is how the customer sets one. Adds a record; the email must not already exist on the website."
+        },
+        {
+          "name": "magentorest_update_customer",
+          "readOnly": false,
+          "description": "Use this to change a customer's email, name or group. Only the fields you pass change; at least one is required. Overwrites the current values."
+        },
+        {
+          "name": "magentorest_delete_customer",
+          "readOnly": false,
+          "description": "Use this to permanently delete a customer account by ID. Irreversible: the account and its address book are removed; past orders keep their own copy of the details."
+        },
+        {
+          "name": "magentorest_get_order_by_id",
+          "readOnly": true,
+          "description": "Use this to read one order by entity ID: status, state, totals, currency, the customer as the order records it, and the order lines. Billing and shipping addresses and payment details are not returned."
+        },
+        {
+          "name": "magentorest_get_order_by_increment_id",
+          "readOnly": true,
+          "description": "Use this to read one order by its order number (increment ID), the one a customer quotes. Same fields as reading by entity ID. A number with no order is reported as not-found."
+        },
+        {
+          "name": "magentorest_search_orders",
+          "readOnly": true,
+          "description": "Use this to find orders by status, customer email or ID, creation date range (YYYY-MM-DD, whole days) and grand-total range. Filters are combined with AND. Newest first unless you sort otherwise. Returns a bounded page of summaries and the total count."
+        },
+        {
+          "name": "magentorest_get_order_items",
+          "readOnly": true,
+          "description": "Use this to list the lines of one order: SKU, name, quantities ordered, shipped, invoiced and refunded, price and row total, tax and discount."
+        },
+        {
+          "name": "magentorest_get_order_comments",
+          "readOnly": true,
+          "description": "Use this to read an order's status history: each entry's status, comment text, date and whether the customer was notified or can see it."
+        },
+        {
+          "name": "magentorest_add_order_comment",
+          "readOnly": false,
+          "description": "Use this to add a comment to an order's history, optionally moving it to another status. Silent and hidden from the customer unless you say otherwise: setting is_customer_notified to true makes Magento EMAIL the customer."
+        },
+        {
+          "name": "magentorest_cancel_order",
+          "readOnly": false,
+          "description": "Use this to cancel an order that has not been invoiced. Changes its state to canceled and releases the reserved stock; it cannot be undone from here."
+        },
+        {
+          "name": "magentorest_hold_order",
+          "readOnly": false,
+          "description": "Use this to put an order on hold, which stops it being invoiced or shipped until it is released with magentorest_unhold_order."
+        },
+        {
+          "name": "magentorest_unhold_order",
+          "readOnly": false,
+          "description": "Use this to release an order from hold so it can be invoiced and shipped again."
+        },
+        {
+          "name": "magentorest_get_invoice_by_id",
+          "readOnly": true,
+          "description": "Use this to read one invoice by its numeric ID: state, totals, currency and the invoiced lines."
+        },
+        {
+          "name": "magentorest_search_invoices",
+          "readOnly": true,
+          "description": "Use this to find invoices by order, state and creation date range (YYYY-MM-DD, whole days). Filters are combined with AND. Returns a bounded page of summaries and the total count."
+        },
+        {
+          "name": "magentorest_get_shipment_by_id",
+          "readOnly": true,
+          "description": "Use this to read one shipment by its numeric ID: quantities, weight, the shipped lines and the tracking entries."
+        },
+        {
+          "name": "magentorest_search_shipments",
+          "readOnly": true,
+          "description": "Use this to find shipments by order and creation date range (YYYY-MM-DD, whole days). Filters are combined with AND. Returns a bounded page of summaries and the total count."
+        },
+        {
+          "name": "magentorest_get_creditmemo_by_id",
+          "readOnly": true,
+          "description": "Use this to read one credit memo (refund) by its numeric ID: state, totals, adjustments, currency and the refunded lines."
+        },
+        {
+          "name": "magentorest_search_creditmemos",
+          "readOnly": true,
+          "description": "Use this to find credit memos (refunds) by order, state and creation date range (YYYY-MM-DD, whole days). Filters are combined with AND. Returns a bounded page of summaries and the total count."
+        },
+        {
+          "name": "magentorest_create_invoice",
+          "readOnly": false,
+          "description": "Use this to invoice an order, whole or by line. With capture set to true Magento CAPTURES the payment — the customer is charged; the default is false, which only records the invoice. Setting notify_customer to true emails the customer. Returns the new invoice ID."
+        },
+        {
+          "name": "magentorest_create_shipment",
+          "readOnly": false,
+          "description": "Use this to record a shipment for an order, whole or by line, optionally with tracking numbers. Setting notify_customer to true emails the customer. Returns the new shipment ID. Shipping deducts stock from the product's source: if a product has none there, Magento answers only \"Could not save a shipment\" (its log says the quantity is not available), so check stock first with magentorest_get_source_items."
+        },
+        {
+          "name": "magentorest_add_shipment_tracking",
+          "readOnly": false,
+          "description": "Use this to add a tracking number to an existing shipment. Adds an entry; it does not change the shipment's lines or notify the customer."
+        },
+        {
+          "name": "magentorest_create_creditmemo",
+          "readOnly": false,
+          "description": "Use this to REFUND an order, whole or by line, with optional shipping and manual adjustments. Money goes back to the customer; it cannot be undone from here. Setting notify_customer to true emails the customer. Returns the new credit memo ID."
+        },
+        {
+          "name": "magentorest_get_product_stock",
+          "readOnly": true,
+          "description": "Use this to read the stock item of one product by SKU: quantity, in-stock flag, whether stock is managed, sale quantity limits and backorder setting. With multi-source inventory enabled (the usual setup now) this legacy stock item mirrors only the default source, so it can show a null or zero quantity for a product held in other sources: use magentorest_get_source_items for every source."
+        },
+        {
+          "name": "magentorest_get_low_stock_products",
+          "readOnly": true,
+          "description": "Use this to list stock items at or below a quantity threshold, for one stock scope. Items already at zero are included. Returns a bounded page and the total count. With multi-source inventory enabled (the usual setup now) this legacy stock item mirrors only the default source, so it can show a null or zero quantity for a product held in other sources: use magentorest_get_source_items for every source."
+        },
+        {
+          "name": "magentorest_get_inventory_sources",
+          "readOnly": true,
+          "description": "Use this to list the inventory sources (warehouses) of multi-source inventory: code, name, whether enabled, country, region, city, postcode and priority. Street, phone, email and contact person are not returned."
+        },
+        {
+          "name": "magentorest_get_inventory_stocks",
+          "readOnly": true,
+          "description": "Use this to list the inventory stocks of multi-source inventory with the sales channels (websites) each one serves."
+        },
+        {
+          "name": "magentorest_get_source_items",
+          "readOnly": true,
+          "description": "Use this to read a product's quantity and status in each inventory source, by SKU."
+        },
+        {
+          "name": "magentorest_update_product_stock",
+          "readOnly": false,
+          "description": "Use this to set a product's stock quantity on the default stock. The in-stock flag follows the quantity (in stock when above zero) unless you set it. Overwrites the current quantity. With multi-source inventory enabled this changes the quantity of the default source (observed on a live store) and no other source; magentorest_get_source_items reads every source, and nothing here writes the others."
+        },
+        {
+          "name": "magentorest_get_cart_by_id",
+          "readOnly": true,
+          "description": "Use this to read one cart by ID: activity, item count and quantity, currency, the customer's identity (id, name, email, group) and the cart lines. Addresses are not returned."
+        },
+        {
+          "name": "magentorest_search_carts",
+          "readOnly": true,
+          "description": "Use this to find carts by customer email or ID, active status and creation date range (YYYY-MM-DD, whole days). Filters are combined with AND. Returns a bounded page of summaries and the total count."
+        },
+        {
+          "name": "magentorest_get_cart_items",
+          "readOnly": true,
+          "description": "Use this to list the lines of one cart: SKU, name, quantity, price and product type."
+        },
+        {
+          "name": "magentorest_get_abandoned_carts",
+          "readOnly": true,
+          "description": "Use this to find abandoned carts: active, non-empty carts not updated for at least a number of days, most recently updated first. Each entry names the owner (or Guest), the item count and the dates. Returns a bounded page, the total count and the cutoff used."
+        },
+        {
+          "name": "magentorest_get_cms_block_by_id",
+          "readOnly": true,
+          "description": "Use this to read one CMS block by ID, including its content (HTML), title, identifier, dates and whether it is active."
+        },
+        {
+          "name": "magentorest_search_cms_blocks",
+          "readOnly": true,
+          "description": "Use this to find CMS blocks by identifier (exact), part of the title, or active status. Filters are combined with AND. Returns a bounded page of summaries WITHOUT the content, and the total count; read one by ID for its content."
+        },
+        {
+          "name": "magentorest_update_cms_block",
+          "readOnly": false,
+          "description": "Use this to change a CMS block's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront."
+        },
+        {
+          "name": "magentorest_delete_cms_block",
+          "readOnly": false,
+          "description": "Use this to permanently delete a CMS block by ID. Irreversible: it disappears from the storefront immediately."
+        },
+        {
+          "name": "magentorest_get_cms_page_by_id",
+          "readOnly": true,
+          "description": "Use this to read one CMS page by ID, including its content (HTML), title, identifier, dates and whether it is active."
+        },
+        {
+          "name": "magentorest_search_cms_pages",
+          "readOnly": true,
+          "description": "Use this to find CMS pages by identifier (exact), part of the title, or active status. Filters are combined with AND. Returns a bounded page of summaries WITHOUT the content, and the total count; read one by ID for its content."
+        },
+        {
+          "name": "magentorest_update_cms_page",
+          "readOnly": false,
+          "description": "Use this to change a CMS page's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront."
+        },
+        {
+          "name": "magentorest_delete_cms_page",
+          "readOnly": false,
+          "description": "Use this to permanently delete a CMS page by ID. Irreversible: it disappears from the storefront immediately."
+        },
+        {
+          "name": "magentorest_create_cms_block",
+          "readOnly": false,
+          "description": "Use this to create a CMS block. Adds a block for all store views (Magento's REST body takes no store assignment) that is active unless you say otherwise."
+        },
+        {
+          "name": "magentorest_create_cms_page",
+          "readOnly": false,
+          "description": "Use this to create a CMS page at a URL key. Adds a page for all store views (Magento's REST body takes no store assignment) that is active, with a one-column layout, unless you say otherwise."
+        },
+        {
+          "name": "magentorest_get_product_attribute",
+          "readOnly": true,
+          "description": "Use this to read one product attribute by code: its input type, scope, flags (required, searchable, filterable, comparable), options and store labels."
+        },
+        {
+          "name": "magentorest_search_product_attributes",
+          "readOnly": true,
+          "description": "Use this to find product attributes by part of the code, input type (text, select, multiselect, boolean, ...), or the searchable and filterable flags. Filters are combined with AND. Returns a bounded page of summaries and the total count."
+        },
+        {
+          "name": "magentorest_get_attribute_options",
+          "readOnly": true,
+          "description": "Use this to list the options of a select or multiselect attribute as label and value pairs."
+        },
+        {
+          "name": "magentorest_get_attribute_sets",
+          "readOnly": true,
+          "description": "Use this to list the product attribute sets with their ID, name and sort order. Returns a bounded page and the total count."
+        },
+        {
+          "name": "magentorest_get_attribute_set_attributes",
+          "readOnly": true,
+          "description": "Use this to list the attributes that belong to one attribute set, as summaries (code, input type, label, required, searchable, filterable)."
+        },
+        {
+          "name": "magentorest_add_attribute_option",
+          "readOnly": false,
+          "description": "Use this to add an option to a select or multiselect attribute. Adds an option that is not the default; it does not assign it to any product.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_get_product_media",
+          "readOnly": true,
+          "description": "Use this to list a product's media entries (images and videos): ID, type, label, position, whether hidden, the roles it plays and its file path."
+        },
+        {
+          "name": "magentorest_get_product_media_entry",
+          "readOnly": true,
+          "description": "Use this to read one media entry of a product by its entry ID."
+        },
+        {
+          "name": "magentorest_add_product_image",
+          "readOnly": false,
+          "description": "Use this to add an image to a product from base64 data (at most 2,000,000 characters, JPEG, PNG, GIF or WebP). Adds a media entry; it does not remove existing ones. Returns the new entry ID."
+        },
+        {
+          "name": "magentorest_update_product_media",
+          "readOnly": false,
+          "description": "Use this to change a media entry's label, position, roles or hidden flag. Only the fields you pass change; at least one is required. Overwrites the current values."
+        },
+        {
+          "name": "magentorest_delete_product_media",
+          "readOnly": false,
+          "description": "Use this to permanently delete one media entry of a product. Irreversible: the image stops showing on the storefront."
+        },
+        {
+          "name": "magentorest_get_sales_rules",
+          "readOnly": true,
+          "description": "Use this to list the cart price rules (promotions): name, dates, whether active, discount type and amount, coupon type, usage limits, websites and customer groups. Returns a bounded page and the total count.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_get_sales_rule_by_id",
+          "readOnly": true,
+          "description": "Use this to read one cart price rule by ID: its dates, discount, coupon type, usage limits, websites and customer groups.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_search_coupons",
+          "readOnly": true,
+          "description": "Use this to find coupons by part of the code and by the rule they belong to. Filters are combined with AND. Returns a bounded page and the total count; each coupon shows its code, limits, times used and expiry.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_get_coupon_by_id",
+          "readOnly": true,
+          "description": "Use this to read one coupon by ID: its code, rule, limits, times used and expiry.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_delete_coupon",
+          "readOnly": false,
+          "description": "Use this to permanently delete one coupon by ID. Irreversible: customers holding that code can no longer redeem it.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_get_tax_rates",
+          "readOnly": true,
+          "description": "Use this to list the tax rates: code, rate, country, region and postcode (or postcode range). Returns a bounded page and the total count."
+        },
+        {
+          "name": "magentorest_get_tax_rules",
+          "readOnly": true,
+          "description": "Use this to list the tax rules: code, priority, and the customer tax classes, product tax classes and tax rates each one combines. Returns a bounded page and the total count.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_get_tax_classes",
+          "readOnly": true,
+          "description": "Use this to list the tax classes, optionally only the CUSTOMER or only the PRODUCT ones. Returns one page of up to 100 and the total count."
+        },
+        {
+          "name": "magentorest_get_revenue",
+          "readOnly": true,
+          "description": "Use this to total the revenue of a period: revenue, currency, order count, average order value and tax. Computed from the orders in the period; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial."
+        },
+        {
+          "name": "magentorest_get_order_count",
+          "readOnly": true,
+          "description": "Use this to count the orders of a period, optionally by status. The count is Magento's own total, so it is exact and is never partial."
+        },
+        {
+          "name": "magentorest_get_product_sales",
+          "readOnly": true,
+          "description": "Use this to see what sold in a period: orders, items, units, revenue, and the ten best-selling products by quantity with their revenue. Optionally for one country (billing or shipping). Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial."
+        },
+        {
+          "name": "magentorest_get_revenue_by_country",
+          "readOnly": true,
+          "description": "Use this to total the revenue of a period for one country (orders billed or shipped there): revenue, currency, order count, average order value and tax. Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial."
+        },
+        {
+          "name": "magentorest_get_customer_ordered_products_by_email",
+          "readOnly": true,
+          "description": "Use this to list every order of one customer, found by exact email, with each order's lines (SKU, name, price, quantity). Returns the customer's id, name and email, never their addresses. For a product's own detail use magentorest_get_product_by_sku. Reads at most max_pages pages of 100 orders and says when the result is partial."
+        },
+        {
+          "name": "magentorest_db_status",
+          "readOnly": true,
+          "description": "Use this to check that the database connection works: returns the server version, the database name, that the session is read-only, and whether database writes are enabled. Run it first when a database tool fails.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_db_list_tables",
+          "readOnly": true,
+          "description": "Use this to list the tables of the Magento database, optionally only those whose name contains a fragment (e.g. `sales_order`). Returns each table's name, engine and approximate row count (an estimate, not a count: use magentorest_db_stats or a COUNT(*) for exact figures).",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_db_describe_table",
+          "readOnly": true,
+          "description": "Use this to see the columns of one table: name, type, whether it can be NULL, key, default and extra. Refuses the tables that hold credentials (administrators, OAuth tokens, integrations).",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_db_query",
+          "readOnly": true,
+          "description": "Use this for a question the other tools cannot answer: runs ONE read-only SELECT and returns its columns and rows. Name the columns (SELECT * is refused; COUNT(*) is fine), pass values as ? placeholders in params, and expect at most max_rows rows (default 100, at most 500; a LIMIT above that is refused, none is added for you). No comments, no second statement, no INTO, no locking, and no credential tables (administrators, OAuth tokens, integrations); values of columns named like a password, hash or token, and of secret configuration rows, come back as [redacted].",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_db_magento_tables",
+          "readOnly": true,
+          "description": "Use this to see the well-known Magento 2 tables grouped by what they hold (products, categories, customers, orders, quotes, invoices, shipments, CMS, EAV, URL rewrites, store), each marked with whether it exists in this database. Table prefixes are not applied.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_db_product_by_sku",
+          "readOnly": true,
+          "description": "Use this for a quick look at one product straight from the database: id, SKU, type, created and updated dates, quantity and in-stock flag (legacy stock table). For the full product use magentorest_get_product_by_sku.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_db_recent_orders",
+          "readOnly": true,
+          "description": "Use this to see the latest orders straight from the database: id, increment id, status, state, customer email and name, totals, currency and dates. Newest first; limit defaults to 10, at most 100. Never returns addresses or payment data.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_db_stats",
+          "readOnly": true,
+          "description": "Use this to count the rows of the key tables in one call: products, categories, customers, orders, order items, quotes, CMS pages and blocks. A table that does not exist says so.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_db_execute",
+          "readOnly": false,
+          "description": "Use this ONLY when no other tool can make the change: runs ONE INSERT, UPDATE or DELETE (UPDATE and DELETE need a WHERE) in a transaction. It bypasses Magento's own validation, indexing and events, so a change made here may not show on the storefront until a reindex and cache flush. Try it first with dry_run=true: the statement runs and is rolled back, and you see how many rows it would change. It rolls back by itself, changing nothing, if more than max_affected rows (default 100, at most 10000) would change. No DDL (DROP, ALTER, TRUNCATE), no REPLACE, no comments, no credential tables. Irreversible once committed.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        }
+      ],
+      "docs": "docs/magento-rest-onboarding.md",
+      "requires": {
+        "binaries": [
+          "hiberus-magento-rest"
+        ],
+        "env": [
+          {
+            "name": "MAGENTO_REST_BASE_URL",
+            "required": true,
+            "description": "The Magento REST root every magentorest_* tool addresses, e.g. https://<host>/rest/V1 (or /rest/<store-code>/V1 for one store view). Resolved on the first tool call and refused without it; tools/list still works. Must be https — plain http is accepted only for localhost."
+          },
+          {
+            "name": "MAGENTO_REST_TOKEN",
+            "required": false,
+            "description": "A Magento integration access token or admin token, sent as a Bearer. Every tool call needs one, but it may come from this variable OR from the credential file written by `hiberus-magento-rest auth token set`, so neither source is required on its own."
+          },
+          {
+            "name": "MAGENTO_REST_FIELDS_FILE",
+            "required": false,
+            "description": "Path to a JSON file that ADDS fields to what a resource exposes, e.g. {\"product\":{\"add\":[\"cost\"]}}. Additive only — a resource may carry only `add`, so a file can widen the shipped list but never narrow or replace it — and credential and payment fields (passwords, hashes, tokens, secrets, card and payment data) can never be added. Read once at startup; a file that cannot be read or does not validate stops the server with exit code 1 rather than starting with a half-applied configuration."
+          },
+          {
+            "name": "MAGENTO_REST_ALLOW_WRITES",
+            "required": false,
+            "description": "Set to exactly `true` to register the write tools (create, update, delete, cancel, invoice, refund, ...). Unset, or any other value, and the server registers read tools only — a write tool is then absent from tools/list, not merely refused. Read once at startup."
+          },
+          {
+            "name": "MAGENTO_REST_GROUPS",
+            "required": false,
+            "description": "Comma-separated tool groups to load, e.g. `products,customers`, so a project registers only the tools it needs instead of every one. Groups: `products`, `store`, `categories`, `customers`, `orders`, `sales-documents`, `stock`, `carts`, `cms`, `attributes`, `media`, `promotions`, `tax`, `analytics`, `database` (only with MAGENTO_REST_DATABASE_CONNECTION; naming it without one stops the server). Case-insensitive; blanks and repeats are ignored. Unset or empty loads every group (`database` too, when a connection is configured). A name that is not a group stops the server with exit code 1, listing the valid ones. MAGENTO_REST_ALLOW_WRITES still decides whether the write tools of a loaded group are registered. Read once at startup."
+          },
+          {
+            "name": "MAGENTO_REST_DATABASE_CONNECTION",
+            "required": false,
+            "description": "Adds the `database` tool group (magentorest_db_*): direct, read-only access to the Magento database. A URL with NO password, e.g. `mysql://reader@127.0.0.1:3306/magento`; a password in it stops the server. A host that is not this machine uses verified TLS unless you write `?ssl=false`. Unset, there are no database tools. Use a database user with the narrowest grants you can: SELECT only unless you also enable writes. The URL is validated at startup (exit code 1 if it is invalid); the password is only needed when a tool is called."
+          },
+          {
+            "name": "MAGENTO_REST_DATABASE_PASSWORD",
+            "required": false,
+            "description": "The password of the database user, used by the database tools. It may come from this variable OR from the credential file written by `hiberus-magento-rest auth db-password set` (read from stdin, mode 0600), so neither source is required on its own. Resolved on every connection, so a stored password applies without a restart."
+          },
+          {
+            "name": "MAGENTO_REST_DATABASE_ALLOW_WRITES",
+            "required": false,
+            "description": "Set to exactly `true` to register magentorest_db_execute (one INSERT, UPDATE or DELETE per call, in a transaction, with a dry run and a cap on rows changed). A switch of its own: MAGENTO_REST_ALLOW_WRITES does not enable it. Unset, or any other value, and the tool is absent from tools/list. Without MAGENTO_REST_DATABASE_CONNECTION it stops the server with exit code 1. Read once at startup."
+          }
+        ]
+      }
+    },
+    {
+      "id": "magento-graphql",
+      "package": "@hiberus-magento/magento-graphql",
+      "bin": "hiberus-magento-graphql-mcp",
+      "version": "0.0.0",
+      "domain": "magento-graphql",
+      "status": "alpha",
+      "description": "Magento 2 GraphQL API client — CLI and MCP server covering every core Query and Mutation of the storefront schema (catalog, content, cart, checkout, account, wish lists, returns, payments, B2B), with mutations off unless enabled.",
+      "docs": "docs/magento-graphql-onboarding.md",
+      "requires": {
+        "binaries": [
+          "hiberus-magento-graphql"
+        ],
+        "env": [
+          {
+            "name": "MAGENTO_GRAPHQL_BASE_URL",
+            "required": true,
+            "description": "The Magento GraphQL endpoint every magentographql_* tool addresses, e.g. https://<host>/graphql. Resolved on the first tool call and refused without it; tools/list still works. Must be https — plain http is accepted only for localhost."
+          },
+          {
+            "name": "MAGENTO_GRAPHQL_TOKEN",
+            "required": false,
+            "description": "A Magento CUSTOMER token, sent as a Bearer. Optional: the storefront schema is public, so every tool except the customer group works without one. It may come from this variable OR from the credential file written by `hiberus-magento-graphql auth token set`. Obtain it outside this server (the generateCustomerToken mutation): the server never mints or handles passwords."
+          },
+          {
+            "name": "MAGENTO_GRAPHQL_STORE",
+            "required": false,
+            "description": "The store view code sent as the `Store` header, e.g. `default`, so every tool reads that view. A tool's own `store` argument overrides it. Unset, Magento answers for the default view. Must be 1-32 characters of a-z, 0-9 and underscore."
+          },
+          {
+            "name": "MAGENTO_GRAPHQL_ALLOW_WRITES",
+            "required": false,
+            "description": "Set to exactly `true` to register every mutation tool (cart, checkout, account, wish list, returns, B2B and the rest; about 160 of them). Unset, or any other value, and the server registers read tools only — a mutation tool is then absent from tools/list, not merely refused. Read once at startup. The generic query tool never runs mutations, with or without this switch."
+          },
+          {
+            "name": "MAGENTO_GRAPHQL_GROUPS",
+            "required": false,
+            "description": "Comma-separated tool groups to load, e.g. `products,cms`, so a project registers only the tools it needs. Groups: `products`, `categories`, `cms`, `store`, `customer`, `account`, `cart`, `checkout`, `orders`, `returns`, `wishlist`, `compare`, `payments`, `gift-and-rewards`, `gift-registry`, `company`, `purchase-orders`, `quotes`, `requisition-lists`, `query`. Case-insensitive; blanks and repeats are ignored. Unset or empty loads every group. A name that is not a group stops the server with exit code 1, listing the valid ones. MAGENTO_GRAPHQL_ALLOW_WRITES still decides whether the mutation tools of a loaded group are registered. Read once at startup."
+          }
+        ]
+      },
+      "tools": [
+        {
+          "name": "magentographql_search_products",
+          "readOnly": true,
+          "description": "Use this to search the storefront catalog by text, SKU list, category uid or price range, with sorting and paging: SKU, name, URL key, stock status, price range and thumbnail. It sees only what a shopper sees — disabled or not-visible products are absent."
+        },
+        {
+          "name": "magentographql_get_product",
+          "readOnly": true,
+          "description": "Use this to read one product as the storefront shows it, by SKU or URL key: descriptions, meta tags, stock status, price range, categories, gallery, and for a configurable product its options and variants."
+        },
+        {
+          "name": "magentographql_get_product_review_ratings_metadata",
+          "readOnly": true,
+          "description": "Use this to return the active ratings attributes and the values each rating can have.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_create_product_review",
+          "readOnly": false,
+          "description": "Use this to create a product review for the specified product.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_category_tree",
+          "readOnly": true,
+          "description": "Use this to read the storefront category tree — three levels from the store root, or from one category's uid: uid, name, URL path, product count and whether it is in the menu."
+        },
+        {
+          "name": "magentographql_get_category",
+          "readOnly": true,
+          "description": "Use this to read one category as the storefront shows it, by uid or URL path: description, meta tags, display mode, breadcrumbs and direct children."
+        },
+        {
+          "name": "magentographql_get_cms_page",
+          "readOnly": true,
+          "description": "Use this to read one enabled CMS page by its identifier, as the storefront serves it: title, layout, heading, HTML content and meta tags."
+        },
+        {
+          "name": "magentographql_get_cms_blocks",
+          "readOnly": true,
+          "description": "Use this to read enabled CMS static blocks by identifier, as the storefront serves them: identifier, title and HTML content.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_store_config",
+          "readOnly": true,
+          "description": "Use this to read the current store view's display settings: codes and names, locale, timezone, currencies, weight unit, base URLs, URL suffixes and catalog paging defaults."
+        },
+        {
+          "name": "magentographql_get_available_stores",
+          "readOnly": true,
+          "description": "Use this to list the store views the storefront offers, with their codes, website and store group, locale and currencies — the values the `store` argument takes."
+        },
+        {
+          "name": "magentographql_get_countries",
+          "readOnly": true,
+          "description": "Use this to list the countries the store knows, with ISO codes and English names."
+        },
+        {
+          "name": "magentographql_get_country",
+          "readOnly": true,
+          "description": "Use this to read one country with its regions (id, code, name), by its two-letter code."
+        },
+        {
+          "name": "magentographql_get_currency",
+          "readOnly": true,
+          "description": "Use this to read the base and display currency, the currencies the store view allows, and the exchange rates."
+        },
+        {
+          "name": "magentographql_get_attributes_form",
+          "readOnly": true,
+          "description": "Use this to retrieve EAV attributes associated to a frontend form. Use countries query provided by DirectoryGraphQl module to retrieve region_id and country_id attribute options.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_attributes_list",
+          "readOnly": true,
+          "description": "Use this to returns a list of attributes metadata for a given entity type."
+        },
+        {
+          "name": "magentographql_get_custom_attribute_metadata_v2",
+          "readOnly": true,
+          "description": "Use this to retrieve EAV attributes metadata.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_dynamic_blocks",
+          "readOnly": true,
+          "description": "Use this to return a list of dynamic blocks filtered by type, location, or UIDs. Adobe Commerce only: Open Source Magento does not have it.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_pickup_locations",
+          "readOnly": true,
+          "description": "Use this to the pickup locations query searches for locations that match the search request requirements.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_recaptcha_form_config",
+          "readOnly": true,
+          "description": "Use this to read recaptcha form config.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_recaptcha_v3_config",
+          "readOnly": true,
+          "description": "Use this to returns details about Google reCAPTCHA V3-Invisible configuration."
+        },
+        {
+          "name": "magentographql_get_route",
+          "readOnly": true,
+          "description": "Use this to return the full details for a specified product, category, or CMS page."
+        },
+        {
+          "name": "magentographql_contact_us",
+          "readOnly": false,
+          "description": "Use this to send a 'Contact Us' email to the merchant.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_send_email_to_friend",
+          "readOnly": false,
+          "description": "Use this to send a message on behalf of a customer to the specified email addresses.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_customer",
+          "readOnly": true,
+          "description": "Use this to read the signed-in customer's profile: name, email, newsletter flag and address locations (city, region, postcode, country — no street or phone). Needs a customer token (MAGENTO_GRAPHQL_TOKEN or `hiberus-magento-graphql auth token set`).",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_customer_orders",
+          "readOnly": true,
+          "description": "Use this to list the signed-in customer's orders, newest first as Magento returns them, or find one by order number: number, date, status, grand total and the items ordered. Needs a customer token (MAGENTO_GRAPHQL_TOKEN or `hiberus-magento-graphql auth token set`).",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_customer_cart",
+          "readOnly": true,
+          "description": "Use this to read the signed-in customer's active cart: its masked id, items with quantities and prices, totals and applied coupons. Needs a customer token (MAGENTO_GRAPHQL_TOKEN or `hiberus-magento-graphql auth token set`).",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_customer_downloadable_products",
+          "readOnly": true,
+          "description": "Use this to return a list of downloadable products the customer has purchased. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_customer_group",
+          "readOnly": true,
+          "description": "Use this to provides Customer Group assigned to the Customer or Guest. Needs a customer token."
+        },
+        {
+          "name": "magentographql_get_customer_segments",
+          "readOnly": true,
+          "description": "Use this to customer segments associated with the current customer or guest/visitor. Adobe Commerce only: Open Source Magento does not have it.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_is_email_available",
+          "readOnly": true,
+          "description": "Use this to check whether the specified email has already been used to create a customer account."
+        },
+        {
+          "name": "magentographql_change_customer_password",
+          "readOnly": false,
+          "description": "Use this to change the password for the logged-in customer. Needs a customer token. Takes a password as an argument, which then passes through the conversation.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_confirm_email",
+          "readOnly": false,
+          "description": "Use this to confirms the email address for a customer.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_create_customer_address",
+          "readOnly": false,
+          "description": "Use this to create a billing or shipping address for a customer or guest. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_create_customer_v2",
+          "readOnly": false,
+          "description": "Use this to create a customer account. Takes a password as an argument, which then passes through the conversation.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_delete_customer",
+          "readOnly": false,
+          "description": "Use this to delete customer account. Needs a customer token. Takes a password as an argument, which then passes through the conversation.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_delete_customer_address_v2",
+          "readOnly": false,
+          "description": "Use this to delete the billing or shipping address of a customer. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_exchange_external_customer_token",
+          "readOnly": false,
+          "description": "Use this to generate a token for specified customer. Returns a credential into the conversation; store it with `hiberus-magento-graphql auth token set` rather than reusing it from here.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_generate_customer_token",
+          "readOnly": false,
+          "description": "Use this to generate a token for specified customer. Takes a password as an argument, which then passes through the conversation. Returns a credential into the conversation; store it with `hiberus-magento-graphql auth token set` rather than reusing it from here.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_generate_customer_token_as_admin",
+          "readOnly": false,
+          "description": "Use this to request a customer token so that an administrator can perform remote shopping assistance. Takes a password as an argument, which then passes through the conversation. Returns a credential into the conversation; store it with `hiberus-magento-graphql auth token set` rather than reusing it from here.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_request_password_reset_email",
+          "readOnly": false,
+          "description": "Use this to request an email with a reset password token for the registered customer identified by the specified email.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_resend_confirmation_email",
+          "readOnly": false,
+          "description": "Use this to resends the confirmation email to a customer.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_reset_password",
+          "readOnly": false,
+          "description": "Use this to reset a customer's password using the reset password token that the customer received in an email after requesting it using `requestPasswordResetEmail`. Takes a password as an argument, which then passes through the conversation.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_revoke_customer_token",
+          "readOnly": false,
+          "description": "Use this to revoke the customer token. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_subscribe_email_to_newsletter",
+          "readOnly": false,
+          "description": "Use this to subscribe the specified email to the store's newsletter. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_update_customer_address_v2",
+          "readOnly": false,
+          "description": "Use this to update the billing or shipping address of a customer or guest. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_update_customer_email",
+          "readOnly": false,
+          "description": "Use this to change the email address for the logged-in customer. Needs a customer token. Takes a password as an argument, which then passes through the conversation.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_update_customer_v2",
+          "readOnly": false,
+          "description": "Use this to update the customer's personal information. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_cart",
+          "readOnly": true,
+          "description": "Use this to read a cart by its masked id: items with quantities and prices, totals, discounts and applied coupons."
+        },
+        {
+          "name": "magentographql_add_products_to_cart",
+          "readOnly": false,
+          "description": "Use this to add products to a cart by SKU and quantity. Not idempotent: running it twice adds the quantity twice, and it is never retried. Returns the cart and any user_errors (for example insufficient stock)."
+        },
+        {
+          "name": "magentographql_update_cart_items",
+          "readOnly": false,
+          "description": "Use this to set the quantity of items already in a cart, by cart item uid (from magentographql_get_cart). A quantity of 0 removes the item. Returns the cart."
+        },
+        {
+          "name": "magentographql_remove_cart_item",
+          "readOnly": false,
+          "description": "Use this to remove one item from a cart, by cart item uid (from magentographql_get_cart). Returns the cart."
+        },
+        {
+          "name": "magentographql_apply_coupon",
+          "readOnly": false,
+          "description": "Use this to apply a coupon code to a cart, replacing any coupon already applied. Returns the cart with its discounts.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_remove_coupon",
+          "readOnly": false,
+          "description": "Use this to remove the coupon applied to a cart. Returns the cart.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_add_bundle_products_to_cart",
+          "readOnly": false,
+          "description": "Use this to add one or more bundle products to the specified cart. We recommend using `addProductsToCart` instead.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_add_configurable_products_to_cart",
+          "readOnly": false,
+          "description": "Use this to add one or more configurable products to the specified cart. We recommend using `addProductsToCart` instead.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_add_downloadable_products_to_cart",
+          "readOnly": false,
+          "description": "Use this to add one or more downloadable products to the specified cart. We recommend using `addProductsToCart` instead.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_add_products_to_new_cart",
+          "readOnly": false,
+          "description": "Use this to creates a new cart and add any type of product to it.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_add_simple_products_to_cart",
+          "readOnly": false,
+          "description": "Use this to add one or more simple products to the specified cart. We recommend using `addProductsToCart` instead.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_add_virtual_products_to_cart",
+          "readOnly": false,
+          "description": "Use this to add one or more virtual products to the specified cart. We recommend using `addProductsToCart` instead.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_apply_coupons_to_cart",
+          "readOnly": false,
+          "description": "Use this to apply a pre-defined coupon code to the specified cart.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_assign_customer_to_guest_cart",
+          "readOnly": false,
+          "description": "Use this to assign a logged-in customer to the specified guest shopping cart. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_clear_cart",
+          "readOnly": false,
+          "description": "Use this to remove all items from the specified cart."
+        },
+        {
+          "name": "magentographql_clear_customer_cart",
+          "readOnly": false,
+          "description": "Use this to remove all items from the specified cart. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_create_guest_cart",
+          "readOnly": false,
+          "description": "Use this to create a new shopping cart."
+        },
+        {
+          "name": "magentographql_merge_carts",
+          "readOnly": false,
+          "description": "Use this to transfer the contents of a guest cart into the cart of a logged-in customer. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_remove_coupons_from_cart",
+          "readOnly": false,
+          "description": "Use this to remove a previously-applied coupon from the cart. The cart must contain at least one item in order to remove the coupon.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_reorder_items",
+          "readOnly": false,
+          "description": "Use this to add all products from a customer's previous order to the cart. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_set_cart_as_inactive",
+          "readOnly": false,
+          "description": "Use this to sets the cart as inactive.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_set_gift_options_on_cart",
+          "readOnly": false,
+          "description": "Use this to set gift options, including gift messages, gift wrapping, gift receipts, and printed cards.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_checkout_agreements",
+          "readOnly": true,
+          "description": "Use this to return Terms and Conditions configuration information."
+        },
+        {
+          "name": "magentographql_estimate_shipping_methods",
+          "readOnly": false,
+          "description": "Use this to estimate shipping method(s) for cart based on address."
+        },
+        {
+          "name": "magentographql_estimate_totals",
+          "readOnly": false,
+          "description": "Use this to estimate totals for cart based on the address."
+        },
+        {
+          "name": "magentographql_place_order",
+          "readOnly": false,
+          "description": "Use this to convert the quote into an order. Places a real order from the cart: not idempotent and never retried.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_set_billing_address_on_cart",
+          "readOnly": false,
+          "description": "Use this to set the billing address on a specific cart."
+        },
+        {
+          "name": "magentographql_set_guest_email_on_cart",
+          "readOnly": false,
+          "description": "Use this to assign the email address of a guest to the cart."
+        },
+        {
+          "name": "magentographql_set_payment_method_on_cart",
+          "readOnly": false,
+          "description": "Use this to apply a payment method to the cart.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_set_shipping_addresses_on_cart",
+          "readOnly": false,
+          "description": "Use this to set one or more shipping addresses on a specific cart."
+        },
+        {
+          "name": "magentographql_set_shipping_methods_on_cart",
+          "readOnly": false,
+          "description": "Use this to set one or more delivery methods on a cart."
+        },
+        {
+          "name": "magentographql_get_guest_order",
+          "readOnly": true,
+          "description": "Use this to retrieve guest order details based on number, email and billing last name.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_guest_order_by_token",
+          "readOnly": true,
+          "description": "Use this to retrieve guest order details based on token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_cancel_order",
+          "readOnly": false,
+          "description": "Use this to cancel the specified customer order.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_confirm_cancel_order",
+          "readOnly": false,
+          "description": "Use this to cancel the specified guest customer order.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_request_guest_order_cancel",
+          "readOnly": false,
+          "description": "Use this to request to cancel specified guest order.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_add_return_comment",
+          "readOnly": false,
+          "description": "Use this to add a comment to an existing return. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_add_return_tracking",
+          "readOnly": false,
+          "description": "Use this to add tracking information to the return. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_confirm_return",
+          "readOnly": false,
+          "description": "Use this to confirm the return. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_remove_return_tracking",
+          "readOnly": false,
+          "description": "Use this to remove a tracked shipment from a return. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_request_guest_return",
+          "readOnly": false,
+          "description": "Use this to run request guest return. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_request_return",
+          "readOnly": false,
+          "description": "Use this to initiates a buyer's request to return items for replacement or refund. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_add_products_to_wishlist",
+          "readOnly": false,
+          "description": "Use this to add one or more products to the specified wish list. This mutation supports all product types. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_add_wishlist_items_to_cart",
+          "readOnly": false,
+          "description": "Use this to add items in the specified wishlist to the customer's cart. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_clear_wishlist",
+          "readOnly": false,
+          "description": "Use this to remove all the products from the specified wish list. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_copy_products_between_wishlists",
+          "readOnly": false,
+          "description": "Use this to copy products from one wish list to another. The original wish list is unchanged. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_create_wishlist",
+          "readOnly": false,
+          "description": "Use this to create a new wish list. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_delete_wishlist",
+          "readOnly": false,
+          "description": "Use this to delete the specified wish list. You cannot delete the customer's default (first) wish list. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_move_products_between_wishlists",
+          "readOnly": false,
+          "description": "Use this to move products from one wish list to another. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_remove_products_from_wishlist",
+          "readOnly": false,
+          "description": "Use this to remove one or more products from the specified wish list. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_update_products_in_wishlist",
+          "readOnly": false,
+          "description": "Use this to update one or more products in the specified wish list. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_update_wishlist",
+          "readOnly": false,
+          "description": "Use this to change the name and visibility of the specified wish list. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_compare_list",
+          "readOnly": true,
+          "description": "Use this to return products that have been added to the specified compare list.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_add_products_to_compare_list",
+          "readOnly": false,
+          "description": "Use this to add products to the specified compare list.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_assign_compare_list_to_customer",
+          "readOnly": false,
+          "description": "Use this to assign the specified compare list to the logged in customer.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_create_compare_list",
+          "readOnly": false,
+          "description": "Use this to create a new compare list. The compare list is saved for logged in customers.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_delete_compare_list",
+          "readOnly": false,
+          "description": "Use this to delete the specified compare list.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_remove_products_from_compare_list",
+          "readOnly": false,
+          "description": "Use this to remove products from the specified compare list.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_customer_payment_tokens",
+          "readOnly": true,
+          "description": "Use this to return a list of customer payment tokens stored in the vault. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_hosted_pro_url",
+          "readOnly": true,
+          "description": "Use this to retrieve the secure PayPal URL for a Payments Pro Hosted Solution transaction.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_payflow_link_token",
+          "readOnly": true,
+          "description": "Use this to retrieve payment credentials for a transaction. Use this query for Payflow Link and Payments Advanced payment methods.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_payment_config",
+          "readOnly": true,
+          "description": "Use this to retrieves the payment configuration for a given location.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_payment_order",
+          "readOnly": true,
+          "description": "Use this to retrieves the payment details for the order.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_payment_sdk",
+          "readOnly": true,
+          "description": "Use this to gets the payment SDK urls and values.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_vault_config",
+          "readOnly": true,
+          "description": "Use this to retrieves the vault configuration.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_append_payment_services_storefront_logs",
+          "readOnly": false,
+          "description": "Use this to appends Payment Services storefront log entries to the Commerce server log.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_complete_order",
+          "readOnly": false,
+          "description": "Use this to synchronizes order details and place the order.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_create_payflow_pro_token",
+          "readOnly": false,
+          "description": "Use this to initiate a transaction and receive a token. Use this mutation for Payflow Pro and Payments Pro payment methods.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_create_payment_order",
+          "readOnly": false,
+          "description": "Use this to creates a payment order for further payment processing.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_create_paypal_express_token",
+          "readOnly": false,
+          "description": "Use this to initiate an Express Checkout transaction and receive a token. Use this mutation for Express Checkout and Payments Standard payment methods.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_create_vault_card_payment_token",
+          "readOnly": false,
+          "description": "Use this to creates a vault payment token. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_create_vault_card_setup_token",
+          "readOnly": false,
+          "description": "Use this to creates a vault card setup token. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_delete_payment_token",
+          "readOnly": false,
+          "description": "Use this to delete a customer's payment token. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_handle_payflow_pro_response",
+          "readOnly": false,
+          "description": "Use this to handle a payment response and save the payment in Quote. Use this mutation for Payflow Pro and Payments Pro payment methods.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_sync_payment_order",
+          "readOnly": false,
+          "description": "Use this to synchronizes the payment order details for further payment processing.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_gift_card_account",
+          "readOnly": true,
+          "description": "Use this to return details about a specific gift card. Adobe Commerce only: Open Source Magento does not have it.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_apply_gift_card_to_cart",
+          "readOnly": false,
+          "description": "Use this to apply a pre-defined gift card code to the specified cart. Adobe Commerce only: Open Source Magento does not have it.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_apply_reward_points_to_cart",
+          "readOnly": false,
+          "description": "Use this to apply all available points, up to the cart total. Partial redemption is not available. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_apply_store_credit_to_cart",
+          "readOnly": false,
+          "description": "Use this to apply store credit to the specified cart. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_redeem_gift_card_balance_as_store_credit",
+          "readOnly": false,
+          "description": "Use this to redeem a gift card for store credit. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_remove_gift_card_from_cart",
+          "readOnly": false,
+          "description": "Use this to removes a gift card from the cart. Adobe Commerce only: Open Source Magento does not have it.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_remove_reward_points_from_cart",
+          "readOnly": false,
+          "description": "Use this to cancel the application of reward points to the cart. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_remove_store_credit_from_cart",
+          "readOnly": false,
+          "description": "Use this to remove store credit that has been applied to the specified cart. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_gift_registry",
+          "readOnly": true,
+          "description": "Use this to return the specified gift registry. Some details will not be available to guests. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_gift_registry_email_search",
+          "readOnly": true,
+          "description": "Use this to search for gift registries by specifying a registrant email address. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_gift_registry_id_search",
+          "readOnly": true,
+          "description": "Use this to search for gift registries by specifying a registry URL key. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_gift_registry_type_search",
+          "readOnly": true,
+          "description": "Use this to search for gift registries by specifying the registrant name and registry type ID. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_gift_registry_types",
+          "readOnly": true,
+          "description": "Use this to get a list of available gift registry types. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token."
+        },
+        {
+          "name": "magentographql_add_gift_registry_registrants",
+          "readOnly": false,
+          "description": "Use this to add registrants to the specified gift registry. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_create_gift_registry",
+          "readOnly": false,
+          "description": "Use this to create a gift registry on behalf of the customer. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_move_cart_items_to_gift_registry",
+          "readOnly": false,
+          "description": "Use this to move all items from the cart to a gift registry. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_remove_gift_registry",
+          "readOnly": false,
+          "description": "Use this to delete the specified gift registry. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_remove_gift_registry_items",
+          "readOnly": false,
+          "description": "Use this to delete the specified items from a gift registry. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_remove_gift_registry_registrants",
+          "readOnly": false,
+          "description": "Use this to removes registrants from a gift registry. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_share_gift_registry",
+          "readOnly": false,
+          "description": "Use this to send an email about the gift registry to a list of invitees. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_update_gift_registry",
+          "readOnly": false,
+          "description": "Use this to update the specified gift registry. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_update_gift_registry_items",
+          "readOnly": false,
+          "description": "Use this to update the specified items in the gift registry. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_update_gift_registry_registrants",
+          "readOnly": false,
+          "description": "Use this to modify the properties of one or more gift registry registrants. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_company",
+          "readOnly": true,
+          "description": "Use this to return detailed information about the customer's company within the current company context. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_is_company_admin_email_available",
+          "readOnly": true,
+          "description": "Use this to check whether the specified email can be used to register a company admin. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_is_company_email_available",
+          "readOnly": true,
+          "description": "Use this to check whether the specified email can be used to register a new company. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_is_company_role_name_available",
+          "readOnly": true,
+          "description": "Use this to check whether the specified role name is valid for the company. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_is_company_user_email_available",
+          "readOnly": true,
+          "description": "Use this to check whether the specified email can be used to register a company user. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_accept_company_invitation",
+          "readOnly": false,
+          "description": "Use this to accept invitation to the company. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_create_company",
+          "readOnly": false,
+          "description": "Use this to create a company at the request of either a customer or a guest. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_create_company_role",
+          "readOnly": false,
+          "description": "Use this to create a new company role. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_create_company_team",
+          "readOnly": false,
+          "description": "Use this to create a new team for the customer's company within the current company context. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_create_company_user",
+          "readOnly": false,
+          "description": "Use this to create a new company user at the request of an existing customer. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_delete_company_role",
+          "readOnly": false,
+          "description": "Use this to delete the specified company role. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_delete_company_team",
+          "readOnly": false,
+          "description": "Use this to delete the specified company team. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_delete_company_user_v2",
+          "readOnly": false,
+          "description": "Use this to delete the specified company user. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_update_company",
+          "readOnly": false,
+          "description": "Use this to update company information. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_update_company_role",
+          "readOnly": false,
+          "description": "Use this to update company role information. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_update_company_structure",
+          "readOnly": false,
+          "description": "Use this to change the parent node of a company team within the current company context. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_update_company_team",
+          "readOnly": false,
+          "description": "Use this to update company team data. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_update_company_user",
+          "readOnly": false,
+          "description": "Use this to update an existing company user. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_add_purchase_order_comment",
+          "readOnly": false,
+          "description": "Use this to add a comment to an existing purchase order. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_add_purchase_order_items_to_cart",
+          "readOnly": false,
+          "description": "Use this to add purchase order items to the shopping cart. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_approve_purchase_orders",
+          "readOnly": false,
+          "description": "Use this to approve purchase orders. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_cancel_purchase_orders",
+          "readOnly": false,
+          "description": "Use this to cancel purchase orders. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_create_purchase_order_approval_rule",
+          "readOnly": false,
+          "description": "Use this to create a purchase order approval rule. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_delete_purchase_order_approval_rule",
+          "readOnly": false,
+          "description": "Use this to delete existing purchase order approval rules. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_place_order_for_purchase_order",
+          "readOnly": false,
+          "description": "Use this to convert the purchase order into an order. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_place_purchase_order",
+          "readOnly": false,
+          "description": "Use this to place a purchase order. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_reject_purchase_orders",
+          "readOnly": false,
+          "description": "Use this to reject purchase orders. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_update_purchase_order_approval_rule",
+          "readOnly": false,
+          "description": "Use this to update existing purchase order approval rules. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_validate_purchase_orders",
+          "readOnly": false,
+          "description": "Use this to validate purchase orders. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_negotiable_quote",
+          "readOnly": true,
+          "description": "Use this to retrieve the specified negotiable quote. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_negotiable_quote_template",
+          "readOnly": true,
+          "description": "Use this to retrieve the specified negotiable quote template. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_negotiable_quote_templates",
+          "readOnly": true,
+          "description": "Use this to return a list of negotiable quote templates that can be viewed by the logged-in customer. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_get_negotiable_quotes",
+          "readOnly": true,
+          "description": "Use this to return a list of negotiable quotes that can be viewed by the logged-in customer. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_accept_negotiable_quote_template",
+          "readOnly": false,
+          "description": "Use this to update an existing negotiable quote template. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_cancel_negotiable_quote_template",
+          "readOnly": false,
+          "description": "Use this to cancel a negotiable quote template. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_close_negotiable_quotes",
+          "readOnly": false,
+          "description": "Use this to mark a negotiable quote as closed. The negotiable quote is still visible on the storefront. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_delete_negotiable_quote_template",
+          "readOnly": false,
+          "description": "Use this to delete a negotiable quote template. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_delete_negotiable_quotes",
+          "readOnly": false,
+          "description": "Use this to delete a negotiable quote. The negotiable quote will not be displayed on the storefront. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_duplicate_negotiable_quote",
+          "readOnly": false,
+          "description": "Use this to negotiable Quote resulting from duplication operation. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_generate_negotiable_quote_from_template",
+          "readOnly": false,
+          "description": "Use this to generate a negotiable quote from an accept quote template. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_open_negotiable_quote_template",
+          "readOnly": false,
+          "description": "Use this to open an existing negotiable quote template. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_place_negotiable_quote_order",
+          "readOnly": false,
+          "description": "Use this to convert a negotiable quote into an order. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_remove_negotiable_quote_items",
+          "readOnly": false,
+          "description": "Use this to remove one or more products from a negotiable quote. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_remove_negotiable_quote_template_items",
+          "readOnly": false,
+          "description": "Use this to remove one or more products from a negotiable quote template. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_rename_negotiable_quote",
+          "readOnly": false,
+          "description": "Use this to rename negotiable quote. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_request_negotiable_quote",
+          "readOnly": false,
+          "description": "Use this to request a new negotiable quote on behalf of the buyer. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_request_negotiable_quote_template_from_quote",
+          "readOnly": false,
+          "description": "Use this to request a new negotiable quote on behalf of the buyer. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_send_negotiable_quote_for_review",
+          "readOnly": false,
+          "description": "Use this to send the negotiable quote to the seller for review. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_set_line_item_note",
+          "readOnly": false,
+          "description": "Use this to add buyer's note to a negotiable quote item. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_set_negotiable_quote_billing_address",
+          "readOnly": false,
+          "description": "Use this to assign a billing address to a negotiable quote. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_set_negotiable_quote_payment_method",
+          "readOnly": false,
+          "description": "Use this to set the payment method on a negotiable quote. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_set_negotiable_quote_shipping_address",
+          "readOnly": false,
+          "description": "Use this to assign a previously-defined address as the shipping address for a negotiable quote. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_set_negotiable_quote_shipping_methods",
+          "readOnly": false,
+          "description": "Use this to assign the shipping methods on the negotiable quote. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_set_negotiable_quote_template_shipping_address",
+          "readOnly": false,
+          "description": "Use this to assign a previously-defined address as the shipping address for a negotiable quote template. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_set_quote_template_line_item_note",
+          "readOnly": false,
+          "description": "Use this to add buyer's note to a negotiable quote template item. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_submit_negotiable_quote_template_for_review",
+          "readOnly": false,
+          "description": "Use this to accept an existing negotiable quote template. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_update_negotiable_quote_quantities",
+          "readOnly": false,
+          "description": "Use this to change the quantity of one or more items in an existing negotiable quote. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_update_negotiable_quote_template_quantities",
+          "readOnly": false,
+          "description": "Use this to change the quantity of one or more items in an existing negotiable quote template. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_add_products_to_requisition_list",
+          "readOnly": false,
+          "description": "Use this to add items to the specified requisition list. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_add_requisition_list_items_to_cart",
+          "readOnly": false,
+          "description": "Use this to add items in the requisition list to the customer's cart. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_copy_items_between_requisition_lists",
+          "readOnly": false,
+          "description": "Use this to copy items from one requisition list to another. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_create_requisition_list",
+          "readOnly": false,
+          "description": "Use this to create an empty requisition list. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_delete_requisition_list",
+          "readOnly": false,
+          "description": "Use this to delete a requisition list. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_delete_requisition_list_items",
+          "readOnly": false,
+          "description": "Use this to delete items from a requisition list. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_move_items_between_requisition_lists",
+          "readOnly": false,
+          "description": "Use this to move Items from one requisition list to another. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_move_line_item_to_requisition_list",
+          "readOnly": false,
+          "description": "Use this to move negotiable quote item to requisition list. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_update_requisition_list",
+          "readOnly": false,
+          "description": "Use this to rename a requisition list and change its description. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_update_requisition_list_items",
+          "readOnly": false,
+          "description": "Use this to update items in a requisition list. Adobe Commerce only: Open Source Magento does not have it. Needs a customer token.",
+          "unverified": "this tool has not been run against a real Magento instance; its query document and response handling are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentographql_query",
+          "readOnly": true,
+          "description": "Use this to run ONE read-only GraphQL query against the storefront endpoint when no curated tool fits. Mutations and subscriptions are refused before anything is sent; documents over 8,000 characters or nested deeper than 12 selections are refused. Pass values as `variables`, never inside the text. Use magentographql_list_operations and magentographql_describe_type to learn the schema first."
+        },
+        {
+          "name": "magentographql_list_operations",
+          "readOnly": true,
+          "description": "Use this to list every query and mutation the storefront schema offers, with descriptions — the map to read before writing a magentographql_query document. Needs introspection, which Magento allows by default."
+        },
+        {
+          "name": "magentographql_describe_type",
+          "readOnly": true,
+          "description": "Use this to read one schema type by name — its fields with arguments and types, input fields, enum values or possible types — to learn what a query can select, e.g. ProductInterface or CategoryTree."
+        }
+      ]
+    },
+    {
       "id": "aem-sites",
       "package": "@hiberus-magento/aem-sites",
       "bin": "hiberus-aem-sites-mcp",

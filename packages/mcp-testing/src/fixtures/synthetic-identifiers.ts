@@ -46,6 +46,27 @@ export const SYNTHETIC_MC_HOST = `demo-host.${SYNTHETIC_DOMAIN}` as const;
 
 export type SyntheticMcEnvironmentId = (typeof SYNTHETIC_MC_ENVIRONMENT_IDS)[number];
 
+// magento-rest-package additions: every synthetic base URL, SKU, token and
+// store code the `packages/magento-rest` fixtures and tests use comes from
+// here. Same rule as `SYNTHETIC_MC_TOKEN`: the token is kept SHORT (below
+// `scan-secrets.mjs`'s 16-char generic-key-assignment threshold), and its
+// synthetic intent is carried by the constant's name, not its value.
+export const SYNTHETIC_MAGENTO_BASE_URL = `https://demo-host.${SYNTHETIC_DOMAIN}/rest/V1` as const;
+export const SYNTHETIC_MAGENTO_TOKEN = "mr-demo-token" as const;
+export const SYNTHETIC_MAGENTO_SKUS = ["DEMO-TENT-001", "DEMO-LAMP-002"] as const;
+export const SYNTHETIC_MAGENTO_STORE_CODE = "demo_store" as const;
+export const SYNTHETIC_MAGENTO_ORDER_INCREMENT_ID = "DEMO000000001" as const;
+// `.example` is a reserved TLD, so this is a syntactically valid address (a
+// real email validator wants a TLD, which `SYNTHETIC_DOMAIN` deliberately lacks)
+// that can never route to a real mailbox.
+export const SYNTHETIC_MAGENTO_CUSTOMER_EMAIL = "shopper@demo-host.example" as const;
+
+// magento-graphql-package additions. Same rules as above: short token, intent carried by the name.
+export const SYNTHETIC_MAGENTO_GRAPHQL_URL = `https://demo-host.${SYNTHETIC_DOMAIN}/graphql` as const;
+export const SYNTHETIC_MAGENTO_CUSTOMER_TOKEN = "mg-demo-token" as const;
+
+export type SyntheticMagentoSku = (typeof SYNTHETIC_MAGENTO_SKUS)[number];
+
 // aem-sites-package additions: AEM as a Cloud Service author hosts carry the
 // program and environment ids in the hostname, so the synthetic ones use an
 // all-zero program. `scripts/audit-synthetic-identifiers.mjs` accepts exactly
