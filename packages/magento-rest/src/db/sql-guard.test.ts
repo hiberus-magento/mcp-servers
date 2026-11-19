@@ -3,7 +3,7 @@
 // RED-first. The guard is the only thing standing between an agent's free-form SQL and the database, so it is
 // tested as a list of statements that MUST be refused and a list that MUST pass, plus the limit rewriting.
 import { describe, expect, it } from "vitest";
-import { SqlGuardError, guardReadQuery, guardWriteStatement } from "./sql-guard.js";
+import { SqlGuardError, guardReadQuery, guardWriteStatement, isSensitiveTable } from "./sql-guard.js";
 
 const refused = (sql: string, max = 100): string => {
   try {
@@ -135,5 +135,92 @@ describe("guardWriteStatement", () => {
     ["LOAD DATA", "LOAD DATA INFILE '/tmp/x' INTO TABLE cms_block"],
   ])("refuses %s", (_name, sql) => {
     expect(() => guardWriteStatement(sql)).toThrow(SqlGuardError);
+  });
+});
+
+describe("identifier placeholders (??)", () => {
+  // mysql2 formats `??` as a backtick-quoted identifier on the client, so the guard would check `FROM ??` while the
+  // server ran `FROM \`admin_user\``. It does so inside double-quoted text too, where the identifier can close the quote.
+  it.each([
+    ["a table placeholder in a read", "SELECT username FROM ?? LIMIT 5"],
+    ["a column placeholder in a read", "SELECT ?? FROM catalog_product_entity"],
+    ["a placeholder inside double quotes", 'SELECT sku FROM catalog_product_entity WHERE sku = "??"'],
+  ])("refuses %s, naming the reason", (_name, sql) => {
+    expect(refused(sql)).toMatch(/identifier placeholder/i);
+  });
+
+  it("refuses a table placeholder in a write", () => {
+    expect(() => guardWriteStatement("UPDATE ?? SET is_active = 1 WHERE user_id = 1")).toThrow(/identifier placeholder/i);
+  });
+
+  it("still accepts value placeholders, in a read and in a write", () => {
+    expect(guardReadQuery("SELECT sku, price FROM catalog_product_entity WHERE sku = ? AND type_id = ?", 10).sql).toBe("SELECT sku, price FROM catalog_product_entity WHERE sku = ? AND type_id = ? LIMIT 10");
+    expect(guardWriteStatement("UPDATE cms_block SET title = ? WHERE block_id = ?").kind).toBe("update");
+  });
+});
+
+describe("sensitive tables: prefixed installs and the added tables", () => {
+  it.each([
+    ["a prefixed administrators table", "SELECT username FROM mg_admin_user"],
+    ["a prefixed, backticked OAuth table", "SELECT consumer_id FROM `shop_oauth_token`"],
+    ["the two-factor configuration", "SELECT user_id FROM tfa_user_config"],
+    ["the session table", "SELECT session_id FROM session"],
+    ["the ACL rules", "SELECT role_id FROM authorization_rule"],
+    ["the ACL roles, prefixed", "SELECT role_name FROM mg_authorization_role"],
+  ])("refuses %s in a read", (_name, sql) => {
+    expect(refused(sql)).toMatch(/holds credentials/);
+  });
+
+  it("refuses a prefixed or added sensitive table in a write", () => {
+    expect(() => guardWriteStatement("UPDATE mg_admin_user SET is_active = 1 WHERE user_id = 1")).toThrow(/mg_admin_user/);
+    expect(() => guardWriteStatement("DELETE FROM authorization_rule WHERE rule_id = 1")).toThrow(/holds credentials/);
+  });
+
+  it("matches through isSensitiveTable, prefixed or not, and leaves ordinary tables alone", () => {
+    expect(["admin_user", "MG_ADMIN_USER", "tfa_user_config", "session", "authorization_rule", "authorization_role"].map(isSensitiveTable)).toEqual([true, true, true, true, true, true]);
+    expect(["catalog_product_entity", "sales_order", "admin_user_extra_info"].map(isSensitiveTable)).toEqual([false, false, false]);
+  });
+
+  it("still accepts a prefixed ordinary table", () => {
+    expect(() => guardReadQuery("SELECT sku FROM mg_catalog_product_entity", 10)).not.toThrow();
+  });
+});
+
+describe("credential-named identifiers", () => {
+  // Result redaction keys on column names, so an alias, an expression or a WHERE clause could read a credential
+  // without its name reaching the result. The guard refuses the name wherever it is written outside a string.
+  it.each([
+    ["an aliased credential column", "SELECT password_hash AS ph FROM customer_entity"],
+    ["a credential column inside an expression", "SELECT CONCAT(rp_token) AS t FROM customer_entity"],
+    ["a credential column as a WHERE oracle", "SELECT entity_id FROM customer_entity WHERE password_hash LIKE 'a%'"],
+    ["a backticked credential column", "SELECT `password_hash` AS ph FROM customer_entity"],
+    ["a qualified credential column", "SELECT c.rp_token FROM customer_entity c"],
+  ])("refuses %s", (_name, sql) => {
+    expect(refused(sql)).toMatch(/credential/i);
+  });
+
+  it("refuses a credential column in a write", () => {
+    expect(() => guardWriteStatement("UPDATE customer_entity SET firstname = 'x' WHERE password_hash LIKE 'a%'")).toThrow(/credential/i);
+  });
+
+  it("still accepts credential-looking words inside string literals, and ordinary columns", () => {
+    expect(() => guardReadQuery("SELECT column_name FROM information_schema.columns WHERE column_name = 'password_hash'", 10)).not.toThrow();
+    expect(() => guardReadQuery("SELECT sku, price FROM catalog_product_entity", 10)).not.toThrow();
+  });
+});
+
+describe("locking reads", () => {
+  it.each([
+    ["FOR SHARE after OFFSET", "SELECT sku FROM t LIMIT 10 OFFSET 5 FOR SHARE"],
+    ["FOR UPDATE after OFFSET", "SELECT sku FROM t LIMIT 10 OFFSET 5 FOR UPDATE"],
+    ["LOCK IN SHARE MODE after OFFSET", "SELECT sku FROM t LIMIT 10 OFFSET 5 LOCK IN SHARE MODE"],
+    ["FOR SHARE after LIMIT", "SELECT sku FROM t LIMIT 10 FOR SHARE"],
+    ["FOR SHARE without a LIMIT", "SELECT sku FROM t FOR SHARE"],
+  ])("refuses %s", (_name, sql) => {
+    expect(refused(sql, 50)).toMatch(/lock/i);
+  });
+
+  it("refuses anything else after the OFFSET", () => {
+    expect(refused("SELECT sku FROM t LIMIT 10 OFFSET 5 UNION SELECT sku FROM t", 50)).toMatch(/LIMIT/);
   });
 });

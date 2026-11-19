@@ -190,8 +190,10 @@ Some questions are a count, a join or a table's columns, and the REST API answer
 not at all. A project can add the `database` group, which reads the database directly. Prefer the
 REST tools whenever they can answer: they follow Magento's rules and return only reviewed fields.
 
-1. **Create a database user for this server.** `SELECT` only, on the Magento database. That grant,
-   not the server's own checks, is what keeps an agent from changing data.
+1. **Create a database user for this server.** `SELECT` only, on the Magento database, and no
+   access to the tables that hold credentials (`admin_user`, `oauth_token`, `integration` and
+   the others the README lists, with your table prefix). Those grants, not the server's own
+   checks, are what keep an agent from changing data or reading a secret.
 2. **Put the connection in `.mcp.json`, without a password:**
 
    ```json
@@ -215,8 +217,11 @@ REST tools whenever they can answer: they follow Magento's rules and return only
    password each say which.
 
 What the read tools will and will not do is in the README ("Database access"): one `SELECT` with
-named columns and a row cap, no credential tables, and the value of any password-, hash- or
-token-like column shown as `[redacted]`.
+named columns and a row cap (`LIMIT max_rows` is added when the statement has none), no
+credential tables (prefixed ones included), no password-, hash- or token-like column named
+anywhere in the statement, and the value of such a column that reaches the result anyway shown
+as `[redacted]`. Those checks are best-effort, on the text of the statement; the grants in step 1
+are the boundary.
 
 **Allowing writes** is a separate decision, with a separate switch that `MAGENTO_REST_ALLOW_WRITES`
 does not imply:

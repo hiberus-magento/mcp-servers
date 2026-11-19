@@ -771,7 +771,7 @@
         {
           "name": "magentorest_db_query",
           "readOnly": true,
-          "description": "Use this for a question the other tools cannot answer: runs ONE read-only SELECT and returns its columns and rows. Name the columns (SELECT * is refused; COUNT(*) is fine), pass values as ? placeholders in params, and expect at most max_rows rows (default 100, at most 500; a LIMIT above that is refused, none is added for you). No comments, no second statement, no INTO, no locking, and no credential tables (administrators, OAuth tokens, integrations); values of columns named like a password, hash or token, and of secret configuration rows, come back as [redacted].",
+          "description": "Use this for a question the other tools cannot answer: runs ONE read-only SELECT and returns its columns and rows. Name the columns (SELECT * is refused; COUNT(*) is fine), pass values as ? placeholders in params (?? identifier placeholders are refused), and expect at most max_rows rows (default 100, at most 500): a LIMIT above that is refused, and LIMIT max_rows is added when the statement has none. No comments, no second statement, no INTO, no locking reads, no credential tables (administrators, OAuth tokens, integrations, sessions, ACL; table prefixes included), and no column named like a password, hash or token anywhere in the statement; values of such columns that reach the result anyway (a view, an alias), and of secret configuration rows, come back as [redacted].",
           "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
         },
         {
@@ -824,7 +824,7 @@
           {
             "name": "MAGENTO_REST_FIELDS_FILE",
             "required": false,
-            "description": "Path to a JSON file that ADDS fields to what a resource exposes, e.g. {\"product\":{\"add\":[\"cost\"]}}. Additive only — a resource may carry only `add`, so a file can widen the shipped list but never narrow or replace it — and credential and payment fields (passwords, hashes, tokens, secrets, card and payment data) can never be added. Read once at startup; a file that cannot be read or does not validate stops the server with exit code 1 rather than starting with a half-applied configuration."
+            "description": "Path to a JSON file that adjusts the fields a resource exposes, e.g. {\"product\":{\"add\":[\"cost\"],\"remove\":[\"weight\"]}}. A resource may carry only `add` and `remove`, so a file can widen or narrow the shipped list but never replace it — and credential and payment fields (passwords, hashes, tokens, secrets, card and payment data) can never be added. Read once at startup; a file that cannot be read or does not validate stops the server with exit code 1 rather than starting with a half-applied configuration."
           },
           {
             "name": "MAGENTO_REST_ALLOW_WRITES",
@@ -876,7 +876,7 @@
           {
             "name": "MAGENTO_GRAPHQL_TOKEN",
             "required": false,
-            "description": "A Magento CUSTOMER token, sent as a Bearer. Optional: the storefront schema is public, so every tool except the customer group works without one. It may come from this variable OR from the credential file written by `hiberus-magento-graphql auth token set`. Obtain it outside this server (the generateCustomerToken mutation): the server never mints or handles passwords."
+            "description": "A Magento CUSTOMER token, sent as a Bearer. Optional: the storefront schema is public, so every tool except the customer group works without one. It may come from this variable OR from the credential file written by `hiberus-magento-graphql auth token set`. Obtain it outside this server (the generateCustomerToken mutation). In read-only mode the server never handles passwords; with MAGENTO_GRAPHQL_ALLOW_WRITES=true the customer-account mutations (magentographql_generate_customer_token, magentographql_change_customer_password, magentographql_create_customer_v2, magentographql_delete_customer and similar) take passwords as arguments and return tokens into the conversation."
           },
           {
             "name": "MAGENTO_GRAPHQL_STORE",

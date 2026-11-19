@@ -37,7 +37,12 @@ export function createMysqlDriver(): DbDriver {
         async query(sql, values, timeoutMs): Promise<RawResult> {
           const [result, fields] = await connection.query({ sql, values: values as unknown[] | undefined, ...(timeoutMs !== undefined ? { timeout: timeoutMs } : {}) });
           if (Array.isArray(result)) {
-            return { columns: ((fields ?? []) as FieldPacket[]).map((field) => field.name), rows: result as Record<string, unknown>[] };
+            const packets = (fields ?? []) as FieldPacket[];
+            return {
+              columns: packets.map((field) => field.name),
+              origins: packets.map((field) => ({ name: field.orgName ?? "", table: field.orgTable ?? "" })),
+              rows: result as Record<string, unknown>[],
+            };
           }
           const header = result as ResultSetHeader;
           return { columns: [], rows: [], affectedRows: header.affectedRows, insertId: header.insertId };

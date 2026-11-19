@@ -137,7 +137,7 @@ executable to run`.
 - `magentorest_db_status` (read-only) — Use this to check that the database connection works: returns the server version, the database name, that the session is read-only, and whether database writes are enabled. Run it first when a database tool fails. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_db_list_tables` (read-only) — Use this to list the tables of the Magento database, optionally only those whose name contains a fragment (e.g. `sales_order`). Returns each table's name, engine and approximate row count (an estimate, not a count: use magentorest_db_stats or a COUNT(*) for exact figures). **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_db_describe_table` (read-only) — Use this to see the columns of one table: name, type, whether it can be NULL, key, default and extra. Refuses the tables that hold credentials (administrators, OAuth tokens, integrations). **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
-- `magentorest_db_query` (read-only) — Use this for a question the other tools cannot answer: runs ONE read-only SELECT and returns its columns and rows. Name the columns (SELECT * is refused; COUNT(*) is fine), pass values as ? placeholders in params, and expect at most max_rows rows (default 100, at most 500; a LIMIT above that is refused, none is added for you). No comments, no second statement, no INTO, no locking, and no credential tables (administrators, OAuth tokens, integrations); values of columns named like a password, hash or token, and of secret configuration rows, come back as [redacted]. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
+- `magentorest_db_query` (read-only) — Use this for a question the other tools cannot answer: runs ONE read-only SELECT and returns its columns and rows. Name the columns (SELECT * is refused; COUNT(*) is fine), pass values as ? placeholders in params (?? identifier placeholders are refused), and expect at most max_rows rows (default 100, at most 500): a LIMIT above that is refused, and LIMIT max_rows is added when the statement has none. No comments, no second statement, no INTO, no locking reads, no credential tables (administrators, OAuth tokens, integrations, sessions, ACL; table prefixes included), and no column named like a password, hash or token anywhere in the statement; values of such columns that reach the result anyway (a view, an alias), and of secret configuration rows, come back as [redacted]. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_db_magento_tables` (read-only) — Use this to see the well-known Magento 2 tables grouped by what they hold (products, categories, customers, orders, quotes, invoices, shipments, CMS, EAV, URL rewrites, store), each marked with whether it exists in this database. Table prefixes are not applied. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_db_product_by_sku` (read-only) — Use this for a quick look at one product straight from the database: id, SKU, type, created and updated dates, quantity and in-stock flag (legacy stock table). For the full product use magentorest_get_product_by_sku. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_db_recent_orders` (read-only) — Use this to see the latest orders straight from the database: id, increment id, status, state, customer email and name, totals, currency and dates. Newest first; limit defaults to 10, at most 100. Never returns addresses or payment data. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
@@ -148,7 +148,7 @@ executable to run`.
 
 - `MAGENTO_REST_BASE_URL` (required) — The Magento REST root every magentorest_* tool addresses, e.g. https://<host>/rest/V1 (or /rest/<store-code>/V1 for one store view). Resolved on the first tool call and refused without it; tools/list still works. Must be https — plain http is accepted only for localhost.
 - `MAGENTO_REST_TOKEN` (optional) — A Magento integration access token or admin token, sent as a Bearer. Every tool call needs one, but it may come from this variable OR from the credential file written by `hiberus-magento-rest auth token set`, so neither source is required on its own.
-- `MAGENTO_REST_FIELDS_FILE` (optional) — Path to a JSON file that ADDS fields to what a resource exposes, e.g. {"product":{"add":["cost"]}}. Additive only — a resource may carry only `add`, so a file can widen the shipped list but never narrow or replace it — and credential and payment fields (passwords, hashes, tokens, secrets, card and payment data) can never be added. Read once at startup; a file that cannot be read or does not validate stops the server with exit code 1 rather than starting with a half-applied configuration.
+- `MAGENTO_REST_FIELDS_FILE` (optional) — Path to a JSON file that adjusts the fields a resource exposes, e.g. {"product":{"add":["cost"],"remove":["weight"]}}. A resource may carry only `add` and `remove`, so a file can widen or narrow the shipped list but never replace it — and credential and payment fields (passwords, hashes, tokens, secrets, card and payment data) can never be added. Read once at startup; a file that cannot be read or does not validate stops the server with exit code 1 rather than starting with a half-applied configuration.
 - `MAGENTO_REST_ALLOW_WRITES` (optional) — Set to exactly `true` to register the write tools (create, update, delete, cancel, invoice, refund, ...). Unset, or any other value, and the server registers read tools only — a write tool is then absent from tools/list, not merely refused. Read once at startup.
 - `MAGENTO_REST_GROUPS` (optional) — Comma-separated tool groups to load, e.g. `products,customers`, so a project registers only the tools it needs instead of every one. Groups: `products`, `store`, `categories`, `customers`, `orders`, `sales-documents`, `stock`, `carts`, `cms`, `attributes`, `media`, `promotions`, `tax`, `analytics`, `database` (only with MAGENTO_REST_DATABASE_CONNECTION; naming it without one stops the server). Case-insensitive; blanks and repeats are ignored. Unset or empty loads every group (`database` too, when a connection is configured). A name that is not a group stops the server with exit code 1, listing the valid ones. MAGENTO_REST_ALLOW_WRITES still decides whether the write tools of a loaded group are registered. Read once at startup.
 - `MAGENTO_REST_DATABASE_CONNECTION` (optional) — Adds the `database` tool group (magentorest_db_*): direct, read-only access to the Magento database. A URL with NO password, e.g. `mysql://reader@127.0.0.1:3306/magento`; a password in it stops the server. A host that is not this machine uses verified TLS unless you write `?ssl=false`. Unset, there are no database tools. Use a database user with the narrowest grants you can: SELECT only unless you also enable writes. The URL is validated at startup (exit code 1 if it is invalid); the password is only needed when a tool is called.
@@ -273,11 +273,17 @@ needed when a tool is called.
 **Reads** (eight tools) run in a `READ ONLY` session, with a 15 second timeout and a cap on
 rows. `db_query` takes one `SELECT`: name the columns (`SELECT *` is refused, `COUNT(*)` is
 fine), pass values as `?` parameters, expect at most `max_rows` (default 100, at most 500).
-It refuses comments, a second statement, `INTO`, locking, and the functions that read files
-or stall the server. It will not touch the tables that hold credentials (administrators,
-OAuth tokens, integrations) or the `mysql` schema, and the value of any column named like a
-password, hash or token — and of a configuration row whose path says it is a secret — comes
-back as `[redacted]`. The other seven tools use fixed statements.
+A `LIMIT` above `max_rows` is refused; a statement without one gets `LIMIT max_rows` added.
+It refuses comments, a second statement, `INTO`, locking reads (`FOR UPDATE`, `FOR SHARE`,
+`LOCK IN SHARE MODE`), `??` identifier placeholders, and the functions that read files or
+stall the server. It will not touch the tables that hold credentials (administrators, OAuth
+tokens, integrations, two-factor settings, sessions, ACL roles and rules — also under a table
+prefix, so `mg_admin_user` is refused like `admin_user`) or the `mysql` schema, and it refuses
+any column named like a password, hash or token wherever it is written (selected, aliased,
+inside an expression or in a `WHERE`). The value of such a column that reaches the result
+anyway (through a view or an alias, judged by the column's original name), and of a
+configuration value whose path is a secret or is not in the result, comes back as
+`[redacted]`. The other seven tools use fixed statements.
 
 **Writes** are a separate switch. `MAGENTO_REST_ALLOW_WRITES` does not enable them:
 
@@ -293,9 +299,12 @@ by itself. No `DROP`, `ALTER`, `TRUNCATE`, `REPLACE` or `LOAD`. A change made th
 Magento's validation, indexing and events, so it may not show on the storefront until a
 reindex and a cache flush.
 
-**These rules make a mistake cheap; they are not the security boundary.** The boundary is
-the database user. Create one for this server with `SELECT` only, and add `INSERT`/`UPDATE`/
-`DELETE` on the tables you mean to change only if you enable writes. Table prefixes
+**These rules make a mistake cheap; they are not the security boundary.** They are a
+best-effort check on the text of a statement, and a check on text can have holes (an
+expression such as `CONCAT(value)` carries no column name to judge it by). The boundary is
+the database user. Create one for this server with `SELECT` only, without access to the
+credential tables above, and add `INSERT`/`UPDATE`/`DELETE` on the tables you mean to change
+only if you enable writes. Table prefixes
 (`db.table_prefix`) are not applied to the fixed statements. Text is decoded as UTF-8
 (`utf8mb4`); a column in another character set must be converted in the query.
 

@@ -76,6 +76,12 @@ describe("read sessions", () => {
     expect(result).toMatchObject({ rows: [{ n: 1 }, { n: 2 }], truncated: true });
   });
 
+  it("redacts by the column's original name the driver reports, not only by the name in the result", async () => {
+    const f = fake((sql) => (sql.startsWith("SET") ? { columns: [], rows: [] } : { columns: ["ph"], origins: [{ name: "password_hash", table: "customer_entity" }], rows: [{ ph: "$2y$10$synthetic" }] }));
+    const result = await access(f).read((run) => run("SELECT ph FROM v", [], 10));
+    expect(result).toEqual({ columns: ["ph"], rows: [{ ph: "[redacted]" }], truncated: false });
+  });
+
   it("keeps the READ ONLY session even when the statement-timeout setting is not supported", async () => {
     const f = fake((sql) => (/max_execution_time|max_statement_time/.test(sql) ? new Error("Unknown system variable") : { columns: ["n"], rows: [{ n: 1 }] }));
     await expect(access(f).read((run) => run("SELECT n FROM t", [], 10))).resolves.toBeDefined();
