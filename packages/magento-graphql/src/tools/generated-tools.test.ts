@@ -64,7 +64,7 @@ describe("generated operations", () => {
     ["magentographql_cancel_order", { destructiveHint: true, idempotentHint: false }],
     // Every call sends another email, so twice is not the same as once.
     ["magentographql_resend_confirmation_email", { destructiveHint: true, idempotentHint: false }],
-    // Operations of the latest Adobe Commerce + B2B schema, placed on purpose (design D12).
+    // Operations of the latest Adobe Commerce + B2B schema, placed on purpose (design D14).
     ["magentographql_unsubscribe_product_alert_price", { destructiveHint: true, idempotentHint: true }],
     ["magentographql_unassign_child_company", { destructiveHint: true, idempotentHint: true }],
     ["magentographql_select_free_gift_for_cart", { destructiveHint: true, idempotentHint: true }],

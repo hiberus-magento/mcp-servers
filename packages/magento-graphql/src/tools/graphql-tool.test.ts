@@ -120,7 +120,7 @@ describe("createToolFactory", () => {
   });
 });
 
-describe("fixed documents and the connected store's schema (design D12)", () => {
+describe("fixed documents and the connected store's schema (design D14)", () => {
   const STORE = { Query: { products: "Products(search)" }, Products: { total_count: "Int" } };
   const answer = (call: { request?: { query: string } | undefined }) => (isIntrospection(call.request?.query) ? schemaDouble(STORE) : data({ products: { total_count: 1 } }));
 

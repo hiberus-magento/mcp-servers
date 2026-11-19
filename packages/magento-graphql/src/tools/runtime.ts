@@ -22,7 +22,7 @@ export interface MagentoGraphqlRuntime {
 }
 
 export interface RuntimeResolverOptions {
-  /** Told once, when the connected store's schema has been read, which operations it offers (design D12). */
+  /** Told once, when the connected store's schema has been read, which operations it offers (design D14). */
   readonly onSchema?: (offers: OffersOperation) => void;
 }
 

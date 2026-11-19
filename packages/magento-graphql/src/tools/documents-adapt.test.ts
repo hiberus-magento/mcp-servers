@@ -1,6 +1,6 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
-// The trimmer (design D12) reads only the syntax this package's own documents use. This proves it reads every one
+// The trimmer (design D14) reads only the syntax this package's own documents use. This proves it reads every one
 // of them, and that it removes nothing from them when the store's schema is the one they were written for: the
 // committed introspection fixture, the latest Adobe Commerce with B2B.
 import { readFileSync } from "node:fs";

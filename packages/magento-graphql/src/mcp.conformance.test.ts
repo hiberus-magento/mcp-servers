@@ -166,7 +166,7 @@ describe("MAGENTO_GRAPHQL_GROUPS on the built bundle", () => {
   });
 });
 
-// Design D12: once the connected store's schema is known, every tool whose operation it lacks is disabled, and the
+// Design D14: once the connected store's schema is known, every tool whose operation it lacks is disabled, and the
 // client is told the list changed. A loopback HTTP server plays a store that has the store-config query but no B2B.
 describe("tools the connected store does not offer, on the built bundle", () => {
   let store: Server;

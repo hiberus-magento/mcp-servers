@@ -393,6 +393,25 @@ group loads its read tools always, and its mutation tools (marked `*`) only with
 | `requisition-lists` | B2B requisition lists and their items, sharing, public lists and import (Adobe Commerce) | get_public_requisition_list, get_shared_requisition_list, add_products_to_requisition_list*, add_public_requisition_list_items_to_cart*, add_requisition_list_items_to_cart*, copy_items_between_requisition_lists*, create_requisition_list*, delete_requisition_list*, delete_requisition_list_items*, import_shared_requisition_list*, move_items_between_requisition_lists*, move_line_item_to_requisition_list*, share_public_requisition_list*, share_requisition_list_by_email*, share_requisition_list_by_token*, update_requisition_list*, update_requisition_list_items* |
 | `query` | The generic read-only query and the schema map | query, list_operations, describe_type |
 
+## One package for every store
+
+The tools are generated from the latest Adobe Commerce with B2B, and the server adapts them to
+whichever Magento it is connected to, so the same package serves an Open Source store, an older
+release or a B2B one:
+
+- On the first call of a curated or generated tool, the server reads the store's schema once
+  (introspection, which Magento allows by default) and keeps it for its lifetime.
+- Before each call, the tool's fixed query is trimmed to what the store has: a field, an argument
+  or a type the store lacks is left out, and so is a selection that leaves empty. Fields of an
+  input object you pass are not trimmed: a store that lacks one answers with its own error.
+- A tool whose operation the store does not have answers *"The connected store does not offer
+  the query `company`"* without sending it, and once the schema is known it is disabled: a client
+  that follows `notifications/tools/list_changed` stops listing it.
+- If the store disables introspection, the full query is sent, and a query Magento answers with
+  `Cannot query field "x" on type "Y"` is retried without `x` (once per field, at most five
+  times). A mutation is never retried.
+- `magentographql_query` is never adapted: what you write is what is sent.
+
 ## What this server deliberately does not do
 
 - **No admin data.** GraphQL here is the storefront schema: no orders of other customers, no
@@ -401,8 +420,8 @@ group loads its read tools always, and its mutation tools (marked `*`) only with
   take a password or hand a token back; all of them are absent from the tool list unless
   `MAGENTO_GRAPHQL_ALLOW_WRITES=true`, and each is sent once and never retried. Use a test store and a test shopper.
 - **No deprecated operations.** Magento hides them from introspection by default, and they are not generated
-  (`categoryList`, `urlResolver`, `createEmptyCart`, `wishlist`, `customerOrders` and the like), and no tool selects a
-  deprecated field. Use `magentographql_query` for any of them.
+  (`categoryList`, `urlResolver`, `createEmptyCart`, `wishlist`, `customerOrders`, `placeNegotiableQuoteOrder` and the
+  like), and no tool selects a deprecated field. Use `magentographql_query` for any of them.
 - **No mutation through the generic tool.** A small tokenizer reads the document first and
   refuses anything that is not exactly one query — comments, strings and fragments do not
   hide a mutation. Documents over 8,000 characters or nested deeper than 12 selections are refused.

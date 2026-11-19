@@ -104,7 +104,7 @@ export function allMagentoGraphqlTools(): readonly MagentoGraphqlTool[] {
 }
 
 /**
- * The tools whose fixed document runs an operation the connected store does not offer (design D12). A tool without
+ * The tools whose fixed document runs an operation the connected store does not offer (design D14). A tool without
  * an `operation` — the generic query tool, and the reads of the schema itself — is never one of them.
  */
 export function unsupportedTools(tools: readonly MagentoGraphqlTool[], offers: OffersOperation): readonly string[] {

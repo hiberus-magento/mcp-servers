@@ -1,6 +1,6 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
-// RED-first. A fixed document (`adapt: true`) is adapted to the connected store's schema (design D12): the schema is
+// RED-first. A fixed document (`adapt: true`) is adapted to the connected store's schema (design D14): the schema is
 // read once per client, a missing operation is refused before any request beyond that read, and without a schema
 // the client falls back to sending the full document and retrying a QUERY without the fields Magento names.
 import { SYNTHETIC_MAGENTO_GRAPHQL_URL } from "@hiberus-magento/mcp-testing";

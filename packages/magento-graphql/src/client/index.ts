@@ -7,7 +7,7 @@
 // `query()` and `mutate()` each check the document with the operation guard BEFORE anything is
 // sent and refuse the other's operation (design D1). That check, not a tool's annotation, is
 // what keeps the generic query tool read-only. A fixed document of this package (`adapt: true`)
-// is adapted to the connected store's schema first (design D12, `adapt.ts`).
+// is adapted to the connected store's schema first (design D14, `adapt.ts`).
 import { createGraphqlTransport, type GraphqlResult, type GraphqlTransport, type GraphqlTransportDeps } from "./http.js";
 import { createSchemaSource, createTrimCache, sendAdapted, sendWithFallback, type OffersOperation } from "./adapt.js";
 import { OperationGuardError, inspectDocument } from "./operation-guard.js";
@@ -26,7 +26,7 @@ export interface OperationOptions {
   readonly currency?: string;
   /**
    * The document is a FIXED one of this package: adapt it to the connected store's schema before sending it
-   * (design D12). Never set for a caller-written document — the generic query tool's is sent as written.
+   * (design D14). Never set for a caller-written document — the generic query tool's is sent as written.
    */
   readonly adapt?: boolean;
 }
@@ -46,7 +46,7 @@ export interface MagentoGraphqlClient {
 }
 
 export interface MagentoGraphqlClientDeps extends GraphqlTransportDeps {
-  /** Whether `adapt: true` documents are adapted to the store's schema (design D12). Defaults to true. */
+  /** Whether `adapt: true` documents are adapted to the store's schema (design D14). Defaults to true. */
   readonly adaptToSchema?: boolean;
   /** Told once, when the store's schema has been read, which root operations it offers. */
   readonly onSchema?: (offers: OffersOperation) => void;

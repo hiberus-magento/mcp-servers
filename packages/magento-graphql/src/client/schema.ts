@@ -1,6 +1,6 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
-// The connected store's schema, as much of it as adapting a fixed document needs (design D12): which root
+// The connected store's schema, as much of it as adapting a fixed document needs (design D14): which root
 // operations exist, which fields each type has with the named type they return and the names of their
 // arguments, and which types an interface or union can be. Nothing else is kept.
 //

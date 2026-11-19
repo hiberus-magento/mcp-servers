@@ -12,7 +12,7 @@
 //   - annotations come from the kind of effect, not from hand-typed booleans — `readOnlyHint` is
 //     what makes an MCP client skip a confirmation prompt;
 //   - the client is resolved lazily, per call, so `tools/list` works before the base URL is set;
-//   - a fixed document is adapted to the connected store's schema on every call (design D12), and must be
+//   - a fixed document is adapted to the connected store's schema on every call (design D14), and must be
 //     readable by the trimmer when the tool is built; the generic query tool's document never is.
 import { defineTool, type RegisteredTool, type ToolAnnotations } from "@hiberus-magento/mcp-core";
 import type { z } from "zod";

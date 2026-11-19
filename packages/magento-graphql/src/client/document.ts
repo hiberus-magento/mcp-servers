@@ -1,7 +1,7 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
 // Reads, trims and prints the FIXED documents this package generates and curates, so one package can run
-// against every store version (design D12). Without a GraphQL library (design D2): it reads exactly the
+// against every store version (design D14). Without a GraphQL library (design D2): it reads exactly the
 // syntax those documents use — one query or mutation with variable definitions, fields with arguments
 // (variables and literals: strings, numbers, enums, lists, objects), directives, nested selection sets,
 // inline fragments and `__typename` — and refuses anything else (aliases, fragment spreads, fragment
@@ -431,7 +431,7 @@ export function trimDocument(document: string, schema: StoreSchema): TrimOutcome
 }
 
 /**
- * Without a schema (design D12, fallback): removes every selection of the named fields below the root, the
+ * Without a schema (design D14, fallback): removes every selection of the named fields below the root, the
  * selections that leaves empty and the variables it frees. `undefined` when nothing was removed or when the
  * operation would be left with nothing to select. Throws `DocumentReadError` for a document it cannot read.
  */

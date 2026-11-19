@@ -1,6 +1,6 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
-// Runs a FIXED document of this package against whatever store is connected (design D12).
+// Runs a FIXED document of this package against whatever store is connected (design D14).
 //
 // The store's schema is read once per client, through the same transport as every other request (so the
 // timeout, the rate limit and the retries of a query apply), and shared by concurrent calls. With it, the

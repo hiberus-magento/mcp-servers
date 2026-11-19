@@ -113,3 +113,40 @@ create, add, update, remove, clear, guest e-mail, shipping address, billing addr
 cart back after each change; 12 more tools are marked verified (32 of 216). One generator rule changed because of it: `input` is
 required in a tool's schema only when its input type has a required field (`create_guest_cart` has none, so `{}` is a real call).
 `place_order` was deliberately not run. A guest cart is left behind in the store for each run (empty, not purged by these tools).
+
+**D14 — One package for every store: fixed documents adapt to the connected schema (2026-11-19).** The tools are now generated
+from the latest Adobe Commerce with B2B (`scripts/fixtures/magento-graphql-introspection.json`, deprecated fields excluded, example
+addresses in its descriptions rewritten to the synthetic host). The 33 operations it added were placed on purpose: a new
+`product-alerts` group (price and stock alerts of the signed-in customer), and the rest in the group of their area — reviews and
+inventory availability in `products`, Commerce Optimizer context in `store`, one-time-code sign-in in `account` (it returns a
+credential, said like `generateCustomerToken`), Braintree client tokens in `payments` (an `action`, like the other payment-SDK
+tokens), the free gift in `cart`, company addresses, configuration and child companies in `company`, sharing, public lists and
+import in `requisition-lists`, `placeNegotiableQuoteOrderV2` and template expiration in `quotes`. `unsubscribe*` and `unassign*`
+are `delete`, `importSharedRequisitionList` is `create`, `selectFreeGiftForCart` is `update`. Two deprecated operations the
+fixture leaves out (`appendPaymentServicesStorefrontLogs`, `placeNegotiableQuoteOrder`) are no longer tools: 224 generated
+operations, 247 tools in 21 groups.
+
+A store older than that schema, or without B2B or Adobe Commerce, lacks some of it, and a document naming one missing field
+fails whole. So the same package must work against any of them, and the tool — not the operator — finds out what the store has:
+
+- **Schema read.** On the first call that runs a fixed document, the client reads a slim introspection (type names and kinds,
+  fields with deprecated ones included, the named type each returns and its argument names, possible types, the root type names)
+  through the same transport — timeout, rate limit and query retries apply — once per client, shared by concurrent calls.
+- **Trimming.** Before a curated or generated document is sent, a reader of the syntax these documents use (`client/document.ts`;
+  still no `graphql-js`, D2) removes every field the store's type lacks, every argument the store's field lacks, every inline
+  fragment on a type it lacks, each selection that leaves empty, and the variable definitions nothing uses any more — and those
+  keys from the variables sent. The trimmed text passes the operation guard again. A document the reader cannot read is refused
+  when the tool is built, never sent half-trimmed; a test reads every shipped document and trims it against the fixture as a no-op.
+- **Unavailable operations.** A tool whose root operation the store lacks (or of which the store has none of the selected fields)
+  answers `unsupported-operation` with a remedy, before any request beyond the schema read. Once the schema is known, the server
+  disables those tools, and the SDK sends `notifications/tools/list_changed`: a client that honours it stops listing them.
+- **Fallback.** If the schema cannot be read, the full document is sent. When Magento answers `Cannot query field "x" on type
+  "Y"`, a query is retried without every selection named `x` — once per field, at most five retries; a mutation is never retried.
+  A store that answers the introspection with an error (introspection disabled) is not asked again; a failure in transit, a 5xx,
+  429, 401 or 403 leaves the schema unknown, so the next call asks again instead of switching adaptation off for good.
+
+Limits, by choice: the generic `magentographql_query` document is never trimmed (it is the caller's, and must fail or succeed as
+written); input-object fields inside an argument literal or variable are not trimmed, so a store lacking one answers with its own
+error; a deprecated argument a store hides from introspection would be removed; the fallback removes a field by name, so a
+same-named field of another type in the same document goes too; the schema is read once for the default store view, not per
+`store` argument; and the tool list a client saw before the first call still names the unsupported tools until it is refreshed.

@@ -39,7 +39,7 @@ with `magentographql_get_cart` before trying again, or `add_products_to_cart` ma
 Twenty-one groups: `products`, `product-alerts`, `categories`, `cms`, `store`, `customer`, `account`, `cart`, `checkout`, `orders`, `returns`, `wishlist`, `compare`, `payments`, `gift-and-rewards`, `gift-registry`, `company`, `purchase-orders`, `quotes`, `requisition-lists`, `query`. For a content-only project,
 `"products,categories,cms"` shows an agent a handful of tools instead of 247; the Adobe Commerce groups (`returns`,
 `gift-and-rewards`, `gift-registry`, `company`, `purchase-orders`, `quotes`, `requisition-lists`) can be left out of a
-store that is Open Source Magento, where they would only answer "Cannot query field". Names are case-insensitive; a name
+store that is Open Source Magento, where their tools are disabled after the first call anyway (section 5). Names are case-insensitive; a name
 that is not a group stops the server with exit code 1 and the list of valid ones. Loading fewer groups also lowers
 the server's start-up cost, because only their input schemas are built.
 
@@ -88,6 +88,17 @@ do not appear. Reach those with `magentographql_query`: read the map with
 query**, values in `variables`. Magento allows introspection by default; if your store disables
 it, those two tools answer with the store's own message.
 
+### The same tools against any store
+
+The tools come from the latest Adobe Commerce with B2B; the server adapts them to the store you
+connect. On the first call of a curated or generated tool it reads the store's schema once, then
+trims each fixed query to what the store has (a missing field, argument or type is left out). A tool
+whose operation the store lacks answers that the store does not offer it, without sending anything,
+and is then disabled, so a client that follows `notifications/tools/list_changed` stops listing it.
+If the store disables introspection, the full query is sent and a query is retried without each field
+Magento says does not exist (at most five times); a mutation never is. A store that was unreachable
+when the schema was read is asked again on the next call. `magentographql_query` is never adapted.
+
 The storefront schema is what a shopper sees. A disabled product, a product not visible in the
 catalog, or one not assigned to the website of the store view you asked for is simply absent:
 "No product matches" can mean exactly that. For back-office data use `magento-rest`.
@@ -127,7 +138,8 @@ node scripts/call-tool.mjs packages/magento-graphql/dist/mcp.js magentographql_g
 | `The Magento base URL must use https` | Plain `http` for a host that is not `localhost`. |
 | `Refusing to read credential file …: mode <m> has group/world permissions` | The stored token file is not `0600`. `chmod 600` it, or re-run `auth token set`. |
 | `The current customer isn't authorized.` (`unauthorized`) | A customer tool without a token, or with an expired one (Magento's default lifetime is one hour). Set a fresh one. |
-| `Magento GraphQL: Cannot query field "x" on type "Y"` | The store's schema does not have that field: an older release, an extension that removed it, or a typo in a `magentographql_query`. Use `magentographql_describe_type`. |
+| `The connected store does not offer the query \`x\`` (`unsupported-operation`) | The store lacks the release or module the tool was written for (Adobe Commerce, B2B or a newer version). The tool is disabled after the first call; use `magentographql_list_operations` to see what the store has. |
+| `Magento GraphQL: Cannot query field "x" on type "Y"` | The store's schema does not have that field. From a curated tool, the store's schema could not be read (introspection disabled) and the field could not be left out — a mutation is never retried; from `magentographql_query`, a field to drop or a typo. Use `magentographql_describe_type`. |
 | `This tool runs queries only; the document is a mutation.` | `magentographql_query` was given a mutation or subscription. Mutations go through the cart tools, behind the write switch. |
 | `The document has 2 operations; send exactly one.` | Send one operation per call. |
 | `… reaches selection depth 13; the limit is 12` or `… is 8001 characters` | The document is too large; ask for less per call. |

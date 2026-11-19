@@ -1,6 +1,6 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
-// RED-first. The trimmer adapts a FIXED document of this package to the connected store's schema (design D12):
+// RED-first. The trimmer adapts a FIXED document of this package to the connected store's schema (design D14):
 // it removes what the store lacks and nothing else, and refuses a document it cannot read rather than sending
 // one half-trimmed.
 import { describe, expect, it } from "vitest";

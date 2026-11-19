@@ -48,7 +48,7 @@ function loadGroups(): readonly string[] {
 const groups = loadGroups();
 const writes = writesEnabled();
 // Filled below as tools are registered. Once the first fixed-document call has read the connected store's schema,
-// every tool whose operation the store lacks is disabled (design D12): the SDK then sends
+// every tool whose operation the store lacks is disabled (design D14): the SDK then sends
 // notifications/tools/list_changed, so a client that honours it stops listing them, and a call to one answers that
 // the tool is disabled. Before that — and on a store whose schema cannot be read — such a tool answers, on a call,
 // that the store does not offer its operation.

@@ -15,7 +15,7 @@ export type MagentoGraphqlErrorKind =
   | "server"
   | "transport"
   | "unparseable"
-  /** The connected store's schema lacks the operation a fixed document runs (design D12). */
+  /** The connected store's schema lacks the operation a fixed document runs (design D14). */
   | "unsupported-operation";
 
 const MAX_MESSAGE_CHARS = 240;

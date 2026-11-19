@@ -861,7 +861,7 @@
       "version": "0.0.0",
       "domain": "magento-graphql",
       "status": "alpha",
-      "description": "Magento 2 GraphQL API client — CLI and MCP server covering every core Query and Mutation of the storefront schema (catalog, content, cart, checkout, account, wish lists, returns, payments, B2B), with mutations off unless enabled.",
+      "description": "Magento 2 GraphQL API client — CLI and MCP server covering every Query and Mutation of the latest Adobe Commerce storefront schema with B2B (catalog, content, cart, checkout, account, wish lists, returns, payments, B2B), adapted on the first call to what the connected store offers, with mutations off unless enabled.",
       "docs": "docs/magento-graphql-onboarding.md",
       "requires": {
         "binaries": [
