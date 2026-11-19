@@ -7,7 +7,7 @@
 import { SYNTHETIC_MAGENTO_GRAPHQL_URL } from "@hiberus-magento/mcp-testing";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createMagentoGraphqlClient } from "../client/index.js";
+import { MagentoGraphqlError, createMagentoGraphqlClient } from "../client/index.js";
 import { createFetchDouble, data, gqlErrors } from "../testing/fetch-double.js";
 import { createToolFactory } from "./graphql-tool.js";
 import { UNVERIFIED_MARKER } from "./verification.js";
@@ -37,9 +37,15 @@ describe("createToolFactory", () => {
   });
 
   it("shows partial-data errors next to the data instead of dropping them", async () => {
-    const { factory } = setup(gqlErrors(["The current customer isn't authorized."], { customer: null }));
-    const tool = factory.readTool({ name: "magentographql_x", description: "Use this to x.", input, document: "{ customer { email } }", pick: "customer" });
+    const { factory } = setup(gqlErrors(["The current customer isn't authorized."], { customer: null, storeConfig: { store_code: "default" } }));
+    const tool = factory.readTool({ name: "magentographql_x", description: "Use this to x.", input, document: "{ customer { email } storeConfig { store_code } }", pick: "customer" });
     expect(JSON.parse((await tool.invoke({ term: "" }, {})).content[0]?.text ?? "")).toEqual({ data: null, errors: ["The current customer isn't authorized."] });
+  });
+
+  it("fails, instead of returning null data, when every requested field is null next to an error", async () => {
+    const { factory } = setup(gqlErrors(["The current customer isn't authorized."], { customer: null }, "graphql-authorization"));
+    const tool = factory.readTool({ name: "magentographql_x", description: "Use this to x.", input, document: "{ customer { email } }", pick: "customer" });
+    await expect(tool.invoke({ term: "" }, {})).rejects.toBeInstanceOf(MagentoGraphqlError);
   });
 
   it("applies `transform` to the picked value", async () => {

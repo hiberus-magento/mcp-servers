@@ -132,5 +132,6 @@ node scripts/call-tool.mjs packages/magento-graphql/dist/mcp.js magentographql_g
 | `The document has 2 operations; send exactly one.` | Send one operation per call. |
 | `… reaches selection depth 13; the limit is 12` or `… is 8001 characters` | The document is too large; ask for less per call. |
 | HTTP `429` / `502` / `503` / `504` on a query | Retried up to three times with backoff before the error reaches you. |
+| `Magento GraphQL request timed out after 30 seconds.` | No complete answer within 30 seconds. A query is retried up to three times; a mutation is not, so check its effect (read the cart) before sending it again. |
 | `Magento GraphQL request failed with HTTP <n>.` | The body was not a Magento error (a proxy's HTML page, say). It is deliberately not echoed. |
 | `magento-graphql: refusing to start — MAGENTO_GRAPHQL_GROUPS …` (exit code 1) | A name in the list is not a group; the message lists the valid ones. |

@@ -264,7 +264,7 @@ executable to run`.
 ## Environment
 
 - `MAGENTO_GRAPHQL_BASE_URL` (required) — The Magento GraphQL endpoint every magentographql_* tool addresses, e.g. https://<host>/graphql. Resolved on the first tool call and refused without it; tools/list still works. Must be https — plain http is accepted only for localhost.
-- `MAGENTO_GRAPHQL_TOKEN` (optional) — A Magento CUSTOMER token, sent as a Bearer. Optional: the storefront schema is public, so every tool except the customer group works without one. It may come from this variable OR from the credential file written by `hiberus-magento-graphql auth token set`. Obtain it outside this server (the generateCustomerToken mutation): the server never mints or handles passwords.
+- `MAGENTO_GRAPHQL_TOKEN` (optional) — A Magento CUSTOMER token, sent as a Bearer. Optional: the storefront schema is public, so every tool except the customer group works without one. It may come from this variable OR from the credential file written by `hiberus-magento-graphql auth token set`. Obtain it outside this server (the generateCustomerToken mutation). In read-only mode the server never handles passwords; with MAGENTO_GRAPHQL_ALLOW_WRITES=true the customer-account mutations (magentographql_generate_customer_token, magentographql_change_customer_password, magentographql_create_customer_v2, magentographql_delete_customer and similar) take passwords as arguments and return tokens into the conversation.
 - `MAGENTO_GRAPHQL_STORE` (optional) — The store view code sent as the `Store` header, e.g. `default`, so every tool reads that view. A tool's own `store` argument overrides it. Unset, Magento answers for the default view. Must be 1-32 characters of a-z, 0-9 and underscore.
 - `MAGENTO_GRAPHQL_ALLOW_WRITES` (optional) — Set to exactly `true` to register every mutation tool (cart, checkout, account, wish list, returns, B2B and the rest; about 160 of them). Unset, or any other value, and the server registers read tools only — a mutation tool is then absent from tools/list, not merely refused. Read once at startup. The generic query tool never runs mutations, with or without this switch.
 - `MAGENTO_GRAPHQL_GROUPS` (optional) — Comma-separated tool groups to load, e.g. `products,cms`, so a project registers only the tools it needs. Groups: `products`, `categories`, `cms`, `store`, `customer`, `account`, `cart`, `checkout`, `orders`, `returns`, `wishlist`, `compare`, `payments`, `gift-and-rewards`, `gift-registry`, `company`, `purchase-orders`, `quotes`, `requisition-lists`, `query`. Case-insensitive; blanks and repeats are ignored. Unset or empty loads every group. A name that is not a group stops the server with exit code 1, listing the valid ones. MAGENTO_GRAPHQL_ALLOW_WRITES still decides whether the mutation tools of a loaded group are registered. Read once at startup.
@@ -320,6 +320,8 @@ With `MAGENTO_GRAPHQL_ALLOW_WRITES` unset, or set to anything but the exact stri
 `tools/list`, not merely refused when called. The choice is made once at startup.
 Queries that hit a `429` or `5xx` are retried with backoff; a mutation is sent exactly
 once, because replaying `addProductsToCart` after an ambiguous failure would add the item twice.
+Every attempt is aborted after 30 seconds and reported as a timeout; a query that timed out is
+retried like any other transport failure, a mutation is not.
 `magentographql_query` never runs a mutation, with or without the switch.
 
 ## Tool groups
@@ -379,7 +381,10 @@ group loads its read tools always, and its mutation tools (marked `*`) only with
 - **No plain `http`** except for `localhost`: a Bearer over plain http is a Bearer on the wire.
 - **No redirects.** A redirect would re-send the request, and the token, somewhere you never configured.
 - **No raw errors.** GraphQL answers HTTP 200 with an `errors` array; only Magento's message
-  survives, redacted and capped — never `extensions`, locations or a proxy's HTML.
+  survives, redacted and capped — never `extensions`, locations or a proxy's HTML. When every
+  field asked for comes back `null` next to an error (how Magento reports a failed resolver, such as
+  a customer tool without a token or a rejected coupon), the call fails with that error and its remedy;
+  only when some field resolved do you get the data with the messages beside it.
 - **No street, phone, birth date or tax id** in the customer tools, and no email or address in carts.
 
 ## Documentation

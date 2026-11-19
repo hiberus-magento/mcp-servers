@@ -1,10 +1,11 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 import { describe, expect, it } from "vitest";
-import { data } from "../testing/fetch-double.js";
+import { data, gqlErrors } from "../testing/fetch-double.js";
 import { buildToolHarness } from "../testing/tool-harness.js";
 import { cartTools } from "./cart-tools.js";
 import { customerTools } from "./customer-tools.js";
 import { queryTools } from "./query-tools.js";
+import { toErrorResult } from "./runtime.js";
 
 const CART = "AbC123xyz";
 
@@ -31,6 +32,16 @@ describe("customerTools", () => {
     const h = buildToolHarness(customerTools, data({ customer: { orders: { items: [] } } }));
     await h.call("magentographql_get_customer_orders", {});
     expect(h.lastVariables()).toEqual({ pageSize: 10, currentPage: 1 });
+  });
+
+  // Magento's answer without a token: HTTP 200, `customer: null`, and an authorization error. Rendered as mcp.ts renders a rejected invoke.
+  it("without a token, fails with the error and the remedy saying how to set the token", async () => {
+    const h = buildToolHarness(customerTools, gqlErrors(["The current customer isn't authorized."], { customer: null }, "graphql-authorization"));
+    const error = await h.tool("magentographql_get_customer").invoke({}, {}).catch((e: unknown) => e);
+    const rendered = toErrorResult(error);
+    expect(rendered.isError).toBe(true);
+    expect(rendered.content[0]?.text).toContain("The current customer isn't authorized.");
+    expect(rendered.content[0]?.text).toMatch(/Remedy: .*MAGENTO_GRAPHQL_TOKEN/);
   });
 
   it("does not select street, phone, birth date or tax id", () => {
@@ -77,6 +88,15 @@ describe("cartTools", () => {
     expect(h.lastVariables()).toEqual({ cartId: CART, code: "SPRING10" });
     await h.call("magentographql_remove_coupon", { cart_id: CART });
     expect(h.lastVariables()).toEqual({ cartId: CART });
+  });
+
+  it("fails a mutation Magento answered with a null field and an error, sending it once", async () => {
+    const h = buildToolHarness(cartTools, gqlErrors(["The coupon code isn't valid. Verify the code and try again."], { applyCouponToCart: null }));
+    const error = await h.tool("magentographql_apply_coupon").invoke({ cart_id: CART, coupon_code: "SPRING10" }, {}).catch((e: unknown) => e);
+    const rendered = toErrorResult(error);
+    expect(rendered.isError).toBe(true);
+    expect(rendered.content[0]?.text).toBe("Magento GraphQL: The coupon code isn't valid. Verify the code and try again.");
+    expect(h.double.calls).toHaveLength(1);
   });
 
   it.each([

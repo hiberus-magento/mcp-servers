@@ -62,6 +62,8 @@ describe("generated operations", () => {
     ["magentographql_create_wishlist", { destructiveHint: false, idempotentHint: false }],
     ["magentographql_set_shipping_methods_on_cart", { destructiveHint: true, idempotentHint: true }],
     ["magentographql_cancel_order", { destructiveHint: true, idempotentHint: false }],
+    // Every call sends another email, so twice is not the same as once.
+    ["magentographql_resend_confirmation_email", { destructiveHint: true, idempotentHint: false }],
   ])("%s has the annotations of its effect", (name, expected) => {
     expect(all().tool(name).annotations).toMatchObject({ readOnlyHint: false, ...expected });
   });
