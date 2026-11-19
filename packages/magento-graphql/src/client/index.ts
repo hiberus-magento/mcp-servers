@@ -13,6 +13,8 @@ import { OperationGuardError, inspectDocument } from "./operation-guard.js";
 export { MagentoGraphqlError, type MagentoGraphqlErrorKind } from "./errors.js";
 export { MAX_DOCUMENT_CHARS, MAX_SELECTION_DEPTH, OperationGuardError, inspectDocument, type DocumentInfo } from "./operation-guard.js";
 export type { GraphqlResult, GraphqlTransportDeps } from "./http.js";
+export { DocumentReadError, readDocument, rootOperations, trimDocument, type TrimOutcome } from "./document.js";
+export { STORE_SCHEMA_QUERY, offersOperation, readStoreSchema, type StoreSchema } from "./schema.js";
 
 export interface OperationOptions {
   readonly variables?: Readonly<Record<string, unknown>>;
