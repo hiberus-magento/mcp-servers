@@ -107,7 +107,7 @@ export function databaseTools(db: DatabaseAccess): readonly MagentoRestTool[] {
     read({
       name: "magentorest_db_query",
       description:
-        "Use this for a question the other tools cannot answer: runs ONE read-only SELECT and returns its columns and rows. Name the columns (SELECT * is refused; COUNT(*) is fine), pass values as ? placeholders in params (?? identifier placeholders are refused), and expect at most max_rows rows (default 100, at most 500): a LIMIT above that is refused, and LIMIT max_rows is added when the statement has none. " +
+        "Use this for a question the other tools cannot answer: runs ONE read-only SELECT and returns its columns and rows. Name the columns (SELECT * and TABLE are refused; COUNT(*) and a * b are fine), pass values as ? placeholders in params (?? identifier placeholders are refused; a literal in the SQL must be single-quoted, without backslashes, never double-quoted), and expect at most max_rows rows (default 100, at most 500): a LIMIT above that is refused, and LIMIT max_rows is added when the statement has none. " +
         "No comments, no second statement, no INTO, no locking reads, no credential tables (administrators, OAuth tokens, integrations, sessions, ACL; table prefixes included), and no column named like a password, hash or token anywhere in the statement; values of such columns that reach the result anyway (a view, an alias), and of secret configuration rows, come back as [redacted].",
       input: z
         .object({

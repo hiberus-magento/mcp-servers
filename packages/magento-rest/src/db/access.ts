@@ -27,6 +27,10 @@ export interface RawResult {
 }
 
 export interface DbConnection {
+  /**
+   * With `values` (even an empty list) the statement is bound on the server as a prepared statement; without, it is
+   * sent as text, which is only for this module's constant session statements.
+   */
   query(sql: string, values?: readonly unknown[], timeoutMs?: number): Promise<RawResult>;
   end(): Promise<void>;
   destroy(): void;

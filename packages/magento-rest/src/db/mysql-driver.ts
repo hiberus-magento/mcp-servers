@@ -5,6 +5,7 @@
 // attached lives in `access.ts`, where it is tested against a fake; this adapter only maps the driver's shapes
 // onto `DbConnection` and fixes the connection options that are not up to the operator:
 //
+//   - a statement with values is prepared on the server (`execute`), never formatted on the client (`query`);
 //   - `multipleStatements` stays off, so a second statement is a protocol error even if one slipped past the guard;
 //   - `LOCAL_FILES` is switched off, so `LOAD DATA LOCAL INFILE` cannot make this process read a file for the server;
 //   - the charset is `utf8mb4`, which is what lets the bundle drop the character-set tables (see `src/stubs/`);
@@ -35,12 +36,18 @@ export function createMysqlDriver(): DbDriver {
       });
       return {
         async query(sql, values, timeoutMs): Promise<RawResult> {
-          const [result, fields] = await connection.query({ sql, values: values as unknown[] | undefined, ...(timeoutMs !== undefined ? { timeout: timeoutMs } : {}) });
+          const timeout = timeoutMs !== undefined ? { timeout: timeoutMs } : {};
+          // A statement with values (even an empty list: every guarded statement) is a server-side prepared
+          // statement, so the SERVER decides what is a placeholder and where a string ends. `query()` would format
+          // the values into the text on the client, with a quoting model that differs from the guard's and from
+          // the server's SQL mode. Only access.ts's constant session statements (SET ..., START TRANSACTION,
+          // COMMIT, ROLLBACK) carry no values; they go as text because MySQL cannot prepare START TRANSACTION.
+          const [result, fields] = values === undefined ? await connection.query({ sql, ...timeout }) : await connection.execute({ sql, values: values as unknown[], ...timeout });
           if (Array.isArray(result)) {
             const packets = (fields ?? []) as FieldPacket[];
             return {
               columns: packets.map((field) => field.name),
-              origins: packets.map((field) => ({ name: field.orgName ?? "", table: field.orgTable ?? "" })),
+              origins: packets.map((field) => ({ name: field.orgName ?? "", table: field.orgTable ?? "", alias: field.table ?? "" })),
               rows: result as Record<string, unknown>[],
             };
           }

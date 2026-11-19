@@ -217,8 +217,9 @@ REST tools whenever they can answer: they follow Magento's rules and return only
    password each say which.
 
 What the read tools will and will not do is in the README ("Database access"): one `SELECT` with
-named columns and a row cap (`LIMIT max_rows` is added when the statement has none), no
-credential tables (prefixed ones included), no password-, hash- or token-like column named
+named columns and a row cap (`LIMIT max_rows` is added when the statement has none), values
+passed as `?` parameters and bound by the server (a literal in the SQL is single-quoted, with no
+backslash and never double-quoted), no credential tables (prefixed ones included), no password-, hash- or token-like column named
 anywhere in the statement, and the value of such a column that reaches the result anyway shown
 as `[redacted]`. Those checks are best-effort, on the text of the statement; the grants in step 1
 are the boundary.

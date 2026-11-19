@@ -224,3 +224,67 @@ describe("locking reads", () => {
     expect(refused("SELECT sku FROM t LIMIT 10 OFFSET 5 UNION SELECT sku FROM t", 50)).toMatch(/LIMIT/);
   });
 });
+
+describe("string literals whose end depends on the server's SQL mode", () => {
+  // Where a string ends must not be a matter of opinion: a double quote is a string by default and an identifier
+  // under ANSI_QUOTES, and a backslash escapes the next character unless NO_BACKSLASH_ESCAPES is set. A client
+  // formatter that disagreed with the guard on either let a value rewrite the statement.
+  it.each([
+    ["a double-quoted string holding a single quote", `SELECT "'", '?'`],
+    ["a plain double-quoted string", `SELECT sku FROM catalog_product_entity WHERE sku = "DEMO-1"`],
+  ])("refuses %s, saying values belong in ? params", (_name, sql) => {
+    expect(refused(sql)).toMatch(/double quotes.*\? param/i);
+  });
+
+  it("refuses the same desync in a write", () => {
+    expect(() => guardWriteStatement(`UPDATE cms_block b JOIN (SELECT "'" AS q) d ON '?' WHERE b.block_id = 1`)).toThrow(/double quotes/i);
+  });
+
+  it.each([
+    ["an escaped quote", "SELECT sku FROM catalog_product_entity WHERE sku = 'a\\'b'"],
+    ["a trailing backslash", "SELECT 'a\\\\' AS x"],
+  ])("refuses a backslash inside a string literal: %s", (_name, sql) => {
+    expect(refused(sql)).toMatch(/backslash.*\? param/i);
+  });
+
+  it("still accepts single-quoted literals, a doubled quote inside one, and backticked identifiers", () => {
+    expect(() => guardReadQuery("SELECT `sku` FROM catalog_product_entity WHERE sku = 'it''s' AND type_id = 'simple'", 10)).not.toThrow();
+  });
+});
+
+describe("the star rule is an allowlist", () => {
+  // A star that expands to columns reads whatever a table holds, by position, past every name-based rule.
+  it.each([
+    ["SELECT ALL *", "SELECT ALL * FROM customer_entity"],
+    ["SELECT DISTINCTROW *", "SELECT DISTINCTROW * FROM customer_entity"],
+    ["SQL_NO_CACHE", "SELECT SQL_NO_CACHE * FROM customer_entity"],
+    ["HIGH_PRIORITY", "SELECT HIGH_PRIORITY * FROM customer_entity"],
+    ["STRAIGHT_JOIN", "SELECT STRAIGHT_JOIN * FROM customer_entity"],
+    ["SQL_CALC_FOUND_ROWS", "SELECT SQL_CALC_FOUND_ROWS * FROM customer_entity"],
+    ["SQL_SMALL_RESULT", "SELECT SQL_SMALL_RESULT * FROM customer_entity"],
+    ["SQL_BIG_RESULT", "SELECT SQL_BIG_RESULT * FROM customer_entity"],
+    ["SQL_BUFFER_RESULT", "SELECT SQL_BUFFER_RESULT * FROM customer_entity"],
+    ["two modifiers", "SELECT DISTINCT SQL_NO_CACHE * FROM customer_entity"],
+    ["a positional read through a union", "SELECT HEX(c4) AS h FROM (SELECT 1 c1, 2 c2, 3 c3, 4 c4 UNION ALL SELECT ALL * FROM customer_entity) t"],
+    ["a parenthesised star", "SELECT (*) FROM customer_entity"],
+  ])("refuses %s", (_name, sql) => {
+    expect(refused(sql)).toMatch(/\*/);
+  });
+
+  it("refuses the TABLE statement, which reads every column like SELECT *", () => {
+    expect(refused("SELECT HEX(c4) AS h FROM (SELECT 1 c1, 2 c2, 3 c3, 4 c4 UNION ALL TABLE customer_entity) t")).toMatch(/TABLE/);
+    expect(() => guardWriteStatement("INSERT INTO cms_block (title) TABLE customer_entity")).toThrow(/TABLE/);
+  });
+
+  it("refuses a star in a write's RETURNING list", () => {
+    expect(() => guardWriteStatement("DELETE FROM cms_block WHERE block_id = 1 RETURNING *")).toThrow(SqlGuardError);
+  });
+
+  it.each([
+    "SELECT COUNT(*) FROM customer_entity",
+    "SELECT qty * price AS total FROM sales_order_item",
+    "SELECT e.qty * 2 AS d, (qty + 1) * ? AS p, 3 * qty AS t FROM sales_order_item e",
+  ])("still accepts %s", (sql) => {
+    expect(() => guardReadQuery(sql, 10)).not.toThrow();
+  });
+});

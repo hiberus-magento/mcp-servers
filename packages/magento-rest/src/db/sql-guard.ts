@@ -9,11 +9,15 @@
 //   - exactly one statement (a single trailing `;` is dropped);
 //   - no comments of any kind (`--`, `#`, `/* */`, including MySQL's executable `/*! */`);
 //   - a read is a SELECT; a write is an INSERT, UPDATE or DELETE and nothing else (no DDL, no REPLACE, no LOAD);
-//   - no `SELECT *` (name the columns), but `COUNT(*)` and `a * b` are fine;
+//   - a `*` only as `COUNT(*)` or `a * b`, so no `SELECT *` under any modifier (`ALL`, `DISTINCTROW`, ...), and no
+//     `TABLE t`, which is `SELECT *` by another name;
+//   - no double quotes and no backslash inside a string: where those strings end depends on the server's SQL mode
+//     (ANSI_QUOTES, NO_BACKSLASH_ESCAPES), and the guard must read a statement the way the server will;
 //   - no INTO (files, variables), locking reads (FOR UPDATE, FOR SHARE, LOCK IN SHARE MODE), user variables,
 //     PROCEDURE, and the functions that read files, take locks or stall the server (SLEEP, BENCHMARK, LOAD_FILE, ...);
-//   - no `??`: the driver formats it as a quoted identifier on the client, so the guard would check a placeholder
-//     while the server ran a table name it never saw;
+//   - no `??`: mysql2 formats it as a quoted identifier on the client, so the guard would check a placeholder while
+//     the server ran a table name it never saw (the driver now prepares statements on the server, which has no
+//     `??`; the refusal stays as a second layer);
 //   - never the tables that hold credentials (administrators, OAuth tokens, integrations, sessions, ACL) — also
 //     under a Magento table prefix — or the `mysql` schema;
 //   - never an identifier named like a credential (`password_hash`, `rp_token`, ...), wherever it is written: result
@@ -124,7 +128,14 @@ function tokenize(sql: string): Token[] {
     if (ch === "#" || (ch === "-" && sql[i + 1] === "-") || (ch === "/" && sql[i + 1] === "*")) {
       throw new SqlGuardError("comments are not allowed (--, # and /* */), including MySQL's executable /*! */ comments");
     }
-    if (ch === "'" || ch === '"' || ch === "`") {
+    // Where a quoted run ends must be the same for the guard and for the server whatever its SQL mode, or a
+    // statement the guard read as one string is run as code. A double quote is a string by default and an
+    // identifier under ANSI_QUOTES; a backslash escapes the next character unless NO_BACKSLASH_ESCAPES is set. So
+    // neither is accepted: strings are single-quoted (a quote inside is doubled), and values belong in ? params.
+    if (ch === '"') {
+      throw new SqlGuardError("double quotes are not allowed (their meaning depends on the server's SQL mode): write strings in single quotes, or pass values as ? params");
+    }
+    if (ch === "'" || ch === "`") {
       const start = i;
       i += 1;
       let value = "";
@@ -133,10 +144,8 @@ function tokenize(sql: string): Token[] {
           throw new SqlGuardError("the statement has an unterminated quote");
         }
         const c = sql[i] as string;
-        if (c === "\\" && ch !== "`") {
-          value += sql.slice(i, i + 2);
-          i += 2;
-          continue;
+        if (c === "\\" && ch === "'") {
+          throw new SqlGuardError("a backslash inside a string literal is not allowed (whether it escapes depends on the server's SQL mode): pass the value as a ? param");
         }
         if (c === ch) {
           if (sql[i + 1] === ch) {
@@ -226,6 +235,10 @@ function checkCommon(tokens: readonly Token[]): void {
     if (token.kind === "word" && FORBIDDEN_WORDS.has(token.text)) {
       throw new SqlGuardError(`${token.text} is not allowed (it reads files, takes locks or stalls the server)`);
     }
+    // `TABLE t` (MySQL 8.0.19+) is `SELECT * FROM t` without the star, also inside a UNION or an INSERT.
+    if (token.kind === "word" && token.text === "TABLE") {
+      throw new SqlGuardError("TABLE is not allowed (TABLE t reads every column of t, like SELECT *): name the columns in a SELECT");
+    }
     if (token.kind === "word" || token.kind === "ident") {
       const name = token.text.toLowerCase();
       if (isSensitiveTable(name)) {
@@ -242,13 +255,35 @@ function checkCommon(tokens: readonly Token[]): void {
   }
 }
 
+/**
+ * Words that can never be the operand of a multiplication: SELECT and its modifiers (after which a `*` is a column
+ * list), and the clause words around an expression. A denylist of where a column-list star may stand (after SELECT,
+ * DISTINCT, a comma) missed `SELECT ALL *` and every other modifier; the star rule is therefore an allowlist, and
+ * this set only keeps a keyword from passing as the left operand of `a * b`.
+ */
+const NOT_AN_OPERAND: ReadonlySet<string> = new Set([
+  "SELECT", "ALL", "DISTINCT", "DISTINCTROW", "HIGH_PRIORITY", "STRAIGHT_JOIN", "SQL_SMALL_RESULT", "SQL_BIG_RESULT", "SQL_BUFFER_RESULT", "SQL_NO_CACHE", "SQL_CACHE", "SQL_CALC_FOUND_ROWS",
+  "RETURNING", "FROM", "WHERE", "AND", "OR", "XOR", "NOT", "ON", "BY", "AS", "UNION", "EXCEPT", "INTERSECT", "JOIN", "HAVING", "WHEN", "THEN", "ELSE", "IN", "IS", "LIKE", "SET", "VALUES", "INTO", "BETWEEN", "EXISTS", "DIV", "MOD", "USING", "LIMIT", "OFFSET", "WITH",
+]);
+
+function isOperand(token: Token | undefined): boolean {
+  if (token === undefined) return false;
+  if (token.kind === "ident" || token.kind === "number" || token.kind === "param" || token.kind === "string") return true;
+  return token.kind === "word" && !NOT_AN_OPERAND.has(token.text);
+}
+
+/** A `*` passes only as `COUNT(*)` or as `a * b`; anywhere else it may expand to every column of a table. */
 function checkStars(tokens: readonly Token[]): void {
   for (const [index, token] of tokens.entries()) {
     if (token.kind !== "punct" || token.text !== "*") continue;
+    const before = tokens[index - 2];
     const previous = tokens[index - 1];
-    const startsAColumnList = previous === undefined || (previous.kind === "word" && (previous.text === "SELECT" || previous.text === "DISTINCT")) || (previous.kind === "punct" && (previous.text === "," || previous.text === "."));
-    if (startsAColumnList) {
-      throw new SqlGuardError("name the columns you want instead of * (a table may hold columns you should not read); COUNT(*) is fine");
+    const next = tokens[index + 1];
+    const isCountStar = before?.kind === "word" && before.text === "COUNT" && previous?.kind === "punct" && previous.text === "(" && next?.kind === "punct" && next.text === ")";
+    const leftOperand = isOperand(previous) || (previous?.kind === "punct" && previous.text === ")");
+    const rightOperand = isOperand(next) || (next?.kind === "punct" && (next.text === "(" || next.text === "-" || next.text === "+"));
+    if (!isCountStar && !(leftOperand && rightOperand)) {
+      throw new SqlGuardError("name the columns you want instead of * (a table may hold columns you should not read); only COUNT(*) and a multiplication (a * b) may use *");
     }
   }
 }

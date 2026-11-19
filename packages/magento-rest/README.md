@@ -137,7 +137,7 @@ executable to run`.
 - `magentorest_db_status` (read-only) — Use this to check that the database connection works: returns the server version, the database name, that the session is read-only, and whether database writes are enabled. Run it first when a database tool fails. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_db_list_tables` (read-only) — Use this to list the tables of the Magento database, optionally only those whose name contains a fragment (e.g. `sales_order`). Returns each table's name, engine and approximate row count (an estimate, not a count: use magentorest_db_stats or a COUNT(*) for exact figures). **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_db_describe_table` (read-only) — Use this to see the columns of one table: name, type, whether it can be NULL, key, default and extra. Refuses the tables that hold credentials (administrators, OAuth tokens, integrations). **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
-- `magentorest_db_query` (read-only) — Use this for a question the other tools cannot answer: runs ONE read-only SELECT and returns its columns and rows. Name the columns (SELECT * is refused; COUNT(*) is fine), pass values as ? placeholders in params (?? identifier placeholders are refused), and expect at most max_rows rows (default 100, at most 500): a LIMIT above that is refused, and LIMIT max_rows is added when the statement has none. No comments, no second statement, no INTO, no locking reads, no credential tables (administrators, OAuth tokens, integrations, sessions, ACL; table prefixes included), and no column named like a password, hash or token anywhere in the statement; values of such columns that reach the result anyway (a view, an alias), and of secret configuration rows, come back as [redacted]. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
+- `magentorest_db_query` (read-only) — Use this for a question the other tools cannot answer: runs ONE read-only SELECT and returns its columns and rows. Name the columns (SELECT * and TABLE are refused; COUNT(*) and a * b are fine), pass values as ? placeholders in params (?? identifier placeholders are refused; a literal in the SQL must be single-quoted, without backslashes, never double-quoted), and expect at most max_rows rows (default 100, at most 500): a LIMIT above that is refused, and LIMIT max_rows is added when the statement has none. No comments, no second statement, no INTO, no locking reads, no credential tables (administrators, OAuth tokens, integrations, sessions, ACL; table prefixes included), and no column named like a password, hash or token anywhere in the statement; values of such columns that reach the result anyway (a view, an alias), and of secret configuration rows, come back as [redacted]. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_db_magento_tables` (read-only) — Use this to see the well-known Magento 2 tables grouped by what they hold (products, categories, customers, orders, quotes, invoices, shipments, CMS, EAV, URL rewrites, store), each marked with whether it exists in this database. Table prefixes are not applied. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_db_product_by_sku` (read-only) — Use this for a quick look at one product straight from the database: id, SKU, type, created and updated dates, quantity and in-stock flag (legacy stock table). For the full product use magentorest_get_product_by_sku. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_db_recent_orders` (read-only) — Use this to see the latest orders straight from the database: id, increment id, status, state, customer email and name, totals, currency and dates. Newest first; limit defaults to 10, at most 100. Never returns addresses or payment data. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
@@ -271,8 +271,12 @@ to say, explicitly, that it does not. The URL is checked at startup; the passwor
 needed when a tool is called.
 
 **Reads** (eight tools) run in a `READ ONLY` session, with a 15 second timeout and a cap on
-rows. `db_query` takes one `SELECT`: name the columns (`SELECT *` is refused, `COUNT(*)` is
-fine), pass values as `?` parameters, expect at most `max_rows` (default 100, at most 500).
+rows. `db_query` takes one `SELECT`: name the columns (`SELECT *` is refused under any
+modifier, and so is `TABLE t`; `COUNT(*)` and `a * b` are fine), pass values as `?`
+parameters, expect at most `max_rows` (default 100, at most 500). Values are bound by the
+database server as a prepared statement, never pasted into the SQL text. A literal written in
+the SQL must be single-quoted and contain no backslash; double quotes are refused, because
+what they and a backslash mean depends on the server's SQL mode.
 A `LIMIT` above `max_rows` is refused; a statement without one gets `LIMIT max_rows` added.
 It refuses comments, a second statement, `INTO`, locking reads (`FOR UPDATE`, `FOR SHARE`,
 `LOCK IN SHARE MODE`), `??` identifier placeholders, and the functions that read files or
@@ -282,8 +286,8 @@ prefix, so `mg_admin_user` is refused like `admin_user`) or the `mysql` schema, 
 any column named like a password, hash or token wherever it is written (selected, aliased,
 inside an expression or in a `WHERE`). The value of such a column that reaches the result
 anyway (through a view or an alias, judged by the column's original name), and of a
-configuration value whose path is a secret or is not in the result, comes back as
-`[redacted]`. The other seven tools use fixed statements.
+configuration value whose path is a secret, is not in the result, or may belong to another
+row (the configuration table joined to itself), comes back as `[redacted]`. The other seven tools use fixed statements.
 
 **Writes** are a separate switch. `MAGENTO_REST_ALLOW_WRITES` does not enable them:
 
@@ -295,13 +299,15 @@ Only the exact text `true` registers `db_execute`; without a connection it stops
 It runs **one** `INSERT`, `UPDATE` or `DELETE` per call (the last two need a `WHERE`), in a
 transaction. `dry_run: true` runs it and rolls back, so you see how many rows it would
 change; if more than `max_affected` (default 100, at most 10000) would change, it rolls back
-by itself. No `DROP`, `ALTER`, `TRUNCATE`, `REPLACE` or `LOAD`. A change made this way skips
+by itself. No `DROP`, `ALTER`, `TRUNCATE`, `REPLACE` or `LOAD`, and the same rules on
+values and literals as `db_query` (`?` parameters, single quotes, no backslashes). A change made this way skips
 Magento's validation, indexing and events, so it may not show on the storefront until a
 reindex and a cache flush.
 
 **These rules make a mistake cheap; they are not the security boundary.** They are a
 best-effort check on the text of a statement, and a check on text can have holes (an
-expression such as `CONCAT(value)` carries no column name to judge it by). The boundary is
+expression such as `CONCAT(value)`, a derived table or a UNION hides which table a column
+came from, so a configuration value read that way is not redacted). The boundary is
 the database user. Create one for this server with `SELECT` only, without access to the
 credential tables above, and add `INSERT`/`UPDATE`/`DELETE` on the tables you mean to change
 only if you enable writes. Table prefixes

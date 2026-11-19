@@ -99,4 +99,32 @@ describe("sanitizeRows with the columns' origins", () => {
     ]);
     expect(out[0]).toEqual({ sku: "DEMO-1", value: "Red" });
   });
+
+  it("redacts every configuration value when the table is joined to itself, since the path may be another row's", () => {
+    const origins = [
+      { name: "path", table: "core_config_data", alias: "c1" },
+      { name: "value", table: "core_config_data", alias: "c2" },
+    ];
+    const out = sanitizeRows(["path", "value"], [{ path: "general/locale/code", value: "synthetic-secret" }], origins);
+    expect(out[0]).toEqual({ path: "general/locale/code", value: REDACTED });
+  });
+
+  it("redacts every configuration value when two aliases of the table are in the result, even with paths beside them", () => {
+    const origins = [
+      { name: "path", table: "core_config_data", alias: "c1" },
+      { name: "value", table: "core_config_data", alias: "c1" },
+      { name: "path", table: "core_config_data", alias: "c2" },
+    ];
+    const out = sanitizeRows(["p1", "v1", "p2"], [{ p1: "general/locale/code", v1: "en_US", p2: "general/locale/timezone" }], origins);
+    expect(out[0]?.["v1"]).toBe(REDACTED);
+  });
+
+  it("still pairs a value with the path of the same alias", () => {
+    const origins = [
+      { name: "path", table: "core_config_data", alias: "c" },
+      { name: "value", table: "core_config_data", alias: "c" },
+    ];
+    const out = sanitizeRows(["path", "value"], [{ path: "general/locale/code", value: "en_US" }], origins);
+    expect(out[0]).toEqual({ path: "general/locale/code", value: "en_US" });
+  });
 });
