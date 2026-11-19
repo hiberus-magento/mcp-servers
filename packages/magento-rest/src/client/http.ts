@@ -118,7 +118,7 @@ export function createRestTransport(deps: RestTransportDeps): RestTransport {
       return {
         failure: new MagentoRestError({
           kind: "transport",
-          message: timedOut ? `Magento REST request timed out after ${Math.round(timeoutMs / 1000)} s without a response.` : "Magento REST request failed before a complete response was received.",
+          message: timedOut ? `Magento REST request timed out after ${Math.round(timeoutMs / 1000)} s without a response.` : "Magento REST request failed before a response was received.",
           retryable: true,
           cause,
         }),
