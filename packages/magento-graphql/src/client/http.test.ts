@@ -249,6 +249,36 @@ describe("createGraphqlTransport", () => {
     });
   });
 
+  describe("cancellation", () => {
+    const cancellable = () => {
+      const calls: unknown[] = [];
+      const fetch = ((input: unknown, init?: RequestInit) => {
+        calls.push(input);
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason as Error));
+        });
+      }) as unknown as typeof globalThis.fetch;
+      const transport = createGraphqlTransport({ fetch, now: () => 0, sleep: async () => undefined, random: () => 0, baseUrl: SYNTHETIC_MAGENTO_GRAPHQL_URL, getToken: async () => undefined, timeoutMs: 60_000 });
+      return { calls, transport };
+    };
+
+    it("aborts the in-flight request when the caller's signal aborts, is not retried, and says it was cancelled", async () => {
+      const { calls, transport } = cancellable();
+      const controller = new AbortController();
+      const pending = transport.execute({ kind: "query", document: Q, signal: controller.signal });
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      controller.abort();
+      await expect(pending).rejects.toMatchObject({ kind: "transport", retryable: false, message: expect.stringMatching(/cancelled/) as unknown });
+      expect(calls).toHaveLength(1);
+    });
+
+    it("sends nothing when the signal is already aborted", async () => {
+      const { calls, transport } = cancellable();
+      await expect(transport.execute({ kind: "query", document: Q, signal: AbortSignal.abort() })).rejects.toThrow(/cancelled/);
+      expect(calls).toHaveLength(0);
+    });
+  });
+
   describe("base URL", () => {
     it.each(["http://demo-host.example-domain/graphql", "ftp://x/graphql", "not a url", "https://user:pw@demo-host.example-domain/graphql"])("refuses %s", (baseUrl) => {
       expect(() => build(data({}), { baseUrl })).toThrow();

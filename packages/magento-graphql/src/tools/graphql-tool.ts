@@ -102,8 +102,8 @@ export function createToolFactory(getClient: () => MagentoGraphqlClient, options
       description,
       inputSchema: spec.input,
       annotations,
-      handler: async (args) => {
-        const client = getClient();
+      handler: async (args, ctx) => {
+        const client = bind(getClient(), ctx.signal);
         const variables = spec.variables?.(args);
         const context = spec.context?.(args);
         const callOptions = {
@@ -118,6 +118,11 @@ export function createToolFactory(getClient: () => MagentoGraphqlClient, options
     return { ...tool, access, document: spec.document } as unknown as MagentoGraphqlTool;
   }
 
+  /** Bound to the MCP request's signal: when the client cancels the call, its in-flight request is aborted. */
+  function bind(client: MagentoGraphqlClient, signal: AbortSignal | undefined): MagentoGraphqlClient {
+    return signal !== undefined ? client.with({ signal }) : client;
+  }
+
   function describe(name: string, description: string): string {
     return liveVerified.has(name) ? description : `${description} ${UNVERIFIED_MARKER} — ${UNVERIFIED_DETAIL}`;
   }
@@ -130,7 +135,7 @@ export function createToolFactory(getClient: () => MagentoGraphqlClient, options
           description: describe(spec.name, spec.description),
           inputSchema: spec.input,
           annotations: READ_ONLY_ANNOTATIONS,
-          handler: async (args) => shapeResult(await spec.run(args, getClient()), undefined),
+          handler: async (args, ctx) => shapeResult(await spec.run(args, bind(getClient(), ctx.signal)), undefined),
         }),
         access: "read",
       }) as unknown as MagentoGraphqlTool,

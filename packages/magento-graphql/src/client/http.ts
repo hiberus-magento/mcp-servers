@@ -29,6 +29,8 @@ export interface GraphqlRequest {
   readonly store?: string;
   /** ISO 4217 code, sent as `Content-Currency`. */
   readonly currency?: string;
+  /** The MCP request's signal: when the client cancels the tool call, the in-flight request is aborted and not retried. */
+  readonly signal?: AbortSignal;
 }
 
 export interface GraphqlResult {
@@ -97,6 +99,10 @@ function allFieldsNull(data: Record<string, unknown>): boolean {
   return Object.values(data).every((value) => value === null);
 }
 
+function cancelled(cause?: unknown): MagentoGraphqlError {
+  return new MagentoGraphqlError({ kind: "transport", message: "Magento GraphQL request was cancelled by the client.", retryable: false, ...(cause !== undefined ? { cause } : {}) });
+}
+
 export function createGraphqlTransport(deps: GraphqlTransportDeps): GraphqlTransport {
   const baseUrl = validateBaseUrl(deps.baseUrl);
   const random = deps.random ?? Math.random;
@@ -116,11 +122,15 @@ export function createGraphqlTransport(deps: GraphqlTransportDeps): GraphqlTrans
         // A redirect would re-send the request (and the token) somewhere the operator never configured.
         redirect: "manual",
         body: JSON.stringify({ query: request.document, ...(request.variables !== undefined ? { variables: request.variables } : {}) }),
-        // A fresh signal per attempt: a retry must get the whole budget again. It also aborts the body read below.
-        signal: AbortSignal.timeout(timeoutMs),
+        // A fresh timeout per attempt: a retry must get the whole budget again. It also aborts the body read below.
+        // The caller's signal joins it, so a cancelled tool call stops its request.
+        signal: request.signal !== undefined ? AbortSignal.any([request.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
       });
       text = await response.text();
     } catch (cause) {
+      if (request.signal?.aborted === true) {
+        return { failure: cancelled(cause) };
+      }
       const message = isTimeout(cause)
         ? `Magento GraphQL request timed out after ${timeoutMs / 1000} seconds.`
         : "Magento GraphQL request failed before a response was received.";
@@ -167,6 +177,10 @@ export function createGraphqlTransport(deps: GraphqlTransportDeps): GraphqlTrans
       if (request.currency !== undefined) headers["Content-Currency"] = request.currency;
       const idempotent = request.kind === "query";
       for (let attempt = 1; ; attempt += 1) {
+        // Checked before every attempt: a call cancelled during a backoff sleep sends nothing more.
+        if (request.signal?.aborted === true) {
+          throw cancelled();
+        }
         const outcome = await attemptOnce(request, headers);
         if ("value" in outcome) {
           return outcome.value;

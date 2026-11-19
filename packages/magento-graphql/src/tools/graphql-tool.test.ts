@@ -21,6 +21,15 @@ const setup = (responder: Parameters<typeof createFetchDouble>[0], options: Para
 const input = z.object({ term: z.string() }).strict();
 
 describe("createToolFactory", () => {
+  it("binds the call to the MCP request's signal: a cancelled call sends nothing (fixed and dynamic tools)", async () => {
+    const { double, factory } = setup(data({ products: { total_count: 1 } }));
+    const fixed = factory.readTool({ name: "magentographql_c", description: "Use this to c.", input, document: "query C { products { total_count } }" });
+    const dynamic = factory.dynamicQueryTool({ name: "magentographql_d", description: "Use this to d.", input, run: (_a, client) => client.query("query D { products { total_count } }") });
+    await expect(fixed.invoke({ term: "" }, { signal: AbortSignal.abort() })).rejects.toThrow(/cancelled/);
+    await expect(dynamic.invoke({ term: "" }, { signal: AbortSignal.abort() })).rejects.toThrow(/cancelled/);
+    expect(double.calls).toHaveLength(0);
+  });
+
   it("runs the fixed document with the variables the tool builds, and unwraps `pick`", async () => {
     const { double, factory } = setup(data({ products: { total_count: 1 } }));
     const tool = factory.readTool({ name: "magentographql_x", description: "Use this to x.", input, document: "query X($s: String) { products(search: $s) { total_count } }", variables: (a) => ({ s: a.term }), pick: "products" });
