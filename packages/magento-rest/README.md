@@ -102,11 +102,11 @@ executable to run`.
 - `magentorest_get_abandoned_carts` (read-only) — Use this to find abandoned carts: active, non-empty carts not updated for at least a number of days, most recently updated first. Each entry names the owner (or Guest), the item count and the dates. Returns a bounded page, the total count and the cutoff used.
 - `magentorest_get_cms_block_by_id` (read-only) — Use this to read one CMS block by ID, including its content (HTML), title, identifier, dates and whether it is active.
 - `magentorest_search_cms_blocks` (read-only) — Use this to find CMS blocks by identifier (exact), part of the title, or active status. Filters are combined with AND. Returns a bounded page of summaries WITHOUT the content, and the total count; read one by ID for its content.
-- `magentorest_update_cms_block` — Use this to change a CMS block's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront.
+- `magentorest_update_cms_block` — Use this to change a CMS block's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront. The block ends up assigned to all store views: Magento's REST interface cannot keep a narrower store assignment.
 - `magentorest_delete_cms_block` — Use this to permanently delete a CMS block by ID. Irreversible: it disappears from the storefront immediately.
 - `magentorest_get_cms_page_by_id` (read-only) — Use this to read one CMS page by ID, including its content (HTML), title, identifier, dates and whether it is active.
 - `magentorest_search_cms_pages` (read-only) — Use this to find CMS pages by identifier (exact), part of the title, or active status. Filters are combined with AND. Returns a bounded page of summaries WITHOUT the content, and the total count; read one by ID for its content.
-- `magentorest_update_cms_page` — Use this to change a CMS page's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront.
+- `magentorest_update_cms_page` — Use this to change a CMS page's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront. The page ends up assigned to all store views: Magento's REST interface cannot keep a narrower store assignment.
 - `magentorest_delete_cms_page` — Use this to permanently delete a CMS page by ID. Irreversible: it disappears from the storefront immediately.
 - `magentorest_create_cms_block` — Use this to create a CMS block. Adds a block for all store views (Magento's REST body takes no store assignment) that is active unless you say otherwise.
 - `magentorest_create_cms_page` — Use this to create a CMS page at a URL key. Adds a page for all store views (Magento's REST body takes no store assignment) that is active, with a one-column layout, unless you say otherwise.
@@ -129,10 +129,10 @@ executable to run`.
 - `magentorest_get_tax_rates` (read-only) — Use this to list the tax rates: code, rate, country, region and postcode (or postcode range). Returns a bounded page and the total count.
 - `magentorest_get_tax_rules` (read-only) — Use this to list the tax rules: code, priority, and the customer tax classes, product tax classes and tax rates each one combines. Returns a bounded page and the total count. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_get_tax_classes` (read-only) — Use this to list the tax classes, optionally only the CUSTOMER or only the PRODUCT ones. Returns one page of up to 100 and the total count.
-- `magentorest_get_revenue` (read-only) — Use this to total the revenue of a period: revenue, currency, order count, average order value and tax. Computed from the orders in the period; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial.
+- `magentorest_get_revenue` (read-only) — Use this to total the revenue of a period: revenue, currency, order count, average order value and tax. Computed from the orders in the period; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial. With no status it leaves out canceled and closed orders. Amounts in different currencies are never added together: when the orders span several, the totals are null and by_currency gives each currency's own totals.
 - `magentorest_get_order_count` (read-only) — Use this to count the orders of a period, optionally by status. The count is Magento's own total, so it is exact and is never partial.
-- `magentorest_get_product_sales` (read-only) — Use this to see what sold in a period: orders, items, units, revenue, and the ten best-selling products by quantity with their revenue. Optionally for one country (billing or shipping). Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial.
-- `magentorest_get_revenue_by_country` (read-only) — Use this to total the revenue of a period for one country (orders billed or shipped there): revenue, currency, order count, average order value and tax. Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial.
+- `magentorest_get_product_sales` (read-only) — Use this to see what sold in a period: orders, items, units, revenue, and the ten best-selling products by quantity with their revenue. Optionally for one country (billing or shipping). Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial. With no status it leaves out canceled and closed orders. Amounts in different currencies are never added together: when the orders span several, the revenue figures are null and by_currency gives each currency's own revenue and order count.
+- `magentorest_get_revenue_by_country` (read-only) — Use this to total the revenue of a period for one country (orders billed or shipped there): revenue, currency, order count, average order value and tax. Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial. With no status it leaves out canceled and closed orders. Amounts in different currencies are never added together: when the orders span several, the totals are null and by_currency gives each currency's own totals.
 - `magentorest_get_customer_ordered_products_by_email` (read-only) — Use this to list every order of one customer, found by exact email, with each order's lines (SKU, name, price, quantity). Returns the customer's id, name and email, never their addresses. For a product's own detail use magentorest_get_product_by_sku. Reads at most max_pages pages of 100 orders and says when the result is partial.
 - `magentorest_db_status` (read-only) — Use this to check that the database connection works: returns the server version, the database name, that the session is read-only, and whether database writes are enabled. Run it first when a database tool fails. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_db_list_tables` (read-only) — Use this to list the tables of the Magento database, optionally only those whose name contains a fragment (e.g. `sales_order`). Returns each table's name, engine and approximate row count (an estimate, not a count: use magentorest_db_stats or a COUNT(*) for exact figures). **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
@@ -207,6 +207,42 @@ startup. Reads that hit a `429` or `5xx` are retried with backoff; a write is
 sent exactly once, because replaying an invoice or a refund after an ambiguous
 failure could capture or refund twice. Use a separate, narrowly scoped
 integration for the configuration that enables writes.
+
+### Store scope of writes
+
+Through `/rest/V1`, Magento runs a request as the **default store view**. A
+product or category saved that way gets values for that one store view, and a
+CMS block or page saved without a store assignment is assigned to that one
+store view. So:
+
+- the catalog writes (`create_product`, `update_product`,
+  `update_product_attribute`, `add_product_image`, `update_product_media`,
+  `create_category`, `update_category`) run in the **`all`** scope by default:
+  they change the global values every store view inherits. A store view that
+  already has its own value keeps it. Pass `store_code` to change one store
+  view's own value instead;
+- the CMS creates and updates always run in `all`, so the record is on all store
+  views. An update also moves a block or page that was assigned to some store
+  views only onto all of them: Magento's REST interface can neither read nor
+  keep a narrower assignment, so change those in the admin;
+- reads, and writes with no store-scoped values (orders, invoices, stock,
+  deletes, category moves), use `MAGENTO_REST_BASE_URL` as configured.
+
+The scoped URL is built from the base URL, `/rest/<scope>/V1`, so a store-scoped
+write needs a base URL ending in `/rest/V1` or `/rest/<store-code>/V1`. Not yet
+checked against a live multi-store instance.
+
+### A SKU that contains `/`
+
+A SKU is sent as one URL path segment, so a `/` in it travels encoded as `%2F`.
+Apache with its default `AllowEncodedSlashes Off` answers **404** to such a
+URL before Magento sees it, and the tool reports the product as not found.
+This affects every tool that takes a SKU in the path, writes included. If your
+SKUs contain `/` and the store runs behind Apache, set
+`AllowEncodedSlashes NoDecode` on the virtual host. Without that, only finding
+the product works: `magentorest_advanced_product_search` with `field: sku`
+returns its summary, because the SKU then travels in the query string. Not
+checked against a live Apache.
 
 ## Tool groups
 
@@ -357,7 +393,8 @@ See the [onboarding guide](https://github.com/hiberus-magento/mcp-servers/blob/m
   endpoints (the methods are per cart), and the first fell back to returning the
   store configuration — an answer to a different question.
 - **No store assignment when creating a CMS block or page.** A live Magento refuses
-  a `store_id` in that body; the record is created for all store views.
+  a `store_id` in that body; the write runs in the `all` scope, so the record is on
+  all store views (see "Store scope of writes").
 - **No URL-rewrite search.** The original called `/url-rewrite`, which is not a
   core Magento endpoint: a stock 2.4.8 answers 404.
 - **No order-statuses tool.** The original called `/orders/statuses`, which is not

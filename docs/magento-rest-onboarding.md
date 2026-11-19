@@ -46,6 +46,11 @@ https://demo-host.example-domain/rest/V1               # default store view
 https://demo-host.example-domain/rest/demo_store/V1    # one named store view
 ```
 
+The store code in the base URL applies to reads. The catalog and CMS writes
+run in the `all` (global) scope instead, or in the store view an agent names
+with `store_code`: through the default store view they would change only that
+store view's values. See "Store scope of writes" in the package README.
+
 It must be **https**. Plain `http` is accepted only for `localhost`, because a
 Bearer sent over plain http is a Bearer on the wire. A URL with credentials
 embedded in it (`https://user:pass@…`) is refused: the token travels in a

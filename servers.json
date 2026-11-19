@@ -586,7 +586,7 @@
         {
           "name": "magentorest_update_cms_block",
           "readOnly": false,
-          "description": "Use this to change a CMS block's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront."
+          "description": "Use this to change a CMS block's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront. The block ends up assigned to all store views: Magento's REST interface cannot keep a narrower store assignment."
         },
         {
           "name": "magentorest_delete_cms_block",
@@ -606,7 +606,7 @@
         {
           "name": "magentorest_update_cms_page",
           "readOnly": false,
-          "description": "Use this to change a CMS page's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront."
+          "description": "Use this to change a CMS page's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront. The page ends up assigned to all store views: Magento's REST interface cannot keep a narrower store assignment."
         },
         {
           "name": "magentorest_delete_cms_page",
@@ -728,7 +728,7 @@
         {
           "name": "magentorest_get_revenue",
           "readOnly": true,
-          "description": "Use this to total the revenue of a period: revenue, currency, order count, average order value and tax. Computed from the orders in the period; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial."
+          "description": "Use this to total the revenue of a period: revenue, currency, order count, average order value and tax. Computed from the orders in the period; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial. With no status it leaves out canceled and closed orders. Amounts in different currencies are never added together: when the orders span several, the totals are null and by_currency gives each currency's own totals."
         },
         {
           "name": "magentorest_get_order_count",
@@ -738,12 +738,12 @@
         {
           "name": "magentorest_get_product_sales",
           "readOnly": true,
-          "description": "Use this to see what sold in a period: orders, items, units, revenue, and the ten best-selling products by quantity with their revenue. Optionally for one country (billing or shipping). Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial."
+          "description": "Use this to see what sold in a period: orders, items, units, revenue, and the ten best-selling products by quantity with their revenue. Optionally for one country (billing or shipping). Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial. With no status it leaves out canceled and closed orders. Amounts in different currencies are never added together: when the orders span several, the revenue figures are null and by_currency gives each currency's own revenue and order count."
         },
         {
           "name": "magentorest_get_revenue_by_country",
           "readOnly": true,
-          "description": "Use this to total the revenue of a period for one country (orders billed or shipped there): revenue, currency, order count, average order value and tax. Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial."
+          "description": "Use this to total the revenue of a period for one country (orders billed or shipped there): revenue, currency, order count, average order value and tax. Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial. With no status it leaves out canceled and closed orders. Amounts in different currencies are never added together: when the orders span several, the totals are null and by_currency gives each currency's own totals."
         },
         {
           "name": "magentorest_get_customer_ordered_products_by_email",
