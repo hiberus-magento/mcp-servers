@@ -121,6 +121,58 @@ describe("createRestTransport", () => {
     expect(calls).toBe(1);
   });
 
+  describe("an attempt that never gets a response", () => {
+    // A fetch that only settles when its signal aborts: Magento accepted the connection and never answered.
+    const hangingFetch = () => {
+      const calls: string[] = [];
+      const fetch = ((input: string | URL | Request, init?: RequestInit) => {
+        calls.push(String(input));
+        return new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          if (signal === undefined || signal === null) return;
+          signal.addEventListener("abort", () => reject(signal.reason as Error));
+        });
+      }) as typeof globalThis.fetch;
+      return { calls, fetch };
+    };
+    const buildHanging = () => {
+      const hanging = hangingFetch();
+      const transport = createRestTransport({ fetch: hanging.fetch, now: () => 0, sleep: async () => {}, random: () => 0.5, baseUrl: SYNTHETIC_MAGENTO_BASE_URL, tokenProvider, timeoutMs: 20 });
+      return { calls: hanging.calls, transport };
+    };
+
+    it("is aborted after the timeout and reported as a transport error that says it timed out", async () => {
+      const { transport } = buildHanging();
+      await expect(transport.request({ method: "GET", path: "/x" })).rejects.toMatchObject({ kind: "transport", message: expect.stringMatching(/timed out after/) as unknown });
+    });
+
+    it("retries a read that timed out", async () => {
+      const { calls, transport } = buildHanging();
+      await transport.request({ method: "GET", path: "/x" }).catch(() => undefined);
+      expect(calls.length).toBeGreaterThan(1);
+    });
+
+    it("is aborted when the status arrives but the body stalls", async () => {
+      const fetch = ((_input: string | URL | Request, init?: RequestInit) => {
+        const signal = init?.signal ?? undefined;
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            signal?.addEventListener("abort", () => controller.error(signal.reason));
+          },
+        });
+        return Promise.resolve(new Response(body, { status: 200 }));
+      }) as typeof globalThis.fetch;
+      const transport = createRestTransport({ fetch, now: () => 0, sleep: async () => {}, random: () => 0.5, baseUrl: SYNTHETIC_MAGENTO_BASE_URL, tokenProvider, timeoutMs: 20 });
+      await expect(transport.request({ method: "GET", path: "/x" })).rejects.toMatchObject({ kind: "transport", message: expect.stringMatching(/timed out after/) as unknown });
+    });
+
+    it("never replays a write that timed out", async () => {
+      const { calls, transport } = buildHanging();
+      await expect(transport.request({ method: "POST", path: "/x", body: {} })).rejects.toMatchObject({ kind: "transport" });
+      expect(calls).toHaveLength(1);
+    });
+  });
+
   it("does not retry a 4xx", async () => {
     const { double, transport } = build({ "GET /rest/V1/x": json(403, { message: "no" }) });
     await expect(transport.request({ method: "GET", path: "/x" })).rejects.toMatchObject({ kind: "forbidden" });

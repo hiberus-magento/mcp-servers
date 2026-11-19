@@ -40,11 +40,16 @@ export interface RestTransportDeps {
   readonly random?: () => number;
   readonly baseUrl: string;
   readonly tokenProvider: TokenProvider;
+  /** Per-attempt limit: Magento accepting the connection and never answering must not hang the tool call. */
+  readonly timeoutMs?: number;
 }
 
 export interface RestTransport {
   request(request: RestRequest): Promise<unknown>;
 }
+
+/** Long enough for a slow admin listing, short enough that a stalled instance fails the call. */
+export const DEFAULT_REST_TIMEOUT_MS = 30_000;
 
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
@@ -82,6 +87,7 @@ function retryAfterMs(response: Response): number | undefined {
 export function createRestTransport(deps: RestTransportDeps): RestTransport {
   const baseUrl = normalizeBaseUrl(deps.baseUrl);
   const random = deps.random ?? Math.random;
+  const timeoutMs = deps.timeoutMs ?? DEFAULT_REST_TIMEOUT_MS;
   const rateLimiter = new TokenBucketRateLimiter(REST_PACE, { now: deps.now, sleep: deps.sleep });
 
   async function attemptOnce(request: RestRequest): Promise<{ readonly value: unknown } | { readonly failure: MagentoRestError; readonly retryAfterMs?: number }> {
@@ -94,6 +100,7 @@ export function createRestTransport(deps: RestTransportDeps): RestTransport {
     }
 
     let response: Response;
+    let text: string;
     try {
       response = await deps.fetch(`${baseUrl}${request.path}${request.query !== undefined && request.query !== "" ? `?${request.query}` : ""}`, {
         method: request.method,
@@ -101,20 +108,23 @@ export function createRestTransport(deps: RestTransportDeps): RestTransport {
         // A redirect would re-send the request somewhere the operator never
         // configured; surface it as a failure instead of following it.
         redirect: "manual",
+        signal: AbortSignal.timeout(timeoutMs),
         ...(hasBody ? { body: JSON.stringify(request.body) } : {}),
       });
+      // Inside the try: the timeout also covers a body that starts and then stalls.
+      text = await response.text();
     } catch (cause) {
+      const timedOut = cause instanceof Error && cause.name === "TimeoutError";
       return {
         failure: new MagentoRestError({
           kind: "transport",
-          message: "Magento REST request failed before a response was received.",
+          message: timedOut ? `Magento REST request timed out after ${Math.round(timeoutMs / 1000)} s without a response.` : "Magento REST request failed before a complete response was received.",
           retryable: true,
           cause,
         }),
       };
     }
 
-    const text = await response.text();
     if (!response.ok) {
       const after = retryAfterMs(response);
       return { failure: classifyFailure(response.status, text), ...(after !== undefined ? { retryAfterMs: after } : {}) };
