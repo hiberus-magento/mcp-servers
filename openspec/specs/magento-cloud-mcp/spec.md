@@ -61,6 +61,38 @@ free-form mode string MAY exist anywhere in the schema.
   string instead of the `kind` discriminant
 - THEN the call site fails to compile
 
+### Requirement: magentocloud_query_database Accepts a Database Target
+
+`magentocloud_query_database` MUST accept optional top-level
+`relationship` and `app` fields (beside `projectId`/`environmentId`, never
+inside `request`) that apply to both request kinds and are forwarded to
+`db:size` / `db:sql`. They MUST share the client's own name schemas, so a
+malformed value is rejected before any process is spawned. When the CLI
+refuses because a relationship or app choice is required, the tool error
+MUST name the field to set and list the relationship names the CLI
+offered. The tool description MUST mention both fields and recommend a
+read replica relationship (e.g. `database-slave`) for diagnostics.
+
+#### Scenario: relationship applies to the size branch
+
+- GIVEN `relationship: "database-slave"` and `request: { kind: "size" }`
+- WHEN the tool executes
+- THEN the spawned `db:size` argv carries `--relationship database-slave`
+
+#### Scenario: A malformed relationship never spawns
+
+- GIVEN `relationship: "-r"`
+- WHEN the tool validates the input
+- THEN the call is rejected and no process is spawned
+
+#### Scenario: Multiple relationships produce an actionable error
+
+- GIVEN the CLI exits non-zero with its "More than one relationship
+  found." refusal
+- WHEN the tool result is returned
+- THEN it is `isError: true` and names `"relationship"` with the offered
+  relationship names
+
 ### Requirement: select Branch query Argument Is Mandatory
 
 The `{ kind: "select" }` branch's `query` field MUST be required in the

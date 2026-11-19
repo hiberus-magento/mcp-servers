@@ -572,3 +572,141 @@ describe("variable:list — the column set is pinned too", () => {
     expect(argv[flagIndex + 1]).toBe("name,level,value,is_enabled");
   });
 });
+
+// Environments with more than one database relationship (e.g. `database` and
+// a `database-slave` read replica) or more than one application make the
+// real CLI refuse to pick one non-interactively. `relationship` and `app`
+// are forwarded as their own argv tokens, on BOTH db:size and db:sql, and
+// validated by shape before anything is spawned.
+describe("db:size and db:sql — relationship / app selection", () => {
+  const BASE = { projectId: "acme-demo-project", environmentId: "acme-demo-env-main" } as const;
+  const QUERY = "SELECT entity_id FROM catalog_product_entity LIMIT 5";
+
+  function resolve(key: "db:size" | "db:sql") {
+    const spec = createMagentoCloudAllowlist(BIN).resolve(BIN, [key]);
+    if (!spec) throw new Error(`expected ${key} to be registered`);
+    return spec;
+  }
+
+  it("db:size argv is byte-identical to before when both are omitted", () => {
+    const result = validateArgv(resolve("db:size"), BASE);
+
+    expect(result.ok && result.value).toEqual([
+      "db:size",
+      "--project",
+      "acme-demo-project",
+      "--environment",
+      "acme-demo-env-main",
+      "--format=tsv",
+    ]);
+  });
+
+  it("db:sql argv is byte-identical to before when both are omitted", () => {
+    const result = validateArgv(resolve("db:sql"), { ...BASE, query: QUERY });
+
+    expect(result.ok && result.value).toEqual([
+      "db:sql",
+      "--project",
+      "acme-demo-project",
+      "--environment",
+      "acme-demo-env-main",
+      "--raw",
+      QUERY,
+    ]);
+  });
+
+  it("db:size forwards --relationship and --app as separate tokens, before the format flag", () => {
+    const result = validateArgv(resolve("db:size"), { ...BASE, relationship: "database-slave", app: "acme-demo-app" });
+
+    expect(result.ok && result.value).toEqual([
+      "db:size",
+      "--project",
+      "acme-demo-project",
+      "--environment",
+      "acme-demo-env-main",
+      "--relationship",
+      "database-slave",
+      "--app",
+      "acme-demo-app",
+      "--format=tsv",
+    ]);
+  });
+
+  it("db:sql forwards --relationship and --app as separate tokens, before --raw and the guarded query", () => {
+    const result = validateArgv(resolve("db:sql"), { ...BASE, query: QUERY, relationship: "database-slave", app: "acme-demo-app" });
+
+    expect(result.ok && result.value).toEqual([
+      "db:sql",
+      "--project",
+      "acme-demo-project",
+      "--environment",
+      "acme-demo-env-main",
+      "--relationship",
+      "database-slave",
+      "--app",
+      "acme-demo-app",
+      "--raw",
+      QUERY,
+    ]);
+  });
+
+  it("db:sql forwards relationship alone (app omitted)", () => {
+    const result = validateArgv(resolve("db:sql"), { ...BASE, query: QUERY, relationship: "database" });
+
+    expect(result.ok && result.value).toContain("--relationship");
+    expect(result.ok && result.value).not.toContain("--app");
+  });
+
+  it("accepts the CLI's own `<name>.<index>` relationship identifier form", () => {
+    const result = validateArgv(resolve("db:sql"), { ...BASE, query: QUERY, relationship: "database.1" });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("the guard still runs when relationship/app are supplied", () => {
+    const result = validateArgv(resolve("db:sql"), { ...BASE, query: "SELECT * FROM t", relationship: "database-slave" });
+
+    expect(result.ok).toBe(false);
+  });
+
+  it.each([
+    ["-r"],
+    ["--relationship=database"],
+    ["-database"],
+    ["database slave"],
+    ["Database"],
+    ["database;id"],
+    ["database/slave"],
+    [""],
+    ["database."],
+    ["a".repeat(65)],
+  ])("rejects the relationship %j on both specs before buildArgv runs", (relationship) => {
+    for (const key of ["db:size", "db:sql"] as const) {
+      const spec = resolve(key);
+      const buildArgv = vi.fn(spec.buildArgv);
+
+      const args = key === "db:sql" ? { ...BASE, query: QUERY, relationship } : { ...BASE, relationship };
+
+      const result = validateArgv({ ...spec, buildArgv }, args);
+
+      expect(result.ok).toBe(false);
+      expect(buildArgv).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each([["-acme"], ["--app"], ["acme demo"], ["AcmeApp"], ["acme-demo-app.1"], [""], ["a".repeat(65)]])(
+    "rejects the app %j on both specs before buildArgv runs",
+    (app) => {
+      for (const key of ["db:size", "db:sql"] as const) {
+        const spec = resolve(key);
+        const buildArgv = vi.fn(spec.buildArgv);
+        const args = key === "db:sql" ? { ...BASE, query: QUERY, app } : { ...BASE, app };
+
+        const result = validateArgv({ ...spec, buildArgv }, args);
+
+        expect(result.ok).toBe(false);
+        expect(buildArgv).not.toHaveBeenCalled();
+      }
+    },
+  );
+});

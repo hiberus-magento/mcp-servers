@@ -14,7 +14,14 @@
 // `dbSqlSpec`) — a guard rejection never spawns a process here either.
 import { parseCredentialCliArgs, persistCredential, readTokenFromStdin, redact } from "@hiberus-magento/mcp-core";
 import { pathToFileURL } from "node:url";
-import { createMagentoCloudAllowlist, ensureBinaryResolved, executeReadOnlyCommand, parseAuthInfo, MagentoCloudCommandFailedError } from "./client/index.js";
+import {
+  createMagentoCloudAllowlist,
+  describeDbTargetSelectionFailure,
+  ensureBinaryResolved,
+  executeReadOnlyCommand,
+  parseAuthInfo,
+  MagentoCloudCommandFailedError,
+} from "./client/index.js";
 import { MAGENTO_CLOUD_DOMAIN, resolveMagentoCloudCredentialDirect } from "./credential-provider.js";
 
 export interface CliRunResult {
@@ -189,7 +196,10 @@ async function runDbSql(flags: Record<string, string>, deps: CliDeps): Promise<C
   const environmentId = flags["environment"];
   const query = flags["query"];
   if (projectId === undefined || environmentId === undefined || query === undefined) {
-    return { exitCode: 1, stderr: "db:sql requires --project <id> --environment <id> --query <sql>." };
+    return {
+      exitCode: 1,
+      stderr: "db:sql requires --project <id> --environment <id> --query <sql> [--relationship <name>] [--app <name>].",
+    };
   }
 
   let bin: string;
@@ -210,11 +220,25 @@ async function runDbSql(flags: Record<string, string>, deps: CliDeps): Promise<C
   if (flags["maxRows"] !== undefined) {
     rawArgs["maxRows"] = Number(flags["maxRows"]);
   }
+  // Validated by the same spec schema as the MCP tool's: a malformed name is
+  // a schema failure here too, so it never reaches a spawned process.
+  if (flags["relationship"] !== undefined) {
+    rawArgs["relationship"] = flags["relationship"];
+  }
+  if (flags["app"] !== undefined) {
+    rawArgs["app"] = flags["app"];
+  }
 
   try {
     const stdout = await executeReadOnlyCommand({ spec: specWithEnv, rawArgs, now: deps.now });
     return { exitCode: 0, stdout };
   } catch (error) {
+    if (error instanceof MagentoCloudCommandFailedError && error.kind === "generic") {
+      const hint = describeDbTargetSelectionFailure(error.message, { relationship: "--relationship", app: "--app" });
+      if (hint !== undefined) {
+        return { exitCode: 1, stderr: renderError(new Error(hint)) };
+      }
+    }
     return { exitCode: 1, stderr: renderError(error) };
   }
 }

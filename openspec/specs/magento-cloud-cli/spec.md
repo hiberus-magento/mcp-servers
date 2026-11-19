@@ -90,6 +90,27 @@ registration.
 - WHEN the MCP server's `tools/list` response is inspected
 - THEN no tool corresponds to either operation on that list
 
+### Requirement: db:sql Accepts --relationship and --app
+
+The operator `db:sql` command MUST accept optional `--relationship <name>`
+and `--app <name>` flags, validated by the same `db:sql` spec schema as the
+MCP tool, and forward them to the upstream CLI. A malformed value MUST exit
+non-zero without spawning a process. When the upstream CLI refuses because
+a relationship or app choice is required, stderr MUST name the flag to set
+and list the relationship names the CLI offered.
+
+#### Scenario: Flags are forwarded
+
+- GIVEN `db:sql ... --relationship database-slave --app acme-demo-app`
+- WHEN the command runs
+- THEN the spawned argv carries both flags before `--raw`
+
+#### Scenario: A malformed name never spawns
+
+- GIVEN `--relationship -r`
+- WHEN the command runs
+- THEN it exits non-zero and no process is spawned
+
 ### Requirement: Exit Codes Reflect Outcome
 
 The CLI MUST exit `0` on success and a non-zero code on any failure,
