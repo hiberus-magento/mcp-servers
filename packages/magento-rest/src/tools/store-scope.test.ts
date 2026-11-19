@@ -96,4 +96,20 @@ describe("store scope of catalog and CMS writes", () => {
     await harness.call("magentorest_delete_product", { sku: SKU });
     expect(scopes(harness.paths())).toEqual(["(base)", "(base)"]);
   });
+
+  it("create_product says how it assigns websites, and sends website_ids only when given", async () => {
+    const harness = buildToolHarness(tools, routes("all"));
+    expect(harness.tool("magentorest_create_product").description).toMatch(/every website/);
+    await harness.call("magentorest_create_product", { sku: SKU, name: "Demo", price: 1 });
+    await harness.call("magentorest_create_product", { sku: SKU, name: "Demo", price: 1, website_ids: [1, 2] });
+    const bodies = harness.double.calls.map((call) => JSON.parse(call.body ?? "{}") as { product: { extension_attributes?: unknown } });
+    expect(bodies[0]?.product.extension_attributes).toBeUndefined();
+    expect(bodies[1]?.product.extension_attributes).toEqual({ website_ids: [1, 2] });
+  });
+
+  it("a CMS block update says it resets the store assignment; a page update says it keeps it", () => {
+    const harness = buildToolHarness(tools, {});
+    expect(harness.tool("magentorest_update_cms_block").description).toMatch(/resets/);
+    expect(harness.tool("magentorest_update_cms_page").description).toMatch(/keeps its store assignment/);
+  });
 });

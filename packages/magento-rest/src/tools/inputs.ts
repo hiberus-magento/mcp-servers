@@ -7,7 +7,11 @@ import { z } from "zod";
 import { CONDITION_TYPES, FIELD_NAME_PATTERN, type MagentoRestClient } from "../client/index.js";
 
 /** Magento caps a SKU at 64 characters. */
-export const sku = z.string().min(1).max(64).describe("The SKU (Stock Keeping Unit) of the product.");
+export const sku = z
+  .string()
+  .min(1)
+  .max(64)
+  .describe("The SKU (Stock Keeping Unit) of the product. A / in it is sent as %2F, which Apache with AllowEncodedSlashes Off answers 404.");
 
 export const entityId = (what: string) => z.number().int().min(1).describe(`The numeric ID of the ${what}.`);
 
@@ -44,7 +48,7 @@ export const storeCode = z
   .regex(/^[A-Za-z][A-Za-z0-9_]{0,31}$/, "a store view code: letters, digits and underscores")
   .optional()
   .describe(
-    "Store view code whose own values to change (e.g. default). Omit to change the global values every store view inherits (scope all); a store view that already has its own value keeps it.",
+    "Store view code whose own values to change (e.g. default). Omit to change the global values every store view inherits (scope all); a store view that already has its own value keeps it. An unknown code is answered as not found.",
   );
 
 /** The client view a scoped write uses: the named store view, or `all`. */

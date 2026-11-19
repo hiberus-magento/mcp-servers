@@ -83,7 +83,8 @@ export function productTools({ readTool, writeTool, shapes }: ToolFactory): read
 
     writeTool({
       name: "magentorest_create_product",
-      description: "Use this to create a new product. Adds a catalog record; the SKU must be unique. Does not touch stock or categories.",
+      description:
+        "Use this to create a new product. Adds a catalog record; the SKU must be unique. Does not touch stock or categories. Without website_ids, a product created in the global scope (no store_code) is assigned to every website, and one created with store_code to that store view's website.",
       effect: "create",
       input: z
         .object({
@@ -100,6 +101,7 @@ export function productTools({ readTool, writeTool, shapes }: ToolFactory): read
           meta_title: z.string().max(255).optional().describe("SEO meta title."),
           meta_description: z.string().max(1000).optional().describe("SEO meta description."),
           url_key: z.string().max(255).optional().describe("URL key."),
+          website_ids: z.array(z.number().int().min(1)).min(1).max(100).optional().describe("Website IDs to assign the product to (default: see the description)."),
           store_code: storeCode,
         })
         .strict(),
@@ -122,6 +124,7 @@ export function productTools({ readTool, writeTool, shapes }: ToolFactory): read
               ...prose("meta_description", args.meta_description),
               ...prose("url_key", args.url_key),
             ],
+            ...(args.website_ids !== undefined ? { extension_attributes: { website_ids: args.website_ids } } : {}),
           },
         }),
     }),

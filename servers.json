@@ -296,7 +296,7 @@
         {
           "name": "magentorest_create_product",
           "readOnly": false,
-          "description": "Use this to create a new product. Adds a catalog record; the SKU must be unique. Does not touch stock or categories."
+          "description": "Use this to create a new product. Adds a catalog record; the SKU must be unique. Does not touch stock or categories. Without website_ids, a product created in the global scope (no store_code) is assigned to every website, and one created with store_code to that store view's website."
         },
         {
           "name": "magentorest_update_product",
@@ -586,7 +586,7 @@
         {
           "name": "magentorest_update_cms_block",
           "readOnly": false,
-          "description": "Use this to change a CMS block's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront. The block ends up assigned to all store views: Magento's REST interface cannot keep a narrower store assignment."
+          "description": "Use this to change a CMS block's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront. The block ends up assigned to all store views: Magento resets a block's store assignment on every REST update."
         },
         {
           "name": "magentorest_delete_cms_block",
@@ -606,7 +606,7 @@
         {
           "name": "magentorest_update_cms_page",
           "readOnly": false,
-          "description": "Use this to change a CMS page's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront. The page ends up assigned to all store views: Magento's REST interface cannot keep a narrower store assignment."
+          "description": "Use this to change a CMS page's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront. The page keeps its store assignment."
         },
         {
           "name": "magentorest_delete_cms_page",

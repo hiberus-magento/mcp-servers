@@ -12,9 +12,10 @@
 //     StoreId): the REST body for a block or a page takes no store assignment, so
 //     the original's create never worked there. Without one Magento assigns the
 //     record to the CURRENT store, which through `/rest/V1` is the default store
-//     view alone; every CMS write here therefore runs in the `all` scope, so the
-//     record is on all store views (an update too: REST cannot read or keep a
-//     narrower assignment);
+//     view alone; every CMS write here therefore runs in the `all` scope, so a new
+//     record is on all store views. An update keeps a page's assignment, but
+//     `BlockRepository::save()` sets the current store before merging, so every
+//     REST update of a block resets it (here: to all store views);
 //   - the searches return summaries WITHOUT `content` (an HTML body can be very
 //     large, and the original filtered only on identifier and title anyway);
 //     `get_*_by_id` returns the content;
@@ -118,7 +119,7 @@ export function cmsTools({ readTool, writeTool, shapes }: ToolFactory): readonly
 
     writeTool({
       name: `magentorest_update_cms_${kind.name}`,
-      description: `Use this to change a CMS ${kind.name}'s identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront. The ${kind.name} ends up assigned to all store views: Magento's REST interface cannot keep a narrower store assignment.`,
+      description: `Use this to change a CMS ${kind.name}'s identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront. ${kind.name === "block" ? "The block ends up assigned to all store views: Magento resets a block's store assignment on every REST update." : "The page keeps its store assignment."}`,
       effect: "update",
       input: z
         .object({

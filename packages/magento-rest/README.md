@@ -44,7 +44,7 @@ executable to run`.
 - `magentorest_get_product_by_sku` (read-only) — Use this to read one product by its SKU: name, price, status, visibility, type, timestamps, catalog attributes and category links.
 - `magentorest_search_products` (read-only) — Use this to find products whose name contains a phrase. Returns a bounded page of summaries (id, sku, name, price, status, type) and the total count.
 - `magentorest_advanced_product_search` (read-only) — Use this to filter products on one field with a chosen comparison (eq, like, gt, gteq, lt, lteq, in, ...) and sort the result. Returns a bounded page of summaries and the total count.
-- `magentorest_create_product` — Use this to create a new product. Adds a catalog record; the SKU must be unique. Does not touch stock or categories.
+- `magentorest_create_product` — Use this to create a new product. Adds a catalog record; the SKU must be unique. Does not touch stock or categories. Without website_ids, a product created in the global scope (no store_code) is assigned to every website, and one created with store_code to that store view's website.
 - `magentorest_update_product` — Use this to change fields of an existing product. Only the fields you pass are sent; at least one is required. Overwrites the current values.
 - `magentorest_update_product_attribute` — Use this to set ONE attribute of a product by code (name, price, status, description, a custom attribute, ...). Overwrites the current value. The identity attributes sku, id, entity_id and type_id are refused.
 - `magentorest_delete_product` — Use this to permanently delete a product by SKU. Irreversible: the product, its images and its URL rewrites are removed.
@@ -102,11 +102,11 @@ executable to run`.
 - `magentorest_get_abandoned_carts` (read-only) — Use this to find abandoned carts: active, non-empty carts not updated for at least a number of days, most recently updated first. Each entry names the owner (or Guest), the item count and the dates. Returns a bounded page, the total count and the cutoff used.
 - `magentorest_get_cms_block_by_id` (read-only) — Use this to read one CMS block by ID, including its content (HTML), title, identifier, dates and whether it is active.
 - `magentorest_search_cms_blocks` (read-only) — Use this to find CMS blocks by identifier (exact), part of the title, or active status. Filters are combined with AND. Returns a bounded page of summaries WITHOUT the content, and the total count; read one by ID for its content.
-- `magentorest_update_cms_block` — Use this to change a CMS block's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront. The block ends up assigned to all store views: Magento's REST interface cannot keep a narrower store assignment.
+- `magentorest_update_cms_block` — Use this to change a CMS block's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront. The block ends up assigned to all store views: Magento resets a block's store assignment on every REST update.
 - `magentorest_delete_cms_block` — Use this to permanently delete a CMS block by ID. Irreversible: it disappears from the storefront immediately.
 - `magentorest_get_cms_page_by_id` (read-only) — Use this to read one CMS page by ID, including its content (HTML), title, identifier, dates and whether it is active.
 - `magentorest_search_cms_pages` (read-only) — Use this to find CMS pages by identifier (exact), part of the title, or active status. Filters are combined with AND. Returns a bounded page of summaries WITHOUT the content, and the total count; read one by ID for its content.
-- `magentorest_update_cms_page` — Use this to change a CMS page's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront. The page ends up assigned to all store views: Magento's REST interface cannot keep a narrower store assignment.
+- `magentorest_update_cms_page` — Use this to change a CMS page's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront. The page keeps its store assignment.
 - `magentorest_delete_cms_page` — Use this to permanently delete a CMS page by ID. Irreversible: it disappears from the storefront immediately.
 - `magentorest_create_cms_block` — Use this to create a CMS block. Adds a block for all store views (Magento's REST body takes no store assignment) that is active unless you say otherwise.
 - `magentorest_create_cms_page` — Use this to create a CMS page at a URL key. Adds a page for all store views (Magento's REST body takes no store assignment) that is active, with a one-column layout, unless you say otherwise.
@@ -221,16 +221,22 @@ store view. So:
   they change the global values every store view inherits. A store view that
   already has its own value keeps it. Pass `store_code` to change one store
   view's own value instead;
-- the CMS creates and updates always run in `all`, so the record is on all store
-  views. An update also moves a block or page that was assigned to some store
-  views only onto all of them: Magento's REST interface can neither read nor
-  keep a narrower assignment, so change those in the admin;
+- `create_product` with no `store_code` and no `website_ids` assigns the new
+  product to **every website** (Magento does that for a product created in the
+  global scope); with `store_code`, to that store view's website. Pass
+  `website_ids` to choose;
+- the CMS creates and updates always run in `all`, so a new block or page is on
+  all store views. A page update keeps the page's store assignment. A **block**
+  update does not: Magento resets a block's assignment on every REST update
+  (here, to all store views), and its REST interface can neither read nor set
+  one, so change a block that belongs to some store views only in the admin;
 - reads, and writes with no store-scoped values (orders, invoices, stock,
   deletes, category moves), use `MAGENTO_REST_BASE_URL` as configured.
 
 The scoped URL is built from the base URL, `/rest/<scope>/V1`, so a store-scoped
-write needs a base URL ending in `/rest/V1` or `/rest/<store-code>/V1`. Not yet
-checked against a live multi-store instance.
+write needs a base URL ending in `/rest/V1` or `/rest/<store-code>/V1`. An
+unknown `store_code` is answered as not found. Checked against the Magento
+2.4.5–2.4.8 source, not yet against a live multi-store instance.
 
 ### A SKU that contains `/`
 
