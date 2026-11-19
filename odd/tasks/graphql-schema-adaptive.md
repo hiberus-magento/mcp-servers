@@ -1,0 +1,23 @@
+# magento-graphql: tools that adapt to the connected store's schema
+
+Objective: one `@hiberus-magento/magento-graphql` package with every tool of the latest Adobe Commerce + B2B schema, usable against any Magento: each fixed document is trimmed to what the connected store's schema has, and a tool whose operation the store lacks says so (and leaves tools/list when the client supports list changes).
+Branch: `feat/graphql-schema-adaptive`, stacked on `fix/pre-publish-hardening` (c-chain: PR after the hardening PR). Runner: vitest (`pnpm --filter @hiberus-magento/magento-graphql test`).
+
+## Specs
+
+- S1 — Fixture and regeneration: commit the user's introspection (latest Adobe Commerce with B2B) as the generator's fixture and regenerate `src/tools/generated/schema-tools.ts` from it, so generation is reproducible (`node scripts/gen-graphql-tools.mjs <fixture>`); every one of the 34 operations the generator does not know is placed on purpose (group + effect), following the existing conventions. User: "lo he sacado de un magento en su ultima version y con los modulos de B2B activos, pero es correcto, porque queremos tener todas las tools posibles para poderlo usar de forma generica en cualquier ecommerce".
+- S2 — Store schema: on the first tool call that runs a fixed document, the client fetches a slim introspection of the connected store (type names, kinds, fields with their types and argument names, possible types) once per process; concurrent calls share it. If introspection fails or is disabled, the client works in fallback mode (S5). User: "es la tool la que debe ser capaz de validar si ese endpoint o tool está disponible en el magento conectado".
+- S3 — Trimming: before sending a FIXED document (curated and generated tools; never the generic `query` tool's caller-written document), every field the store's type lacks is removed, every argument the store's field lacks is removed, a selection set left empty removes its field, a variable no longer used is removed from the definitions and from the variables sent. The trimmed document still passes the operation guard. User: "como podemos resolver este problema? y poder reutilizar el mismo MCP para todos?"
+- S4 — Unavailable operations: a tool whose root operation the store's schema lacks answers a classified error saying the connected store does not offer that operation (no request beyond the introspection); once the schema is known, such tools are disabled in the MCP server so clients that honour `notifications/tools/list_changed` stop listing them.
+- S5 — Fallback without introspection: the full document is sent; when Magento answers a validation error naming a field that does not exist on a type (`Cannot query field "x" on type "Y"`), a QUERY is retried once per named field with that field removed, at most 5 times; a mutation is never retried and reports the error.
+- S6 — Design and docs: a new decision D12 in `openspec/changes/2026-11-05-magento-graphql-package/design.md` (keeps D2: no `graphql-js`, the trimmer only reads documents this package generates), README / onboarding / servers.json updated for the new tools and the adaptive behaviour; changeset text updated.
+
+## Tasks
+
+- T1 [S1-S6] schema-adaptive client, trimmer, tool availability, fixture + regeneration, docs — delegated (writer reason: long-session context backstop; one dependent unit) — status: pending
+
+## Log
+
+- L1 (2026-11-19, user): "porque lo he sacado de un magento en su ultima version y con los modulos de B2B activos, pero es correcto, porque queremos tener todas las tools posibles para poderlo usar de forma generica en cualquier ecommerce, es la tool la que debe ser capaz de validar si ese endpoint o tool está disponible en el magento conectado, lo ves bien asi?" / "como podemos resolver este problema? y poder reutilizar el mismo MCP para todos?"
+- L2 (2026-11-19, user): "si, implementalo antes de publicar magento-graphql"
+- L3 (2026-11-19): probe on the fixture (see `odd/tasks/pre-publish-hardening.md` L11): 913 types, 59 queries, 182 mutations; 34 operations unknown to the generator; with them skipped, ~30 existing documents change and 2 tools disappear (deprecated operations excluded by the introspection). The `resendConfirmationEmail` → action edit is reproduced by the generator.
