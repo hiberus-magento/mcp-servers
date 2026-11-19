@@ -886,7 +886,7 @@
           {
             "name": "MAGENTO_GRAPHQL_ALLOW_WRITES",
             "required": false,
-            "description": "Set to exactly `true` to register every mutation tool (cart, checkout, account, wish list, returns, B2B and the rest; about 160 of them). Unset, or any other value, and the server registers read tools only — a mutation tool is then absent from tools/list, not merely refused. Read once at startup. The generic query tool never runs mutations, with or without this switch."
+            "description": "Set to exactly `true` to register every mutation tool (cart, checkout, account, wish list, returns, B2B and the rest; about 180 of them). Unset, or any other value, and the server registers read tools only — a mutation tool is then absent from tools/list, not merely refused. Read once at startup. The generic query tool never runs mutations, with or without this switch."
           },
           {
             "name": "MAGENTO_GRAPHQL_GROUPS",

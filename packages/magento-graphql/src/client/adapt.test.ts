@@ -6,7 +6,8 @@
 import { SYNTHETIC_MAGENTO_GRAPHQL_URL } from "@hiberus-magento/mcp-testing";
 import { describe, expect, it } from "vitest";
 import { createFetchDouble, data, gqlErrors, json, type RecordedCall, type RouteResponse } from "../testing/fetch-double.js";
-import { isIntrospection, schemaDouble } from "../testing/schema-double.js";
+import { introspectionOf, isIntrospection, schemaDouble } from "../testing/schema-double.js";
+import { createSchemaSource } from "./adapt.js";
 import { MagentoGraphqlError, OperationGuardError, createMagentoGraphqlClient, type MagentoGraphqlClientDeps } from "./index.js";
 
 const STORE = {
@@ -168,5 +169,15 @@ describe("when the schema cannot be read", () => {
     const { client, sent } = build(() => gqlErrors(['Cannot query field "company" on type "Query".']), gqlErrors(["introspection disabled"]));
     await expect(client.query("query Q { company { id } }", { adapt: true })).rejects.toMatchObject({ kind: "unsupported-operation" });
     expect(sent()).toHaveLength(1);
+  });
+});
+
+describe("the schema listener", () => {
+  it("throwing does not leave the call pending: the schema is still answered", async () => {
+    const source = createSchemaSource(async () => ({ data: introspectionOf(STORE) }), () => {
+      throw new Error("listener");
+    });
+    await expect(source()).resolves.toBeDefined();
+    await expect(source(new AbortController().signal)).resolves.toBeDefined();
   });
 });

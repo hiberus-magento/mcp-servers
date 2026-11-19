@@ -2,7 +2,7 @@
 
 An MCP (Model Context Protocol) server, and a companion operator CLI, for the
 **Magento 2 / Adobe Commerce GraphQL API** of one instance — every Query and Mutation of
-the core storefront schema: catalog, CMS, store, cart, checkout, customer account, wish lists, returns,
+the latest Adobe Commerce storefront schema, adapted to what the connected store offers: catalog, CMS, store, cart, checkout, customer account, wish lists, returns,
 payments and the Adobe Commerce B2B operations — with every mutation switched off unless you turn them on.
 
 > **This is not the REST server, and not EDS, ACS or ACO.** Adjacent names that are
@@ -297,7 +297,7 @@ executable to run`.
 - `MAGENTO_GRAPHQL_BASE_URL` (required) — The Magento GraphQL endpoint every magentographql_* tool addresses, e.g. https://<host>/graphql. Resolved on the first tool call and refused without it; tools/list still works. Must be https — plain http is accepted only for localhost.
 - `MAGENTO_GRAPHQL_TOKEN` (optional) — A Magento CUSTOMER token, sent as a Bearer. Optional: the storefront schema is public, so every tool except the customer group works without one. It may come from this variable OR from the credential file written by `hiberus-magento-graphql auth token set`. Obtain it outside this server (the generateCustomerToken mutation). In read-only mode the server never handles passwords; with MAGENTO_GRAPHQL_ALLOW_WRITES=true the customer-account mutations (magentographql_generate_customer_token, magentographql_change_customer_password, magentographql_create_customer_v2, magentographql_delete_customer and similar) take passwords as arguments and return tokens into the conversation.
 - `MAGENTO_GRAPHQL_STORE` (optional) — The store view code sent as the `Store` header, e.g. `default`, so every tool reads that view. A tool's own `store` argument overrides it. Unset, Magento answers for the default view. Must be 1-32 characters of a-z, 0-9 and underscore.
-- `MAGENTO_GRAPHQL_ALLOW_WRITES` (optional) — Set to exactly `true` to register every mutation tool (cart, checkout, account, wish list, returns, B2B and the rest; about 160 of them). Unset, or any other value, and the server registers read tools only — a mutation tool is then absent from tools/list, not merely refused. Read once at startup. The generic query tool never runs mutations, with or without this switch.
+- `MAGENTO_GRAPHQL_ALLOW_WRITES` (optional) — Set to exactly `true` to register every mutation tool (cart, checkout, account, wish list, returns, B2B and the rest; about 180 of them). Unset, or any other value, and the server registers read tools only — a mutation tool is then absent from tools/list, not merely refused. Read once at startup. The generic query tool never runs mutations, with or without this switch.
 - `MAGENTO_GRAPHQL_GROUPS` (optional) — Comma-separated tool groups to load, e.g. `products,cms`, so a project registers only the tools it needs. Groups: `products`, `product-alerts`, `categories`, `cms`, `store`, `customer`, `account`, `cart`, `checkout`, `orders`, `returns`, `wishlist`, `compare`, `payments`, `gift-and-rewards`, `gift-registry`, `company`, `purchase-orders`, `quotes`, `requisition-lists`, `query`. Case-insensitive; blanks and repeats are ignored. Unset or empty loads every group. A name that is not a group stops the server with exit code 1, listing the valid ones. MAGENTO_GRAPHQL_ALLOW_WRITES still decides whether the mutation tools of a loaded group are registered. Read once at startup.
 
 ## Configure in an MCP client

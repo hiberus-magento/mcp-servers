@@ -2,6 +2,7 @@
 //
 // RED-first. The assembled surface and the ONE place the write switch is enforced; plus the
 // repository-wide checks over every shipped document (design D3).
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { GROUP_NAMES, allMagentoGraphqlTools, assertUniqueNames, createMagentoGraphqlTools, parseGroups, unsupportedTools } from "./index.js";
 import { inspectDocument, MAX_SELECTION_DEPTH } from "../client/index.js";
@@ -101,5 +102,14 @@ describe("unsupportedTools", () => {
     expect(names).toContain("magentographql_add_products_to_cart");
     // Left enabled: the two offered, the generic query tool and the two introspection reads.
     expect(names).toHaveLength(tools.length - 5);
+  });
+});
+
+describe("the documented mutation-tool count", () => {
+  it("in servers.json is within 10% of the real number of write tools", () => {
+    const manifest = readFileSync(new URL("../../../../servers.json", import.meta.url), "utf8");
+    const stated = Number(/about (\d+) of them/.exec(manifest)?.[1]);
+    const real = all.filter((t) => t.access === "write").length;
+    expect(Math.abs(stated - real) / real).toBeLessThanOrEqual(0.1);
   });
 });

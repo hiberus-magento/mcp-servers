@@ -26,7 +26,7 @@ be a currency that view allows.
 ## 3. Read-only by default, and what "write mode" means
 
 With `MAGENTO_GRAPHQL_ALLOW_WRITES` unset, or anything but the exact text `true`, every mutation tool is
-**not registered**: about 160 tools, from the cart ones to checkout, account, wish lists, returns and the B2B
+**not registered**: about 180 tools, from the cart ones to checkout, account, wish lists, returns and the B2B
 operations, do not appear in the tool list at all. Turning it on registers them, including `place_order`, which
 places a real order from the cart, and the account tools that take a password. The generic `magentographql_query`
 tool refuses mutations in both modes.

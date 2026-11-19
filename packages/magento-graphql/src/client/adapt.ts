@@ -47,7 +47,13 @@ export function createSchemaSource(read: () => Promise<GraphqlResult>, onSchema?
       (result) => {
         const schema = readStoreSchema(result.data);
         state = { status: "known", schema };
-        if (schema !== undefined) onSchema?.((kind, operation) => offersOperation(schema, kind, operation));
+        if (schema !== undefined) {
+          try {
+            onSchema?.((kind, operation) => offersOperation(schema, kind, operation));
+          } catch {
+            // A failing listener only loses the tool-list update; the calls still adapt to the schema.
+          }
+        }
         return schema;
       },
       (error: unknown) => {
