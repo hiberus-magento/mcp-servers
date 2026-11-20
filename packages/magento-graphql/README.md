@@ -32,7 +32,7 @@ read-only query and refuses mutations before anything is sent.
 
 | Binary | What it is |
 | --- | --- |
-| `hiberus-magento-graphql-mcp` | The **stdio MCP server**. This is what you put in an MCP client's configuration. It speaks JSON-RPC on stdout and nothing else. |
+| `hiberus-magento-graphql-mcp` | The **MCP server**. By default it speaks JSON-RPC over stdio: this is what you put in an MCP client's configuration. With `MAGENTO_GRAPHQL_HTTP_PORT` set it serves HTTP instead (see [Running over HTTP](#running-over-http)). |
 | `hiberus-magento-graphql` | The **operator CLI**, for a human at a terminal. It stores the optional customer token (`auth token set`, from stdin) and checks the setup (`auth status`). It has no command that reads or writes store data. |
 
 With two binaries declared, `npx` has to be told which one to run
@@ -299,6 +299,11 @@ executable to run`.
 - `MAGENTO_GRAPHQL_STORE` (optional) — The store view code sent as the `Store` header, e.g. `default`, so every tool reads that view. A tool's own `store` argument overrides it. Unset, Magento answers for the default view. Must be 1-32 characters of a-z, 0-9 and underscore.
 - `MAGENTO_GRAPHQL_ALLOW_WRITES` (optional) — Set to exactly `true` to register every mutation tool (cart, checkout, account, wish list, returns, B2B and the rest; about 180 of them). Unset, or any other value, and the server registers read tools only — a mutation tool is then absent from tools/list, not merely refused. Read once at startup. The generic query tool never runs mutations, with or without this switch.
 - `MAGENTO_GRAPHQL_GROUPS` (optional) — Comma-separated tool groups to load, e.g. `products,cms`, so a project registers only the tools it needs. Groups: `products`, `product-alerts`, `categories`, `cms`, `store`, `customer`, `account`, `cart`, `checkout`, `orders`, `returns`, `wishlist`, `compare`, `payments`, `gift-and-rewards`, `gift-registry`, `company`, `purchase-orders`, `quotes`, `requisition-lists`, `query`. Case-insensitive; blanks and repeats are ignored. Unset or empty loads every group. A name that is not a group stops the server with exit code 1, listing the valid ones. MAGENTO_GRAPHQL_ALLOW_WRITES still decides whether the mutation tools of a loaded group are registered. Read once at startup.
+- `MAGENTO_GRAPHQL_HTTP_PORT` (optional) — Set to serve MCP over HTTP instead of stdio, for callers that cannot own a child process (for example a PHP middleware or a queue consumer). Opt-in: unset or blank and the server speaks stdio exactly as before. `0` picks a free port, which is logged to stderr as `magento-graphql: listening on http://<host>:<port>/mcp`. Stateless: one POST per call, no session, JSON replies. Requires MAGENTO_GRAPHQL_HTTP_TOKEN. Read once at startup. Headers, examples and status codes: docs/http-mode.md.
+- `MAGENTO_GRAPHQL_HTTP_TOKEN` (optional) — Bearer token the HTTP caller must send as `Authorization: Bearer <token>`. Required when MAGENTO_GRAPHQL_HTTP_PORT is set; at least 32 characters (generate one with `openssl rand -hex 32`), otherwise the server stops with exit code 1. Read from the environment only, never from argv, and never logged or echoed. Rotating it means restarting the server.
+- `MAGENTO_GRAPHQL_HTTP_HOST` (optional) — Interface the HTTP endpoint binds to. Default `127.0.0.1` (loopback only). Set it to `0.0.0.0` or a container address only when the server must be reached from another host, and then list the names callers use in MAGENTO_GRAPHQL_HTTP_ALLOWED_HOSTS.
+- `MAGENTO_GRAPHQL_HTTP_ALLOWED_HOSTS` (optional) — Comma-separated extra `Host` header values the HTTP endpoint accepts, for example `magento-graphql:3000`, beyond loopback with the bound port. A request with any other Host is refused with 403 (DNS rebinding protection).
+- `MAGENTO_GRAPHQL_HTTP_ALLOWED_ORIGINS` (optional) — Comma-separated `Origin` values the HTTP endpoint accepts. Unset, any request that carries an Origin header is refused with 403: this server is for backends, not browsers.
 
 ## Configure in an MCP client
 
@@ -324,6 +329,32 @@ Pin the exact version; pass secrets as environment variable references, never li
 ```
 
 <!-- package:end -->
+
+## Running over HTTP
+
+For a caller that cannot launch a child process (a PHP middleware, a queue consumer), set a port and a
+token and the server listens on `http://127.0.0.1:<port>/mcp` instead of stdio:
+
+```sh
+export MAGENTO_GRAPHQL_BASE_URL=https://demo-host.example-domain/graphql
+export MAGENTO_GRAPHQL_HTTP_PORT=3100
+export MAGENTO_GRAPHQL_HTTP_TOKEN="$(openssl rand -hex 32)"
+npx -y --package @hiberus-magento/magento-graphql hiberus-magento-graphql-mcp
+
+curl -s http://127.0.0.1:3100/mcp \
+  -H "Authorization: Bearer $MAGENTO_GRAPHQL_HTTP_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"magentographql_get_store_config","arguments":{}}}'
+```
+
+`MAGENTO_GRAPHQL_HTTP_TOKEN` is the secret HTTP callers send; it is not the customer token, which still comes
+from `MAGENTO_GRAPHQL_TOKEN` or the stored file (see [Credentials](#credentials)). Each call is one `POST`
+with a JSON-RPC body: no `initialize`, no session. All three headers are required; without that `Accept`
+value the reply is `406`. A tool that fails answers HTTP `200` with `"isError": true`.
+The [HTTP mode guide](https://github.com/hiberus-magento/mcp-servers/blob/main/docs/http-mode.md) has the
+status codes, the setup for reaching it from another container, and its limits (one store per process, the
+server's identity on every call).
 
 ## Credentials
 
@@ -447,6 +478,7 @@ release or a B2B one:
 
 - [Repository](https://github.com/hiberus-magento/mcp-servers) — source, issues, and the other servers in this family.
 - [Magento GraphQL onboarding](https://github.com/hiberus-magento/mcp-servers/blob/main/docs/magento-graphql-onboarding.md) — the endpoint, the store view, the customer token, the write switch, and what the failures mean.
+- [HTTP mode](https://github.com/hiberus-magento/mcp-servers/blob/main/docs/http-mode.md) — running it as an HTTP service for a backend: the headers, curl examples, status codes, containers, and its limits.
 - [Team setup guide](https://github.com/hiberus-magento/mcp-servers/blob/main/docs/team-setup.md) — where MCP client configuration lives, and which file must never hold a secret.
 
 ## License

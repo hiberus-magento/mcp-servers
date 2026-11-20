@@ -850,6 +850,31 @@
             "name": "MAGENTO_REST_DATABASE_ALLOW_WRITES",
             "required": false,
             "description": "Set to exactly `true` to register magentorest_db_execute (one INSERT, UPDATE or DELETE per call, in a transaction, with a dry run and a cap on rows changed). A switch of its own: MAGENTO_REST_ALLOW_WRITES does not enable it. Unset, or any other value, and the tool is absent from tools/list. Without MAGENTO_REST_DATABASE_CONNECTION it stops the server with exit code 1. Read once at startup."
+          },
+          {
+            "name": "MAGENTO_REST_HTTP_PORT",
+            "required": false,
+            "description": "Set to serve MCP over HTTP instead of stdio, for callers that cannot own a child process (for example a PHP middleware or a queue consumer). Opt-in: unset or blank and the server speaks stdio exactly as before. `0` picks a free port, which is logged to stderr as `magento-rest: listening on http://<host>:<port>/mcp`. Stateless: one POST per call, no session, JSON replies. Requires MAGENTO_REST_HTTP_TOKEN. Read once at startup. Headers, examples and status codes: docs/http-mode.md."
+          },
+          {
+            "name": "MAGENTO_REST_HTTP_TOKEN",
+            "required": false,
+            "description": "Bearer token the HTTP caller must send as `Authorization: Bearer <token>`. Required when MAGENTO_REST_HTTP_PORT is set; at least 32 characters (generate one with `openssl rand -hex 32`), otherwise the server stops with exit code 1. Read from the environment only, never from argv, and never logged or echoed. Rotating it means restarting the server."
+          },
+          {
+            "name": "MAGENTO_REST_HTTP_HOST",
+            "required": false,
+            "description": "Interface the HTTP endpoint binds to. Default `127.0.0.1` (loopback only). Set it to `0.0.0.0` or a container address only when the server must be reached from another host, and then list the names callers use in MAGENTO_REST_HTTP_ALLOWED_HOSTS."
+          },
+          {
+            "name": "MAGENTO_REST_HTTP_ALLOWED_HOSTS",
+            "required": false,
+            "description": "Comma-separated extra `Host` header values the HTTP endpoint accepts, for example `magento-rest:3000`, beyond loopback with the bound port. A request with any other Host is refused with 403 (DNS rebinding protection)."
+          },
+          {
+            "name": "MAGENTO_REST_HTTP_ALLOWED_ORIGINS",
+            "required": false,
+            "description": "Comma-separated `Origin` values the HTTP endpoint accepts. Unset, any request that carries an Origin header is refused with 403: this server is for backends, not browsers."
           }
         ]
       }
@@ -892,6 +917,31 @@
             "name": "MAGENTO_GRAPHQL_GROUPS",
             "required": false,
             "description": "Comma-separated tool groups to load, e.g. `products,cms`, so a project registers only the tools it needs. Groups: `products`, `product-alerts`, `categories`, `cms`, `store`, `customer`, `account`, `cart`, `checkout`, `orders`, `returns`, `wishlist`, `compare`, `payments`, `gift-and-rewards`, `gift-registry`, `company`, `purchase-orders`, `quotes`, `requisition-lists`, `query`. Case-insensitive; blanks and repeats are ignored. Unset or empty loads every group. A name that is not a group stops the server with exit code 1, listing the valid ones. MAGENTO_GRAPHQL_ALLOW_WRITES still decides whether the mutation tools of a loaded group are registered. Read once at startup."
+          },
+          {
+            "name": "MAGENTO_GRAPHQL_HTTP_PORT",
+            "required": false,
+            "description": "Set to serve MCP over HTTP instead of stdio, for callers that cannot own a child process (for example a PHP middleware or a queue consumer). Opt-in: unset or blank and the server speaks stdio exactly as before. `0` picks a free port, which is logged to stderr as `magento-graphql: listening on http://<host>:<port>/mcp`. Stateless: one POST per call, no session, JSON replies. Requires MAGENTO_GRAPHQL_HTTP_TOKEN. Read once at startup. Headers, examples and status codes: docs/http-mode.md."
+          },
+          {
+            "name": "MAGENTO_GRAPHQL_HTTP_TOKEN",
+            "required": false,
+            "description": "Bearer token the HTTP caller must send as `Authorization: Bearer <token>`. Required when MAGENTO_GRAPHQL_HTTP_PORT is set; at least 32 characters (generate one with `openssl rand -hex 32`), otherwise the server stops with exit code 1. Read from the environment only, never from argv, and never logged or echoed. Rotating it means restarting the server."
+          },
+          {
+            "name": "MAGENTO_GRAPHQL_HTTP_HOST",
+            "required": false,
+            "description": "Interface the HTTP endpoint binds to. Default `127.0.0.1` (loopback only). Set it to `0.0.0.0` or a container address only when the server must be reached from another host, and then list the names callers use in MAGENTO_GRAPHQL_HTTP_ALLOWED_HOSTS."
+          },
+          {
+            "name": "MAGENTO_GRAPHQL_HTTP_ALLOWED_HOSTS",
+            "required": false,
+            "description": "Comma-separated extra `Host` header values the HTTP endpoint accepts, for example `magento-graphql:3000`, beyond loopback with the bound port. A request with any other Host is refused with 403 (DNS rebinding protection)."
+          },
+          {
+            "name": "MAGENTO_GRAPHQL_HTTP_ALLOWED_ORIGINS",
+            "required": false,
+            "description": "Comma-separated `Origin` values the HTTP endpoint accepts. Unset, any request that carries an Origin header is refused with 403: this server is for backends, not browsers."
           }
         ]
       },

@@ -6,6 +6,7 @@ dependencies of its own. It statically bundles the following third-party
 packages:
 
 - @modelcontextprotocol/sdk@1.30.0 — MIT
+- content-type@1.0.5 — MIT
 - generate-function@2.3.1 — MIT
 - is-property@1.0.2 — MIT
 - long@5.3.2 — Apache-2.0
