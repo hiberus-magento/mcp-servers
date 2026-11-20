@@ -62,7 +62,7 @@ Pin the exact version; pass secrets as environment variable references, never li
       "args": [
         "-y",
         "--package",
-        "@hiberus-magento/magento-cloud@0.1.1",
+        "@hiberus-magento/magento-cloud@0.2.0",
         "hiberus-magento-cloud-mcp"
       ]
     }

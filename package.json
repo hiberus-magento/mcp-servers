@@ -14,7 +14,8 @@
     "test": "turbo run test && vitest run",
     "verify:package": "turbo run verify:package",
     "new-server": "node scripts/new-server.mjs",
-    "changeset": "changeset"
+    "changeset": "changeset",
+    "version-packages": "changeset version && node scripts/sync-manifest-versions.mjs && node scripts/gen-readme.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.9",

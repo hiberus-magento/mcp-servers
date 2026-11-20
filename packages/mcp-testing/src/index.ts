@@ -19,17 +19,20 @@ export {
 } from "./conformance/conformance.js";
 export {
   COLD_START_BUDGET_MS,
-  STARTUP_CPU_BUDGET_MS,
+  MAX_STARTUP_CPU_RATIO,
   checkColdStart,
-  checkStartupCpu,
+  checkStartupCpuRatio,
   measureMedianColdStart,
   measureOneColdStart,
   measureOneStartupCpu,
   measureStartupCpu,
+  measureStartupCpuRatio,
+  startupCpuReferencePath,
   type ColdStartViolation,
-  type StartupCpuBudgetOverride,
+  type StartupCpuRatioMeasurement,
+  type StartupCpuRatioViolation,
+  type StartupCpuRatioOverride,
   type StartupCpuSample,
-  type StartupCpuViolation,
 } from "./conformance/cold-start.js";
 export { JsonRpcClient, type JsonRpcClientOptions, type RawStdoutLine } from "./jsonrpc-client.js";
 export {

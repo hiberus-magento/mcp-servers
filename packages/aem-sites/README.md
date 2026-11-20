@@ -143,7 +143,7 @@ Pin the exact version; pass secrets as environment variable references, never li
       "args": [
         "-y",
         "--package",
-        "@hiberus-magento/aem-sites@0.0.0",
+        "@hiberus-magento/aem-sites@0.1.0",
         "hiberus-aem-sites-mcp"
       ],
       "env": {

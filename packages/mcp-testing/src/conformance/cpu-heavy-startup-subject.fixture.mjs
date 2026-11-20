@@ -10,10 +10,15 @@
 // while blowing a wall-clock one. The two controls guard different
 // properties and neither replaces the other.
 //
-// Calibrated to roughly an order of magnitude over `STARTUP_CPU_BUDGET_MS`
-// on the machine `cold-start.ts` records its measurements from — decisive
-// without making the suite wait. The work is deliberately opaque to the
-// optimiser (the result is observable below) so it cannot be eliminated.
+// Calibrated to roughly an order of magnitude over the gate on the machine
+// `cold-start.ts` records its measurements from — 441 ms of CPU against a
+// 29 ms reference, a ratio of 15.0 where `MAX_STARTUP_CPU_RATIO` is 2 —
+// decisive without making the suite wait. Because the gate is a ratio, that
+// margin travels: a slower machine makes the reference slower too, so this
+// control cannot quietly stop firing on a runner it was not calibrated on,
+// which is exactly what happened to the budget it used to be calibrated
+// against. The work is deliberately opaque to the optimiser (the result is
+// observable below) so it cannot be eliminated.
 const ROUNDS = 60_000_000;
 
 let accumulator = 0;

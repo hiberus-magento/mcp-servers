@@ -12,7 +12,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { checkStartupCpu, measureStartupCpu, resolveStartupCpuBudget, startupCpuTestTitle, type StartupCpuBudgetOverride } from "./cold-start.js";
+import { checkStartupCpuRatio, measureStartupCpuRatio, resolveStartupCpuRatio, startupCpuTestTitle, type StartupCpuRatioOverride } from "./cold-start.js";
 import type { RawStdoutLine } from "../jsonrpc-client.js";
 import { JsonRpcClient } from "../jsonrpc-client.js";
 
@@ -225,12 +225,13 @@ export interface ConformanceOptions {
    */
   readonly shellOutProbe?: ShellOutProbe;
   /**
-   * A package-specific startup CPU budget, replacing the shared 75 ms for THIS
-   * package only. It needs a number and a reason; the reason is printed in the
-   * test's title. See `cold-start.ts`, "PER-PACKAGE OVERRIDE", for when this is
-   * warranted and how a figure is derived.
+   * A package-specific maximum startup CPU ratio, replacing the shared
+   * `MAX_STARTUP_CPU_RATIO` for THIS package only. It needs a number and a
+   * reason; the reason is printed in the test's title. See `cold-start.ts`,
+   * "PER-PACKAGE OVERRIDE", for when this is warranted and how a figure is
+   * derived.
    */
-  readonly startupCpuBudget?: StartupCpuBudgetOverride;
+  readonly startupCpuRatio?: StartupCpuRatioOverride;
 }
 
 /** See {@link ConformanceOptions.shellOutProbe}. */
@@ -256,7 +257,7 @@ export const DEFAULT_SHELL_OUT_PROBE: ShellOutProbe = {
 export function describeConformance(options: ConformanceOptions): void {
   // Resolved before any test is registered, so an invalid override fails when
   // the suite is collected, not three minutes into a run.
-  const startupCpuBudget = resolveStartupCpuBudget(options.startupCpuBudget);
+  const startupCpuRatio = resolveStartupCpuRatio(options.startupCpuRatio);
   describe(`MCP conformance: ${options.serverPath}`, () => {
     let client: JsonRpcClient;
     // CHANGED DELIBERATELY: the `initialize` result used to be awaited and
@@ -381,21 +382,25 @@ export function describeConformance(options: ConformanceOptions): void {
       ).not.toThrow();
     }, 120_000);
 
-    // Startup cost (mcp-conformance spec, "Cold-Start Time Budget";
-    // design.md, Decision 8), measured in CPU time rather than wall clock —
-    // `cold-start.ts`'s header records why the wall-clock median was
-    // replaced, and what that assertion no longer covers. Each sample is its
-    // own fresh process importing the SAME built entrypoint; the statistic
-    // is the minimum, because interference can only add.
-    it(startupCpuTestTitle(startupCpuBudget), async () => {
-      const { samples, minCpuMs } = await measureStartupCpu(options.serverPath);
-      const violation = checkStartupCpu(minCpuMs, startupCpuBudget.budgetMs);
+    // Startup cost (mcp-conformance spec, "Cold-Start Startup-Cost
+    // Budget"; design.md, Decision 8), measured in CPU time rather than
+    // wall clock, and RELATIVE to a reference module measured on the same
+    // machine in the same run rather than against a number — `cold-start.ts`
+    // records why both of those replacements happened and what this
+    // assertion still does not cover. Each sample is its own fresh process;
+    // the statistic is the minimum on both sides, because interference can
+    // only add.
+    it(startupCpuTestTitle(startupCpuRatio), async () => {
+      const { subjectSamples, referenceSamples, subjectCpuMs, referenceCpuMs, ratio } = await measureStartupCpuRatio(options.serverPath);
+      const violation = checkStartupCpuRatio(ratio, startupCpuRatio.maxRatio);
+      const format = (samples: readonly { cpuMs: number; wallMs: number }[]): string =>
+        samples.map((sample) => `${sample.cpuMs.toFixed(1)}/${sample.wallMs.toFixed(1)}`).join(", ");
       expect(
         violation,
-        `min CPU ${minCpuMs.toFixed(1)} ms over budget; samples cpu/wall (ms): ${samples
-          .map((sample) => `${sample.cpuMs.toFixed(1)}/${sample.wallMs.toFixed(1)}`)
-          .join(", ")}`,
+        `startup CPU ratio ${ratio.toFixed(2)} over ${String(startupCpuRatio.maxRatio)} ` +
+          `(subject min ${subjectCpuMs.toFixed(1)} ms, reference min ${referenceCpuMs.toFixed(1)} ms); ` +
+          `subject cpu/wall (ms): ${format(subjectSamples)}; reference cpu/wall (ms): ${format(referenceSamples)}`,
       ).toBeUndefined();
-    }, 60_000);
+    }, 120_000);
   });
 }

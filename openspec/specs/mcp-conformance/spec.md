@@ -188,7 +188,19 @@ hand-off.)
 The conformance suite MUST assert that a server's own startup cost — the
 CPU time the process spends loading and initialising the built entrypoint,
 measured with `process.cpuUsage()` across `await import()` of that bundle —
-does not exceed a documented, CI-blocking threshold.
+does not exceed a documented, CI-blocking threshold expressed as a RATIO
+against a reference module measured on the same machine in the same run.
+
+The threshold MUST NOT be an absolute number of milliseconds. CPU time is
+immune to contention but not to core speed, so an absolute figure measures
+the runner as much as the bundle. This is recorded, not predicted: the
+figure derived below at 75 ms failed this repository's first CI run
+(GitHub Actions, ubuntu-24.04) at a minimum of 105.7 ms on a bundle
+byte-identical to the one that measured 28.2 ms on the measuring machine —
+a 3.6x per-core gap, and no regression. Widening the number to fit that
+runner would have restored the uselessness the wall-clock budget was
+abandoned for. Dividing by a reference measured on the same machine
+cancels the machine: both sides get slower together.
 
 The measurement is CPU time, not wall-clock time, and this is load-bearing.
 Wall clock counts the time a process spends descheduled, so on a shared CI
@@ -201,19 +213,28 @@ not rescue wall clock either: the two sides are not duration-matched, so
 the heavier side accumulates more preemption and the ratio inflates under
 load rather than cancelling.
 
-The statistic MUST be the MINIMUM of at least 7 samples, not the median or
-p95. Every source of interference can only make a sample slower, so the
-minimum is the least contaminated one — and it removes the need for a
-warm-up discard, because a cold first sample never wins.
+The statistic MUST be the MINIMUM of at least 7 samples on each side of the
+ratio, not the median or p95. Every source of interference can only make a
+sample slower, so the minimum is the least contaminated one — and it
+removes the need for a warm-up discard, because a cold first sample never
+wins. The two sides MUST be interleaved, so that a drift in machine
+conditions partway through a run lands on both of them.
+
+The reference module MUST be a real workload of a cost comparable to a
+server bundle's, not a trivial or empty module. A reference that measured
+only the fixed per-import overhead would leave all the machine-dependence
+in the numerator and reinstate the defect this requirement exists to
+remove. Its shape MUST be chosen by measurement against real bundles, and
+the choice recorded with the alternatives it beat.
 
 The threshold value MUST be recorded in this spec together with the
-methodology that produced it: the sample count, the statistic, the worst
-measured figure it was derived from, and the safety multiplier applied. It
-MUST be re-derived, not silently adjusted, if the bundle's shape changes
-materially or if the runner's per-core speed changes by more than the
-headroom the recorded derivation leaves.
+methodology that produced it: the sample count, the statistic, the
+reference module's shape and size, the worst measured ratio it was derived
+from, and the safety multiplier applied. It MUST be re-derived, not
+silently adjusted, if the bundle's shape changes materially or if the
+reference module's shape changes.
 
-DISCLOSED LIMITATION, deliberately accepted: a CPU-time budget does not
+DISCLOSED LIMITATION, deliberately accepted: a CPU-time gate does not
 fire for a server that is slow for a reason costing no CPU — a sleep, or a
 network call at startup. A wall-clock measurement of the same subject is
 retained as a non-blocking diagnostic, and the gap is pinned by a test
@@ -229,48 +250,85 @@ on the actual CI runner" clause was never satisfied — the committed figure
 came from a development machine, as its own disclosed limitation said — and
 its rounding inflated an 82 ms measurement to a 250 ms threshold, leaving
 5.9x of headroom, so it flaked under contention while being too loose to
-catch a real regression. The replacement leaves 1.94x over its worst
-contended measurement: it is more sensitive than what it replaces, not
-less.
+catch a real regression.
+
+It further supersedes the absolute CPU formulation
+(`STARTUP_CPU_BUDGET_MS = 75`), which removed contention from the
+measurement but not core speed, and failed the first CI run on an unchanged
+bundle as recorded above. The ratio keeps that formulation's measurement
+and its statistic unchanged; only the thing the measurement is compared to
+has changed, from a constant to a second measurement.
 
 #### Recorded threshold and its derivation
 
-- **Threshold:** `STARTUP_CPU_BUDGET_MS = 75`
+- **Threshold:** `MAX_STARTUP_CPU_RATIO = 2`
   (`packages/mcp-testing/src/conformance/cold-start.ts`).
 - **Statistic:** minimum of 7 samples of `process.cpuUsage()` across
-  `await import()` of the built entrypoint.
-- **Measured 2026-10-20**, across all three server bundles on a 12-core
-  development machine: 28.2-29.9 ms idle, 30.8-38.6 ms under CPU
-  oversubscription at load averages of 230-400.
+  `await import()` of the built entrypoint, divided by the minimum of 7
+  interleaved samples of the same measurement on the reference module.
+- **Reference module:** generated, 462,607 bytes, 2,500 small functions each
+  closing over a compiled `RegExp`, all called and retained at top level —
+  the parse-plus-initialisation shape a bundled server has. Chosen by
+  measuring three candidate shapes against two real bundles under four
+  execution regimes (default, `--no-opt`, `--jitless`,
+  `--max-semi-space-size=1`); its ratio spread across those regimes was
+  1.152x, against 1.339x for a declarations-and-Map shape and 1.267-1.392x
+  for retained object descriptors. A parse-only module was rejected on
+  measurement (8.4 ms per MB against 24.7 ms for a 1.06 MB real bundle:
+  parse is about a third of a bundle's startup cost), and an empty module
+  on the same grounds (0.53 ms, almost entirely fixed loader overhead).
+- **Measured 2026-10-22**, four bundles x four execution regimes x two
+  repetitions on a 12-core development machine: ratio 0.837-1.102 overall
+  (0.837-0.968 default, 0.944-1.102 under `--max-semi-space-size=1`).
+  Separately, across five repetitions while machine load drifted, the
+  absolute figures moved 1.21x (reference) and 1.35x (subjects) while the
+  ratio moved 1.17x.
 - **Derivation:** the repository's existing formula applied to the worst
-  figure the statistic ever produced — `ceil(38.6 * 1.75) = 68`, rounded up
-  to the next 25 ms, giving 75. That leaves 2.6x over the idle measurement
-  and 1.94x over the worst contended one.
-- **Re-derive when:** the bundle's shape changes materially, or the runner's
-  per-core speed is more than ~2.5x slower than the measuring machine, which
-  is where an unchanged bundle would cross 75 ms.
+  figure the statistic ever produced — `ceil(1.102 * 1.75) = 1.929`,
+  rounded up to the next 0.25, giving 2.00. That leaves 1.81x over the
+  worst measured ratio and 2.07x over the worst default-regime one.
+- **Sensitivity:** a subject must cost roughly 1.8-2.4x what today's bundles
+  cost to fail. That is about 0.5-1 MB of added code that both parses and
+  initialises, or any dependency doing real work at import time. Byte growth
+  alone is far weaker — inert code costs 8.4 ms per MB, so about 4.6x the
+  current bundle — which is a property of measuring startup CPU, not of the
+  ratio; `scripts/compare-bundle-size.mjs` watches bytes.
+- **Re-derive when:** the reference module's shape or size changes, or a
+  real CI-runner ratio becomes available and falls outside 0.793-1.102.
 - **Known gap in the derivation:** these figures come from a development
-  machine, not the CI runner. CPU time is immune to contention but not to
-  core speed, so the multiplier above is the margin that carries this across
-  machines. The same gap existed in the superseded wall-clock figure and is
-  inherited, not introduced.
+  machine, not the CI runner, as every threshold in this file has. The
+  four-regime spread is the substitute evidence that the reference tracks
+  the subject when execution conditions change, and it is a substitute. What
+  is no longer a gap is the failure mode that actually fired: a runner with
+  slower cores moves both sides of the division.
+- **Per-package override:** a package whose startup legitimately builds more
+  (tool input schemas, for example) may declare
+  `describeConformance({ startupCpuRatio: { max, reason } })`. `max` is a
+  multiple of 0.25 above 0 and at most `MAX_STARTUP_CPU_RATIO_OVERRIDE = 4`;
+  `reason` needs at least 20 characters and is printed in the test's title.
+  A figure follows the same formula on the package's own worst measured
+  ratio. Measured 2026-11-20 on a development machine, 3 x 7 samples:
+  six-to-nine-tool servers 0.81-0.98; `magento-rest` (95 schemas) 1.19-1.25,
+  so `ceil(1.25 * 1.75)` -> 2.25; `magento-graphql` (247 schemas) 2.02-2.11,
+  so `ceil(2.11 * 1.75)` -> 3.75. These replace the per-package millisecond
+  budgets (100 ms and 150 ms) the absolute formulation carried.
 
 #### Scenario: Startup cost within budget passes
 
 - GIVEN a built server entrypoint whose minimum sampled startup CPU time is
-  at or under the documented threshold
-- WHEN the suite imports it and samples `process.cpuUsage()` across the
+  at or under the documented multiple of the reference module's
+- WHEN the suite imports both and samples `process.cpuUsage()` across each
   import
 - THEN the startup-cost assertion passes
 
 #### Scenario: Startup cost exceeding budget fails
 
 - GIVEN a built server entrypoint whose minimum sampled startup CPU time
-  exceeds the documented threshold
-- WHEN the suite imports it and samples `process.cpuUsage()` across the
+  exceeds the documented multiple of the reference module's
+- WHEN the suite imports both and samples `process.cpuUsage()` across each
   import
-- THEN the assertion fails and reports every sample's CPU and wall-clock
-  figure against the threshold
+- THEN the assertion fails and reports the ratio, both minima, and every
+  sample's CPU and wall-clock figure on both sides
 
 #### Scenario: A subject burning CPU at import time is caught
 
@@ -280,10 +338,18 @@ less.
 - THEN the assertion fails, proving the gate discriminates rather than
   merely passing
 
+#### Scenario: The reference module is a workload, not a stub
+
+- GIVEN the generated reference module the ratio divides by
+- WHEN its startup CPU is measured against an empty module's in the same run
+- THEN it costs at least an order of magnitude more, proving the denominator
+  carries its share of the machine-dependence rather than leaving it all in
+  the numerator
+
 #### Scenario: Threshold is recorded with its derivation methodology
 
-- GIVEN the cold-start threshold value committed to this spec
+- GIVEN the startup-cost threshold value committed to this spec
 - WHEN it is reviewed
-- THEN the number of CI-runner spawns, the computed p95, and the
-  safety-margin multiplier used to derive the threshold are recorded
-  alongside it, not only a bare number
+- THEN the sample count, the statistic, the reference module's shape and
+  size, the worst measured ratio, and the safety-margin multiplier used to
+  derive the threshold are recorded alongside it, not only a bare number
