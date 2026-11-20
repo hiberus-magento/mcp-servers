@@ -75,7 +75,7 @@ Pin the exact version; pass secrets as environment variable references, never li
       "args": [
         "-y",
         "--package",
-        "@hiberus-magento/aco@0.1.1",
+        "@hiberus-magento/aco@0.1.2",
         "hiberus-aco-mcp"
       ],
       "env": {

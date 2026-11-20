@@ -51,6 +51,9 @@ jobs:
       - name: Publish (changesets)
         uses: changesets/action@v1
         with:
+          # Also copies the bumped versions into servers.json and the READMEs'
+          # pinned install snippets, so the version PR carries them.
+          version: pnpm version-packages
           publish: pnpm changeset publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -33,12 +33,12 @@ nothing is resolved from the registry at run time.
 
 | Package | What it talks to | Version | Reference |
 | --- | --- | --- | --- |
-| [`@hiberus-magento/eds`](https://npmjs.com/package/@hiberus-magento/eds) | Edge Delivery Services (EDS) Admin API client — CLI and MCP server. | `0.1.1` · alpha | [README](./packages/eds/README.md) · [setup](./docs/eds-onboarding.md) |
-| [`@hiberus-magento/aco`](https://npmjs.com/package/@hiberus-magento/aco) | Adobe Commerce Optimizer (ACO) admin and Merchandising API client — CLI and MCP server. | `0.1.1` · alpha | [README](./packages/aco/README.md) · [setup](./docs/aco-onboarding.md) |
-| [`@hiberus-magento/magento-cloud`](https://npmjs.com/package/@hiberus-magento/magento-cloud) | Magento Cloud CLI wrapper — CLI and MCP server for read-only Magento Cloud project, environment, and database operations. | `0.1.1` · alpha | [README](./packages/magento-cloud/README.md) · [setup](./docs/magento-cloud-onboarding.md) |
-| [`@hiberus-magento/magento-rest`](https://npmjs.com/package/@hiberus-magento/magento-rest) | Magento 2 REST API client — CLI and MCP server for catalog, orders, customers, stock and content, with opt-in write tools. | `0.0.0` · alpha | [README](./packages/magento-rest/README.md) · [setup](./docs/magento-rest-onboarding.md) |
-| [`@hiberus-magento/magento-graphql`](https://npmjs.com/package/@hiberus-magento/magento-graphql) | Magento 2 GraphQL API client — CLI and MCP server covering every Query and Mutation of the latest Adobe Commerce storefront schema with B2B (catalog, content, cart, checkout, account, wish lists, returns, payments, B2B), adapted on the first call to what the connected store offers, with mutations off unless enabled. | `0.0.0` · alpha | [README](./packages/magento-graphql/README.md) · [setup](./docs/magento-graphql-onboarding.md) |
-| [`@hiberus-magento/aem-sites`](https://npmjs.com/package/@hiberus-magento/aem-sites) | AEM as a Cloud Service Sites author client — CLI and MCP server for pages, page properties, sheets, replication, Live Copies and page locks behind plan/apply. | `0.0.0` · alpha | [README](./packages/aem-sites/README.md) · [setup](./docs/aem-sites-onboarding.md) |
+| [`@hiberus-magento/eds`](https://npmjs.com/package/@hiberus-magento/eds) | Edge Delivery Services (EDS) Admin API client — CLI and MCP server. | `0.2.0` · alpha | [README](./packages/eds/README.md) · [setup](./docs/eds-onboarding.md) |
+| [`@hiberus-magento/aco`](https://npmjs.com/package/@hiberus-magento/aco) | Adobe Commerce Optimizer (ACO) admin and Merchandising API client — CLI and MCP server. | `0.1.2` · alpha | [README](./packages/aco/README.md) · [setup](./docs/aco-onboarding.md) |
+| [`@hiberus-magento/magento-cloud`](https://npmjs.com/package/@hiberus-magento/magento-cloud) | Magento Cloud CLI wrapper — CLI and MCP server for read-only Magento Cloud project, environment, and database operations. | `0.2.0` · alpha | [README](./packages/magento-cloud/README.md) · [setup](./docs/magento-cloud-onboarding.md) |
+| [`@hiberus-magento/magento-rest`](https://npmjs.com/package/@hiberus-magento/magento-rest) | Magento 2 REST API client — CLI and MCP server for catalog, orders, customers, stock and content, with opt-in write tools. | `0.1.0` · alpha | [README](./packages/magento-rest/README.md) · [setup](./docs/magento-rest-onboarding.md) |
+| [`@hiberus-magento/magento-graphql`](https://npmjs.com/package/@hiberus-magento/magento-graphql) | Magento 2 GraphQL API client — CLI and MCP server covering every Query and Mutation of the latest Adobe Commerce storefront schema with B2B (catalog, content, cart, checkout, account, wish lists, returns, payments, B2B), adapted on the first call to what the connected store offers, with mutations off unless enabled. | `0.1.0` · alpha | [README](./packages/magento-graphql/README.md) · [setup](./docs/magento-graphql-onboarding.md) |
+| [`@hiberus-magento/aem-sites`](https://npmjs.com/package/@hiberus-magento/aem-sites) | AEM as a Cloud Service Sites author client — CLI and MCP server for pages, page properties, sheets, replication, Live Copies and page locks behind plan/apply. | `0.1.0` · alpha | [README](./packages/aem-sites/README.md) · [setup](./docs/aem-sites-onboarding.md) |
 
 ## Quickstart
 
@@ -52,7 +52,7 @@ Nothing to install first — each server is a single bundled file with no runtim
       "args": [
         "-y",
         "--package",
-        "@hiberus-magento/eds@0.1.1",
+        "@hiberus-magento/eds@0.2.0",
         "hiberus-eds-mcp"
       ],
       "env": {
