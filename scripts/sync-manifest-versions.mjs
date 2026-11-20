@@ -7,7 +7,7 @@
 // it, and the "Version Packages" pull request carries both.
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const MANIFEST_PATH = join(ROOT, "servers.json");
@@ -59,6 +59,8 @@ function main() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// pathToFileURL encodes the path the way import.meta.url does, so a checkout
+// path with spaces or non-ASCII characters still runs main().
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }
