@@ -1,5 +1,11 @@
 # @hiberus-magento/aco
 
+## 0.1.2
+
+### Patch Changes
+
+- 890d774: Fix the operator CLI doing nothing when started through its npm/npx bin. npm and npx run a bin through a symlink in `node_modules/.bin`, and the entry-point check compared that symlink path with the real file, so commands such as `auth token set` and `auth status` printed nothing, stored nothing and exited 0. The check now compares real paths.
+
 ## 0.1.1
 
 ### Patch Changes

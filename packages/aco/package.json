@@ -1,6 +1,6 @@
 {
   "name": "@hiberus-magento/aco",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "MCP server and CLI for Adobe Commerce Optimizer (ACO) — catalog search and facets on the Merchandising API, catalog views, price books and policies on the admin API.",
   "keywords": [
     "mcp",

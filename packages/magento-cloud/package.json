@@ -1,6 +1,6 @@
 {
   "name": "@hiberus-magento/magento-cloud",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "MCP server and CLI wrapping the Magento Cloud CLI — read-only Adobe Commerce on Cloud projects, environments, deployment activities and bounded database diagnostics.",
   "keywords": [
     "mcp",
