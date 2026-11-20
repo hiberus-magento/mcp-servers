@@ -60,25 +60,30 @@ interface Adaptation {
 export function createMagentoGraphqlClient(deps: MagentoGraphqlClientDeps): MagentoGraphqlClient {
   const transport = createGraphqlTransport(deps);
   const adaptation: Adaptation | undefined =
-    deps.adaptToSchema === false ? undefined : { schema: createSchemaSource(async () => transport.execute({ kind: "query", document: STORE_SCHEMA_QUERY }), deps.onSchema), trim: createTrimCache() };
+    deps.adaptToSchema === false ? undefined : { schema: createSchemaSource(async () => transport.execute({ kind: "query", document: STORE_SCHEMA_QUERY }), deps.onSchema, deps.now), trim: createTrimCache() };
   return clientView(transport, adaptation, {});
+}
+
+/** Exactly one operation, of the kind the caller runs; anything else is refused before a request is made. */
+function guard(kind: "query" | "mutation", document: string): void {
+  const info = inspectDocument(document);
+  if (info.operations !== 1) {
+    throw new OperationGuardError(`The document has ${info.operations} operations; send exactly one.`);
+  }
+  if (info.kind !== kind) {
+    throw new OperationGuardError(
+      kind === "query" ? `This tool runs queries only; the document is a ${info.kind}.` : `This tool runs mutations only; the document is a ${info.kind === "query" ? "query" : info.kind}.`,
+    );
+  }
 }
 
 function clientView(transport: GraphqlTransport, adaptation: Adaptation | undefined, bound: RequestOptions): MagentoGraphqlClient {
   async function run(kind: "query" | "mutation", document: string, options: OperationOptions | undefined): Promise<GraphqlResult> {
     // The guard runs first, on the document as given: a wrong kind is refused before anything is sent, the schema read included.
-    const info = inspectDocument(document);
-    if (info.operations !== 1) {
-      throw new OperationGuardError(`The document has ${info.operations} operations; send exactly one.`);
-    }
-    if (info.kind !== kind) {
-      throw new OperationGuardError(
-        kind === "query" ? `This tool runs queries only; the document is a ${info.kind}.` : `This tool runs mutations only; the document is a ${info.kind === "query" ? "query" : info.kind}.`,
-      );
-    }
+    guard(kind, document);
     const send = async (text: string, variables: Readonly<Record<string, unknown>> | undefined): Promise<GraphqlResult> => {
       // A trimmed document passes the same guard before it leaves.
-      if (text !== document) inspectDocument(text);
+      if (text !== document) guard(kind, text);
       return transport.execute({ kind, document: text, ...(variables !== undefined ? { variables } : {}), ...(options?.store !== undefined ? { store: options.store } : {}), ...(options?.currency !== undefined ? { currency: options.currency } : {}), ...bound });
     };
     if (options?.adapt !== true || adaptation === undefined) {

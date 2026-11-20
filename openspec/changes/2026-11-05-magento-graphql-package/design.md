@@ -135,15 +135,19 @@ fails whole. So the same package must work against any of them, and the tool —
 - **Trimming.** Before a curated or generated document is sent, a reader of the syntax these documents use (`client/document.ts`;
   still no `graphql-js`, D2) removes every field the store's type lacks, every argument the store's field lacks, every inline
   fragment on a type it lacks, each selection that leaves empty, and the variable definitions nothing uses any more — and those
-  keys from the variables sent. The trimmed text passes the operation guard again. A document the reader cannot read is refused
+  keys from the variables sent; a dropped variable the caller gave a value for is named in the result's `warnings`, next to the
+  data. The trimmed text passes the operation guard again (one operation, of the tool's kind). A document the reader cannot read is refused
   when the tool is built, never sent half-trimmed; a test reads every shipped document and trims it against the fixture as a no-op.
 - **Unavailable operations.** A tool whose root operation the store lacks (or of which the store has none of the selected fields)
   answers `unsupported-operation` with a remedy, before any request beyond the schema read. Once the schema is known, the server
-  disables those tools, and the SDK sends `notifications/tools/list_changed`: a client that honours it stops listing them.
+  disables those tools and sends one `notifications/tools/list_changed` for all of them (the SDK's `disable()` would send one per
+  tool): a client that honours it stops listing them.
 - **Fallback.** If the schema cannot be read, the full document is sent. When Magento answers `Cannot query field "x" on type
   "Y"`, a query is retried without every selection named `x` — once per field, at most five retries; a mutation is never retried.
   A store that answers the introspection with an error (introspection disabled) is not asked again; a failure in transit, a 5xx,
-  429, 401 or 403 leaves the schema unknown, so the next call asks again instead of switching adaptation off for good.
+  429, 401, 403 or 404, or an answer that is not JSON (a proxy or WAF page), leaves the schema unknown for `SCHEMA_RETRY_MS`
+  (one minute): calls meanwhile go without it, and the next call after that asks again, instead of switching adaptation off for
+  good or paying for the introspection on every call.
 
 Limits, by choice: the generic `magentographql_query` document is never trimmed (it is the caller's, and must fail or succeed as
 written); input-object fields inside an argument literal or variable are not trimmed, so a store lacking one answers with its own

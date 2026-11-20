@@ -133,6 +133,12 @@ describe("fixed documents and the connected store's schema (design D14)", () => 
     expect(sent[0]?.request?.variables).toEqual({ s: "tent" });
   });
 
+  it("a value the store cannot take is reported next to the data as a warning", async () => {
+    const { factory } = setup(answer, {}, true);
+    const tool = factory.readTool({ name: "magentographql_x", description: "Use this to x.", input, document: "query X($s: String, $p: Int) { products(search: $s, pageSize: $p) { total_count } }", variables: (a) => ({ s: a.term, p: 2 }), pick: "products" });
+    expect(JSON.parse((await tool.invoke({ term: "tent" }, {})).content[0]?.text ?? "")).toEqual({ data: { total_count: 1 }, warnings: [expect.stringMatching(/\$p\b/)] });
+  });
+
   it("a tool whose operation the store lacks answers a classified error, and sends nothing beyond the schema read", async () => {
     const { double, factory } = setup(answer, {}, true);
     const tool = factory.writeTool({ name: "magentographql_w", description: "Use this to w.", input, document: "mutation W { createCompany { id } }", effect: "create" });

@@ -84,12 +84,13 @@ export interface ToolFactoryOptions {
   readonly liveVerified?: ReadonlySet<string>;
 }
 
-/** What a caller receives: the picked data, or — when Magento reported errors next to partial data — both. */
+/** What a caller receives: the picked data, or — when Magento reported errors next to partial data, or a value was not sent — the data with them. */
 export function shapeResult(result: GraphqlResult, pick: string | undefined, transform?: (value: unknown) => unknown): unknown {
   const record = result.data !== null && typeof result.data === "object" ? (result.data as Record<string, unknown>) : {};
   const picked = pick === undefined ? result.data : (record[pick] ?? null);
   const value = transform !== undefined ? transform(picked) : picked;
-  return result.errors !== undefined ? { data: value, errors: result.errors } : value;
+  if (result.errors === undefined && result.warnings === undefined) return value;
+  return { data: value, ...(result.errors !== undefined ? { errors: result.errors } : {}), ...(result.warnings !== undefined ? { warnings: result.warnings } : {}) };
 }
 
 export function createToolFactory(getClient: () => MagentoGraphqlClient, options: ToolFactoryOptions = {}): ToolFactory {

@@ -404,9 +404,13 @@ release or a B2B one:
 - Before each call, the tool's fixed query is trimmed to what the store has: a field, an argument
   or a type the store lacks is left out, and so is a selection that leaves empty. Fields of an
   input object you pass are not trimmed: a store that lacks one answers with its own error.
+  When a value you gave is left out with them, the answer says so next to the data:
+  `{"data": ..., "warnings": ["The connected store does not support the value given for $pageSize; it was not sent."]}`.
 - A tool whose operation the store does not have answers *"The connected store does not offer
   the query `company`"* without sending it, and once the schema is known it is disabled: a client
-  that follows `notifications/tools/list_changed` stops listing it.
+  that follows `notifications/tools/list_changed` stops listing it (one notification for all of them).
+- If the schema read fails in transit, on a 5xx, 429, 401, 403 or 404, or with a page that is not
+  JSON (a proxy or a WAF), calls go on without it and it is read again a minute later.
 - If the store disables introspection, the full query is sent, and a query Magento answers with
   `Cannot query field "x" on type "Y"` is retried without `x` (once per field, at most five
   times). A mutation is never retried.
