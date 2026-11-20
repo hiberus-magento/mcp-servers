@@ -9,18 +9,24 @@
 //
 //   - Magento answered and refused (introspection disabled, an error, an answer that is not a schema): it is not
 //     asked again for the life of the client — asking again would get the same answer;
-//   - the request failed in transit, on a 5xx, a 429, a 401 or a 403: this call goes on without it, and the next
-//     call tries again — a store that was briefly unreachable, or a token fixed meanwhile, must not switch
-//     adaptation off for good.
+//   - the request failed in transit, on a 5xx, a 429, a 401, a 403 or a 404, or the answer was not JSON (a proxy or
+//     WAF page): calls go on without it, and the schema is read again once SCHEMA_RETRY_MS have passed — a store
+//     that was briefly unreachable, or a token fixed meanwhile, must not switch adaptation off for good, and a
+//     store that keeps failing must not pay for a heavy introspection on every call.
 //
 // Without a schema the full document is sent; when Magento answers `Cannot query field "x" on type "Y"`, a QUERY
 // is retried without every selection of `x` — once per field, at most five times. A mutation is never retried.
+//
+// A variable given a value that is dropped with what the store lacks is named in the result's `dropped`.
 import { DocumentReadError, removeFieldsNamed, trimDocument, type TrimOutcome } from "./document.js";
 import { MagentoGraphqlError, unsupportedOperation } from "./errors.js";
 import type { GraphqlResult } from "./http.js";
 import { offersOperation, readStoreSchema, type StoreSchema } from "./schema.js";
 
 export const MAX_FALLBACK_RETRIES = 5;
+
+/** How long after a failed schema read calls go on without the schema before it is read again. */
+export const SCHEMA_RETRY_MS = 60_000;
 
 export type OffersOperation = (kind: "query" | "mutation", operation: string) => boolean;
 
@@ -29,7 +35,7 @@ export interface Sender {
 }
 
 /** Failures after which the schema is read again on the next call; any other answer means this store will not give it. */
-const TRANSIENT_KINDS: ReadonlySet<string> = new Set(["transport", "rate-limited", "server", "unauthorized", "forbidden"]);
+const TRANSIENT_KINDS: ReadonlySet<string> = new Set(["transport", "rate-limited", "server", "unauthorized", "forbidden", "not-found", "unparseable"]);
 
 const isTransient = (error: unknown): boolean => !(error instanceof MagentoGraphqlError) || TRANSIENT_KINDS.has(error.kind);
 
@@ -38,8 +44,8 @@ function cancelled(): MagentoGraphqlError {
 }
 
 /** The shared schema read. `read` is the introspection request; `onSchema` hears once, when a schema is read. */
-export function createSchemaSource(read: () => Promise<GraphqlResult>, onSchema?: (offers: OffersOperation) => void): (signal?: AbortSignal) => Promise<StoreSchema | undefined> {
-  let state: { readonly status: "unknown" } | { readonly status: "loading"; readonly promise: Promise<StoreSchema | undefined> } | { readonly status: "known"; readonly schema: StoreSchema | undefined } = { status: "unknown" };
+export function createSchemaSource(read: () => Promise<GraphqlResult>, onSchema?: (offers: OffersOperation) => void, now: () => number = Date.now): (signal?: AbortSignal) => Promise<StoreSchema | undefined> {
+  let state: { readonly status: "unknown" } | { readonly status: "failed"; readonly retryAt: number } | { readonly status: "loading"; readonly promise: Promise<StoreSchema | undefined> } | { readonly status: "known"; readonly schema: StoreSchema | undefined } = { status: "unknown" };
 
   function load(): Promise<StoreSchema | undefined> {
     // No caller's signal: the read is shared, and one caller cancelling must not fail the others.
@@ -57,7 +63,7 @@ export function createSchemaSource(read: () => Promise<GraphqlResult>, onSchema?
         return schema;
       },
       (error: unknown) => {
-        state = isTransient(error) ? { status: "unknown" } : { status: "known", schema: undefined };
+        state = isTransient(error) ? { status: "failed", retryAt: now() + SCHEMA_RETRY_MS } : { status: "known", schema: undefined };
         return undefined;
       },
     );
@@ -68,6 +74,7 @@ export function createSchemaSource(read: () => Promise<GraphqlResult>, onSchema?
   return async (signal) => {
     if (signal?.aborted === true) throw cancelled();
     if (state.status === "known") return state.schema;
+    if (state.status === "failed" && now() < state.retryAt) return undefined;
     const promise = state.status === "loading" ? state.promise : load();
     if (signal === undefined) return promise;
     return new Promise<StoreSchema | undefined>((resolve, reject) => {
@@ -84,6 +91,12 @@ export function createSchemaSource(read: () => Promise<GraphqlResult>, onSchema?
 function withoutKeys(variables: Readonly<Record<string, unknown>> | undefined, keys: readonly string[]): Readonly<Record<string, unknown>> | undefined {
   if (variables === undefined || keys.length === 0) return variables;
   return Object.fromEntries(Object.entries(variables).filter(([key]) => !keys.includes(key)));
+}
+
+/** Names the dropped variables that had a value. */
+function withDropped(result: GraphqlResult, variables: Readonly<Record<string, unknown>> | undefined, dropped: readonly string[]): GraphqlResult {
+  const given = dropped.filter((name) => variables?.[name] !== undefined);
+  return given.length === 0 ? result : { ...result, dropped: given };
 }
 
 /** Trims per document once per schema: the documents are fixed, so the outcome is too. */
@@ -112,7 +125,7 @@ export async function sendAdapted(kind: "query" | "mutation", document: string, 
     case "nothing-left":
       throw unsupportedOperation(kind, outcome.operation, "nothing-left");
     case "trimmed":
-      return send(outcome.document, withoutKeys(variables, outcome.droppedVariables));
+      return withDropped(await send(outcome.document, withoutKeys(variables, outcome.droppedVariables)), variables, outcome.droppedVariables);
     case "unchanged":
       return send(document, variables);
   }
@@ -124,11 +137,12 @@ const ROOT_TYPES: Readonly<Record<"query" | "mutation", string>> = { query: "Que
 /** Without a schema: the full document, then a QUERY retried without each field Magento names as missing. */
 export async function sendWithFallback(kind: "query" | "mutation", document: string, variables: Readonly<Record<string, unknown>> | undefined, send: Sender): Promise<GraphqlResult> {
   const removed = new Set<string>();
+  const dropped: string[] = [];
   let current = document;
   let currentVariables = variables;
   for (let retries = 0; ; retries += 1) {
     try {
-      return await send(current, currentVariables);
+      return withDropped(await send(current, currentVariables), variables, dropped);
     } catch (error) {
       if (!(error instanceof MagentoGraphqlError) || error.kind !== "invalid-request") throw error;
       const missing = [...error.message.matchAll(MISSING_FIELD)].map((m) => ({ field: m[1] as string, type: m[2] as string }));
@@ -148,6 +162,7 @@ export async function sendWithFallback(kind: "query" | "mutation", document: str
       for (const field of fresh) removed.add(field);
       current = next.document;
       currentVariables = withoutKeys(currentVariables, next.droppedVariables);
+      dropped.push(...next.droppedVariables);
     }
   }
 }

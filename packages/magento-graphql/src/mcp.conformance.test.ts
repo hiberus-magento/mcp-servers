@@ -8,7 +8,7 @@
 // designed" is provable: the write switch, the groups, and a refusal to start on a bad
 // configuration (exit code 1, reason on stderr, nothing on stdout).
 import { spawn } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -187,7 +187,7 @@ describe("tools the connected store does not offer, on the built bundle", () => 
   });
   afterAll(() => new Promise<void>((resolve) => store.close(() => resolve())));
 
-  it("disables them after the first call reads the schema, and sends notifications/tools/list_changed", async () => {
+  it("disables them after the first call reads the schema, and sends one notifications/tools/list_changed", async () => {
     const home = mkdtempSync(join(tmpdir(), "magento-graphql-adapt-"));
     const client = new JsonRpcClient({ command: process.execPath, args: [serverPath], env: baseEnv({ MAGENTO_GRAPHQL_BASE_URL: url, MAGENTO_GRAPHQL_GROUPS: "store,company", HOME: home, XDG_CONFIG_HOME: home }) });
     try {
@@ -204,10 +204,12 @@ describe("tools the connected store does not offer, on the built bundle", () => 
       expect(after).toContain("magentographql_get_store_config");
       expect(after).not.toContain("magentographql_get_company");
       expect(after.some((n) => n.includes("compan"))).toBe(false);
-      const notified = client.rawStdoutLines.some((l) => (l.parsed as { method?: string } | undefined)?.method === "notifications/tools/list_changed");
-      expect(notified).toBe(true);
+      // Several company tools are disabled at once, and the client hears about it once.
+      const notified = client.rawStdoutLines.filter((l) => (l.parsed as { method?: string } | undefined)?.method === "notifications/tools/list_changed");
+      expect(notified).toHaveLength(1);
     } finally {
       client.close();
+      rmSync(home, { recursive: true, force: true });
     }
   });
 });

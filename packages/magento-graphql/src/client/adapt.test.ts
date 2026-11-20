@@ -7,7 +7,7 @@ import { SYNTHETIC_MAGENTO_GRAPHQL_URL } from "@hiberus-magento/mcp-testing";
 import { describe, expect, it } from "vitest";
 import { createFetchDouble, data, gqlErrors, json, type RecordedCall, type RouteResponse } from "../testing/fetch-double.js";
 import { introspectionOf, isIntrospection, schemaDouble } from "../testing/schema-double.js";
-import { createSchemaSource } from "./adapt.js";
+import { SCHEMA_RETRY_MS, createSchemaSource } from "./adapt.js";
 import { MagentoGraphqlError, OperationGuardError, createMagentoGraphqlClient, type MagentoGraphqlClientDeps } from "./index.js";
 
 const STORE = {
@@ -34,7 +34,10 @@ function build(answer: (call: RecordedCall) => RouteResponse | undefined, schema
   let clock = 0;
   const client = createMagentoGraphqlClient({ fetch: double.fetch, now: () => clock, sleep: async (ms) => { clock += ms; }, baseUrl: SYNTHETIC_MAGENTO_GRAPHQL_URL, getToken: async () => undefined, ...more });
   const sent = (): RecordedCall[] => double.calls.filter((c) => !isIntrospection(c.request?.query));
-  return { double, client, sent, introspections: () => introspections };
+  const advance = (ms: number): void => {
+    clock += ms;
+  };
+  return { double, client, sent, advance, introspections: () => introspections };
 }
 
 describe("a fixed document against a store whose schema is readable", () => {
@@ -115,16 +118,24 @@ describe("when the schema cannot be read", () => {
     expect(introspections()).toBe(1);
   });
 
-  it("after a transport failure, sends the full document now and reads the schema again on the next call", async () => {
+  it.each([
+    ["a 5xx", json(503, {})],
+    ["an HTML page from a proxy", { status: 200, headers: { "content-type": "text/html" }, body: "<html>blocked</html>" }],
+    ["a 404", json(404, {})],
+  ] as const)("after %s, sends the full document, waits before reading the schema again, then adapts", async (_, failure) => {
     let down = true;
-    const { client, sent, introspections } = build(() => undefined, () => (down ? json(503, {}) : schemaDouble(STORE)));
+    const { client, sent, introspections, advance } = build(() => undefined, () => (down ? failure : schemaDouble(STORE)));
     await client.query(GET_CART, { adapt: true, variables: { id: "AbC123xyz" } });
     expect(sent()[0]?.request?.query).toBe(GET_CART);
     down = false;
     const before = introspections();
     await client.query(GET_CART, { adapt: true, variables: { id: "AbC123xyz" } });
+    expect(introspections()).toBe(before);
+    expect(sent()[1]?.request?.query).toBe(GET_CART);
+    advance(SCHEMA_RETRY_MS);
+    await client.query(GET_CART, { adapt: true, variables: { id: "AbC123xyz" } });
     expect(introspections()).toBe(before + 1);
-    expect(sent()[1]?.request?.query).toBe("query GetCart($id: String!) { cart(cart_id: $id) { id total_quantity } }");
+    expect(sent()[2]?.request?.query).toBe("query GetCart($id: String!) { cart(cart_id: $id) { id total_quantity } }");
   });
 
   it("retries a QUERY once per field Magento says does not exist, without that field", async () => {
@@ -179,5 +190,40 @@ describe("the schema listener", () => {
     });
     await expect(source()).resolves.toBeDefined();
     await expect(source(new AbortController().signal)).resolves.toBeDefined();
+  });
+});
+
+describe("a value the caller gave that the store cannot take", () => {
+  it("is reported in `dropped`, naming the variable", async () => {
+    const { client } = build(() => undefined);
+    const result = await client.query(GET_CART, { adapt: true, variables: { id: "AbC123xyz", page: 2 } });
+    expect(result.dropped).toEqual(["page"]);
+  });
+
+  it("is not reported when the caller did not give it", async () => {
+    const { client } = build(() => undefined);
+    const result = await client.query(GET_CART, { adapt: true, variables: { id: "AbC123xyz" } });
+    expect(result.dropped).toBeUndefined();
+  });
+
+  it("is reported too when the store's schema could not be read and a field was removed on retry", async () => {
+    const DOC = "query Q($id: String!, $n: Int) { cart(cart_id: $id) { id gift(n: $n) { x } } }";
+    const { client } = build((call) => (call.request?.query === DOC ? gqlErrors(['Cannot query field "gift" on type "Cart".']) : undefined), json(503, {}));
+    const result = await client.query(DOC, { adapt: true, variables: { id: "AbC123xyz", n: 3 } });
+    expect(result.dropped).toEqual(["n"]);
+  });
+});
+
+describe("a caller that cancels while the schema is being read", () => {
+  it("is answered as cancelled, and the other callers still get the schema", async () => {
+    let finish: (value: { data: unknown }) => void = () => undefined;
+    const source = createSchemaSource(() => new Promise((resolve) => { finish = resolve; }));
+    const leaving = new AbortController();
+    const cancelled = source(leaving.signal);
+    const staying = source(new AbortController().signal);
+    leaving.abort();
+    await expect(cancelled).rejects.toMatchObject({ kind: "transport", message: expect.stringMatching(/cancelled/) });
+    finish({ data: introspectionOf(STORE) });
+    await expect(staying).resolves.toBeDefined();
   });
 });

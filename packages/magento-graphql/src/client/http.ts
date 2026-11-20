@@ -37,6 +37,8 @@ export interface GraphqlResult {
   readonly data: unknown;
   /** Messages Magento reported alongside partial data; absent when there were none. */
   readonly errors?: readonly string[];
+  /** Variables given a value that were not sent because the connected store does not support them (design D14); absent when none. */
+  readonly dropped?: readonly string[];
 }
 
 export interface GraphqlTransportDeps {

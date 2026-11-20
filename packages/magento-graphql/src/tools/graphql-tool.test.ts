@@ -133,6 +133,23 @@ describe("fixed documents and the connected store's schema (design D14)", () => 
     expect(sent[0]?.request?.variables).toEqual({ s: "tent" });
   });
 
+  it("an argument the caller gave that the store cannot take is named in a warning next to the data", async () => {
+    const { factory } = setup(answer, {}, true);
+    const sized = z.object({ term: z.string(), page_size: z.number().optional() }).strict();
+    const tool = factory.readTool({ name: "magentographql_x", description: "Use this to x.", input: sized, document: "query X($s: String, $p: Int) { products(search: $s, pageSize: $p) { total_count } }", variables: (a) => ({ s: a.term, p: a.page_size ?? 20 }), pick: "products" });
+    expect(JSON.parse((await tool.invoke({ term: "tent", page_size: 5 }, {})).content[0]?.text ?? "")).toEqual({
+      data: { total_count: 1 },
+      warnings: ['The connected store does not support "page_size"; the value given was not sent.'],
+    });
+  });
+
+  it("a default the tool fills in itself is dropped without a warning", async () => {
+    const { factory } = setup(answer, {}, true);
+    const sized = z.object({ term: z.string(), page_size: z.number().optional() }).strict();
+    const tool = factory.readTool({ name: "magentographql_x", description: "Use this to x.", input: sized, document: "query X($s: String, $p: Int) { products(search: $s, pageSize: $p) { total_count } }", variables: (a) => ({ s: a.term, p: a.page_size ?? 20 }), pick: "products" });
+    expect(JSON.parse((await tool.invoke({ term: "tent" }, {})).content[0]?.text ?? "")).toEqual({ total_count: 1 });
+  });
+
   it("a tool whose operation the store lacks answers a classified error, and sends nothing beyond the schema read", async () => {
     const { double, factory } = setup(answer, {}, true);
     const tool = factory.writeTool({ name: "magentographql_w", description: "Use this to w.", input, document: "mutation W { createCompany { id } }", effect: "create" });

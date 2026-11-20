@@ -48,16 +48,25 @@ function loadGroups(): readonly string[] {
 const groups = loadGroups();
 const writes = writesEnabled();
 // Filled below as tools are registered. Once the first fixed-document call has read the connected store's schema,
-// every tool whose operation the store lacks is disabled (design D14): the SDK then sends
-// notifications/tools/list_changed, so a client that honours it stops listing them, and a call to one answers that
+// every tool whose operation the store lacks is disabled (design D14) and one
+// notifications/tools/list_changed is sent, so a client that honours it stops listing them, and a call to one answers that
 // the tool is disabled. Before that — and on a store whose schema cannot be read — such a tool answers, on a call,
 // that the store does not offer its operation.
-const registered = new Map<string, { readonly disable: () => void }>();
+const registered = new Map<string, { enabled: boolean }>();
 let toolsAssembled: readonly MagentoGraphqlTool[] = [];
 const getRuntime = createRuntimeResolver({
   onSchema: (offers) => {
     const unsupported = unsupportedTools(toolsAssembled, offers);
-    for (const name of unsupported) registered.get(name)?.disable();
+    // `disable()` would send one notification per tool; turn them all off, then tell the client once.
+    let changed = false;
+    for (const name of unsupported) {
+      const handle = registered.get(name);
+      if (handle?.enabled === true) {
+        handle.enabled = false;
+        changed = true;
+      }
+    }
+    if (changed) server.sendToolListChanged();
     if (unsupported.length > 0) {
       logger.warn(`magento-graphql: the connected store does not offer the operations of ${unsupported.length} tool(s); they are disabled.`);
     }
