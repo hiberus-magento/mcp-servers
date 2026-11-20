@@ -85,12 +85,35 @@ export interface ToolFactoryOptions {
 }
 
 /** What a caller receives: the picked data, or — when Magento reported errors next to partial data, or a value was not sent — the data with them. */
-export function shapeResult(result: GraphqlResult, pick: string | undefined, transform?: (value: unknown) => unknown): unknown {
+export function shapeResult(result: GraphqlResult, pick: string | undefined, transform?: (value: unknown) => unknown, warnings?: readonly string[]): unknown {
   const record = result.data !== null && typeof result.data === "object" ? (result.data as Record<string, unknown>) : {};
   const picked = pick === undefined ? result.data : (record[pick] ?? null);
   const value = transform !== undefined ? transform(picked) : picked;
-  if (result.errors === undefined && result.warnings === undefined) return value;
-  return { data: value, ...(result.errors !== undefined ? { errors: result.errors } : {}), ...(result.warnings !== undefined ? { warnings: result.warnings } : {}) };
+  const warned = warnings !== undefined && warnings.length > 0 ? warnings : undefined;
+  if (result.errors === undefined && warned === undefined) return value;
+  return { data: value, ...(result.errors !== undefined ? { errors: result.errors } : {}), ...(warned !== undefined ? { warnings: warned } : {}) };
+}
+
+/**
+ * The tool arguments the caller gave behind each dropped variable: an argument is behind a variable when building the
+ * variables without it changes that variable. A default the tool fills in itself is behind no argument, so it gets no warning.
+ */
+export function droppedArgumentWarnings(dropped: readonly string[] | undefined, args: Readonly<Record<string, unknown>>, build: ((args: never) => Readonly<Record<string, unknown>>) | undefined): readonly string[] {
+  if (dropped === undefined || dropped.length === 0 || build === undefined) return [];
+  const make = build as (args: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>;
+  const full = make(args);
+  const given = Object.keys(args).filter((key) => args[key] !== undefined);
+  const names = new Set<string>();
+  for (const key of given) {
+    let without: Readonly<Record<string, unknown>> | undefined;
+    try {
+      without = make(Object.fromEntries(Object.entries(args).filter(([k]) => k !== key)));
+    } catch {
+      without = undefined;
+    }
+    if (dropped.some((variable) => without === undefined || JSON.stringify(full[variable]) !== JSON.stringify(without[variable]))) names.add(key);
+  }
+  return [...names].map((name) => `The connected store does not support "${name}"; the value given was not sent.`);
 }
 
 export function createToolFactory(getClient: () => MagentoGraphqlClient, options: ToolFactoryOptions = {}): ToolFactory {
@@ -125,7 +148,8 @@ export function createToolFactory(getClient: () => MagentoGraphqlClient, options
           ...(context?.currency !== undefined ? { currency: context.currency } : {}),
         };
         const result = access === "read" ? await client.query(spec.document, callOptions) : await client.mutate(spec.document, callOptions);
-        return shapeResult(result, spec.pick, spec.transform === undefined ? undefined : (value) => spec.transform?.(value, args));
+        const warnings = droppedArgumentWarnings(result.dropped, args as Readonly<Record<string, unknown>>, spec.variables as ((args: never) => Readonly<Record<string, unknown>>) | undefined);
+        return shapeResult(result, spec.pick, spec.transform === undefined ? undefined : (value) => spec.transform?.(value, args), warnings);
       },
     });
     return { ...tool, access, document: spec.document, ...(operation !== undefined ? { operation } : {}) } as unknown as MagentoGraphqlTool;

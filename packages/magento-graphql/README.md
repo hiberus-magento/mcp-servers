@@ -404,8 +404,9 @@ release or a B2B one:
 - Before each call, the tool's fixed query is trimmed to what the store has: a field, an argument
   or a type the store lacks is left out, and so is a selection that leaves empty. Fields of an
   input object you pass are not trimmed: a store that lacks one answers with its own error.
-  When a value you gave is left out with them, the answer says so next to the data:
-  `{"data": ..., "warnings": ["The connected store does not support the value given for $pageSize; it was not sent."]}`.
+  When an argument you gave is left out with them, the answer says so next to the data:
+  `{"data": ..., "warnings": ["The connected store does not support \"page_size\"; the value given was not sent."]}`.
+  A default the tool fills in itself is left out without a warning.
 - A tool whose operation the store does not have answers *"The connected store does not offer
   the query `company`"* without sending it, and once the schema is known it is disabled: a client
   that follows `notifications/tools/list_changed` stops listing it (one notification for all of them).

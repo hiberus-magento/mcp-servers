@@ -17,7 +17,7 @@
 // Without a schema the full document is sent; when Magento answers `Cannot query field "x" on type "Y"`, a QUERY
 // is retried without every selection of `x` — once per field, at most five times. A mutation is never retried.
 //
-// A variable the caller gave that is dropped with what the store lacks is reported in the result's `warnings`.
+// A variable given a value that is dropped with what the store lacks is named in the result's `dropped`.
 import { DocumentReadError, removeFieldsNamed, trimDocument, type TrimOutcome } from "./document.js";
 import { MagentoGraphqlError, unsupportedOperation } from "./errors.js";
 import type { GraphqlResult } from "./http.js";
@@ -93,12 +93,10 @@ function withoutKeys(variables: Readonly<Record<string, unknown>> | undefined, k
   return Object.fromEntries(Object.entries(variables).filter(([key]) => !keys.includes(key)));
 }
 
-/** Adds a warning for each dropped variable the caller gave a value for. */
-function withWarnings(result: GraphqlResult, variables: Readonly<Record<string, unknown>> | undefined, dropped: readonly string[]): GraphqlResult {
+/** Names the dropped variables that had a value. */
+function withDropped(result: GraphqlResult, variables: Readonly<Record<string, unknown>> | undefined, dropped: readonly string[]): GraphqlResult {
   const given = dropped.filter((name) => variables?.[name] !== undefined);
-  if (given.length === 0) return result;
-  const warnings = given.map((name) => `The connected store does not support the value given for $${name}; it was not sent.`);
-  return { ...result, warnings: [...(result.warnings ?? []), ...warnings] };
+  return given.length === 0 ? result : { ...result, dropped: given };
 }
 
 /** Trims per document once per schema: the documents are fixed, so the outcome is too. */
@@ -127,7 +125,7 @@ export async function sendAdapted(kind: "query" | "mutation", document: string, 
     case "nothing-left":
       throw unsupportedOperation(kind, outcome.operation, "nothing-left");
     case "trimmed":
-      return withWarnings(await send(outcome.document, withoutKeys(variables, outcome.droppedVariables)), variables, outcome.droppedVariables);
+      return withDropped(await send(outcome.document, withoutKeys(variables, outcome.droppedVariables)), variables, outcome.droppedVariables);
     case "unchanged":
       return send(document, variables);
   }
@@ -144,7 +142,7 @@ export async function sendWithFallback(kind: "query" | "mutation", document: str
   let currentVariables = variables;
   for (let retries = 0; ; retries += 1) {
     try {
-      return withWarnings(await send(current, currentVariables), variables, dropped);
+      return withDropped(await send(current, currentVariables), variables, dropped);
     } catch (error) {
       if (!(error instanceof MagentoGraphqlError) || error.kind !== "invalid-request") throw error;
       const missing = [...error.message.matchAll(MISSING_FIELD)].map((m) => ({ field: m[1] as string, type: m[2] as string }));

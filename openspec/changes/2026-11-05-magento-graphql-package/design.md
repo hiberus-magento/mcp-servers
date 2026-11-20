@@ -135,8 +135,9 @@ fails whole. So the same package must work against any of them, and the tool —
 - **Trimming.** Before a curated or generated document is sent, a reader of the syntax these documents use (`client/document.ts`;
   still no `graphql-js`, D2) removes every field the store's type lacks, every argument the store's field lacks, every inline
   fragment on a type it lacks, each selection that leaves empty, and the variable definitions nothing uses any more — and those
-  keys from the variables sent; a dropped variable the caller gave a value for is named in the result's `warnings`, next to the
-  data. The trimmed text passes the operation guard again (one operation, of the tool's kind). A document the reader cannot read is refused
+  keys from the variables sent; the client names each dropped variable that had a value, and the tool turns that into a `warnings` entry, next to
+  the data, naming the tool argument behind it (the argument whose removal changes that variable) — a default the tool fills in
+  itself is behind no argument and gets no warning. The trimmed text passes the operation guard again (one operation, of the tool's kind). A document the reader cannot read is refused
   when the tool is built, never sent half-trimmed; a test reads every shipped document and trims it against the fixture as a no-op.
 - **Unavailable operations.** A tool whose root operation the store lacks (or of which the store has none of the selected fields)
   answers `unsupported-operation` with a remedy, before any request beyond the schema read. Once the schema is known, the server

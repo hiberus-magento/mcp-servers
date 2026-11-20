@@ -92,8 +92,8 @@ it, those two tools answer with the store's own message.
 
 The tools come from the latest Adobe Commerce with B2B; the server adapts them to the store you
 connect. On the first call of a curated or generated tool it reads the store's schema once, then
-trims each fixed query to what the store has (a missing field, argument or type is left out; a value
-you gave that is left out is named in the answer's `warnings`). A tool
+trims each fixed query to what the store has (a missing field, argument or type is left out; an
+argument you gave that is left out is named in the answer's `warnings`). A tool
 whose operation the store lacks answers that the store does not offer it, without sending anything,
 and is then disabled, so a client that follows `notifications/tools/list_changed` stops listing it.
 If the store disables introspection, the full query is sent and a query is retried without each field

@@ -194,23 +194,23 @@ describe("the schema listener", () => {
 });
 
 describe("a value the caller gave that the store cannot take", () => {
-  it("is reported as a warning next to the data, naming the variable", async () => {
+  it("is reported in `dropped`, naming the variable", async () => {
     const { client } = build(() => undefined);
     const result = await client.query(GET_CART, { adapt: true, variables: { id: "AbC123xyz", page: 2 } });
-    expect(result.warnings).toEqual([expect.stringMatching(/\$page/)]);
+    expect(result.dropped).toEqual(["page"]);
   });
 
   it("is not reported when the caller did not give it", async () => {
     const { client } = build(() => undefined);
     const result = await client.query(GET_CART, { adapt: true, variables: { id: "AbC123xyz" } });
-    expect(result.warnings).toBeUndefined();
+    expect(result.dropped).toBeUndefined();
   });
 
   it("is reported too when the store's schema could not be read and a field was removed on retry", async () => {
     const DOC = "query Q($id: String!, $n: Int) { cart(cart_id: $id) { id gift(n: $n) { x } } }";
     const { client } = build((call) => (call.request?.query === DOC ? gqlErrors(['Cannot query field "gift" on type "Cart".']) : undefined), json(503, {}));
     const result = await client.query(DOC, { adapt: true, variables: { id: "AbC123xyz", n: 3 } });
-    expect(result.warnings).toEqual([expect.stringMatching(/\$n\b/)]);
+    expect(result.dropped).toEqual(["n"]);
   });
 });
 
