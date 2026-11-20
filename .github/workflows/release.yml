@@ -9,10 +9,12 @@ on:
 # `id-token: write` lets `npm publish` mint a short-lived provenance-signed
 # token from GitHub's OIDC issuer instead of reading a stored secret;
 # `contents: write` lets the changesets action push version-bump commits
-# and tags back to the repository.
+# and tags back to the repository; `pull-requests: write` lets it open the
+# "Version Packages" pull request (a permission left out of this block is none).
 permissions:
   id-token: write
   contents: write
+  pull-requests: write
 
 jobs:
   release:
