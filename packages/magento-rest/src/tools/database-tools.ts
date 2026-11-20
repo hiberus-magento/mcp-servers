@@ -16,7 +16,7 @@
 import { defineTool, type ToolAnnotations } from "@hiberus-magento/mcp-core";
 import { z } from "zod";
 import { type DatabaseAccess, type ReadRunner } from "../db/access.js";
-import { SENSITIVE_TABLES, SqlGuardError } from "../db/sql-guard.js";
+import { SqlGuardError, isSensitiveTable } from "../db/sql-guard.js";
 import { READ_ONLY_ANNOTATIONS, WRITE_ANNOTATIONS, type Access, type MagentoRestTool } from "./rest-tool.js";
 import { LIVE_VERIFIED_TOOLS, UNVERIFIED_DETAIL, UNVERIFIED_MARKER } from "./verification.js";
 
@@ -81,7 +81,7 @@ export function databaseTools(db: DatabaseAccess): readonly MagentoRestTool[] {
         const result = await db.read((run) =>
           run("SELECT table_name AS name, table_rows AS approximate_rows, engine FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name LIKE ? ORDER BY table_name", [pattern], LIST_CAP),
         );
-        const tables = result.rows.filter((row) => !SENSITIVE_TABLES.has(String(row["name"]).toLowerCase()));
+        const tables = result.rows.filter((row) => !isSensitiveTable(String(row["name"])));
         return { count: tables.length, truncated: result.truncated, tables };
       },
     }),
@@ -91,7 +91,7 @@ export function databaseTools(db: DatabaseAccess): readonly MagentoRestTool[] {
       description: "Use this to see the columns of one table: name, type, whether it can be NULL, key, default and extra. Refuses the tables that hold credentials (administrators, OAuth tokens, integrations).",
       input: z.object({ table_name: tableName.describe("The table to describe, e.g. sales_order.") }).strict(),
       run: async ({ table_name }) => {
-        if (SENSITIVE_TABLES.has(table_name.toLowerCase())) {
+        if (isSensitiveTable(table_name)) {
           throw new SqlGuardError(`the table ${table_name.toLowerCase()} holds credentials and cannot be described`);
         }
         const result = await db.read((run) =>
@@ -107,8 +107,8 @@ export function databaseTools(db: DatabaseAccess): readonly MagentoRestTool[] {
     read({
       name: "magentorest_db_query",
       description:
-        "Use this for a question the other tools cannot answer: runs ONE read-only SELECT and returns its columns and rows. Name the columns (SELECT * is refused; COUNT(*) is fine), pass values as ? placeholders in params, and expect at most max_rows rows (default 100, at most 500; a LIMIT above that is refused, none is added for you). " +
-        "No comments, no second statement, no INTO, no locking, and no credential tables (administrators, OAuth tokens, integrations); values of columns named like a password, hash or token, and of secret configuration rows, come back as [redacted].",
+        "Use this for a question the other tools cannot answer: runs ONE read-only SELECT and returns its columns and rows. Name the columns (SELECT * and TABLE are refused; COUNT(*) and a * b are fine), pass values as ? placeholders in params (?? identifier placeholders are refused; a literal in the SQL must be single-quoted, without backslashes, never double-quoted), and expect at most max_rows rows (default 100, at most 500): a LIMIT above that is refused, and LIMIT max_rows is added when the statement has none. " +
+        "No comments, no second statement, no INTO, no locking reads, no credential tables (administrators, OAuth tokens, integrations, sessions, ACL; table prefixes included), and no column named like a password, hash or token anywhere in the statement; values of such columns that reach the result anyway (a view, an alias), and of secret configuration rows, come back as [redacted].",
       input: z
         .object({
           sql: z.string().min(1).max(10_000).describe("A single SELECT statement."),

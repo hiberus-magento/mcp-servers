@@ -1,7 +1,8 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
 // The signed-in customer's own data. These need a CUSTOMER token (MAGENTO_GRAPHQL_TOKEN); without
-// one Magento answers "The current customer isn't authorized." and the error says how to set it.
+// one Magento answers `customer: null` next to "The current customer isn't authorized.", which the
+// transport turns into an error whose remedy says how to set the token (`client/http.ts`).
 //
 // Minimised on purpose: names, email and where an address is, but no street, phone, birth date,
 // gender or tax id — an agent debugging a storefront does not need them, and the document is the

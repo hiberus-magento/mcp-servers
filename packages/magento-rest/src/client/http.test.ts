@@ -121,6 +121,112 @@ describe("createRestTransport", () => {
     expect(calls).toBe(1);
   });
 
+  describe("an attempt that never gets a response", () => {
+    // A fetch that only settles when its signal aborts: Magento accepted the connection and never answered.
+    const hangingFetch = () => {
+      const calls: string[] = [];
+      const fetch = ((input: string | URL | Request, init?: RequestInit) => {
+        calls.push(String(input));
+        return new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          if (signal === undefined || signal === null) return;
+          signal.addEventListener("abort", () => reject(signal.reason as Error));
+        });
+      }) as typeof globalThis.fetch;
+      return { calls, fetch };
+    };
+    const buildHanging = () => {
+      const hanging = hangingFetch();
+      const transport = createRestTransport({ fetch: hanging.fetch, now: () => 0, sleep: async () => {}, random: () => 0.5, baseUrl: SYNTHETIC_MAGENTO_BASE_URL, tokenProvider, timeoutMs: 20 });
+      return { calls: hanging.calls, transport };
+    };
+
+    it("is aborted after the timeout and reported as a transport error that says it timed out", async () => {
+      const { transport } = buildHanging();
+      await expect(transport.request({ method: "GET", path: "/x" })).rejects.toMatchObject({ kind: "transport", message: expect.stringMatching(/timed out after/) as unknown });
+    });
+
+    it("retries a read that timed out", async () => {
+      const { calls, transport } = buildHanging();
+      await transport.request({ method: "GET", path: "/x" }).catch(() => undefined);
+      expect(calls.length).toBeGreaterThan(1);
+    });
+
+    it("is aborted when the status arrives but the body stalls", async () => {
+      const fetch = ((_input: string | URL | Request, init?: RequestInit) => {
+        const signal = init?.signal ?? undefined;
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            signal?.addEventListener("abort", () => controller.error(signal.reason));
+          },
+        });
+        return Promise.resolve(new Response(body, { status: 200 }));
+      }) as typeof globalThis.fetch;
+      const transport = createRestTransport({ fetch, now: () => 0, sleep: async () => {}, random: () => 0.5, baseUrl: SYNTHETIC_MAGENTO_BASE_URL, tokenProvider, timeoutMs: 20 });
+      await expect(transport.request({ method: "GET", path: "/x" })).rejects.toMatchObject({ kind: "transport", message: expect.stringMatching(/timed out after/) as unknown });
+    });
+
+    it("never replays a write that timed out", async () => {
+      const { calls, transport } = buildHanging();
+      await expect(transport.request({ method: "POST", path: "/x", body: {} })).rejects.toMatchObject({ kind: "transport" });
+      expect(calls).toHaveLength(1);
+    });
+  });
+
+  describe("a request the MCP client cancels", () => {
+    const buildCancellable = () => {
+      const calls: string[] = [];
+      const fetch = ((input: string | URL | Request, init?: RequestInit) => {
+        calls.push(String(input));
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason as Error));
+        });
+      }) as typeof globalThis.fetch;
+      const transport = createRestTransport({ fetch, now: () => 0, sleep: async () => {}, random: () => 0.5, baseUrl: SYNTHETIC_MAGENTO_BASE_URL, tokenProvider, timeoutMs: 60_000 });
+      return { calls, transport };
+    };
+
+    it("aborts the in-flight fetch, is not retried, and says it was cancelled", async () => {
+      const { calls, transport } = buildCancellable();
+      const controller = new AbortController();
+      const pending = transport.request({ method: "GET", path: "/x", signal: controller.signal });
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      controller.abort();
+      await expect(pending).rejects.toMatchObject({ kind: "transport", retryable: false, message: expect.stringMatching(/cancelled/) as unknown });
+      expect(calls).toHaveLength(1);
+    });
+
+    it("never calls fetch when the signal is already aborted", async () => {
+      const { calls, transport } = buildCancellable();
+      await expect(transport.request({ method: "GET", path: "/x", signal: AbortSignal.abort() })).rejects.toMatchObject({ message: expect.stringMatching(/cancelled/) as unknown });
+      expect(calls).toHaveLength(0);
+    });
+  });
+
+  describe("store scope", () => {
+    it("sends a request with a scope to /rest/<scope>/V1, and one without it to the base URL", async () => {
+      const { double, transport } = build({ "PUT /rest/all/V1/products/x": json(200, {}), "GET /rest/V1/products/x": json(200, {}) });
+      await transport.request({ method: "PUT", path: "/products/x", body: {}, scope: "all" });
+      await transport.request({ method: "GET", path: "/products/x" });
+      expect(double.calls.map((call) => new URL(call.url).pathname)).toEqual(["/rest/all/V1/products/x", "/rest/V1/products/x"]);
+    });
+
+    it("replaces the store code a base URL already carries", async () => {
+      const { double, transport } = build({ "PUT /rest/demo_view/V1/products/x": json(200, {}) }, SYNTHETIC_MAGENTO_BASE_URL.replace("/rest/V1", "/rest/default/V1"));
+      await transport.request({ method: "PUT", path: "/products/x", body: {}, scope: "demo_view" });
+      expect(new URL(double.calls[0]?.url ?? "").pathname).toBe("/rest/demo_view/V1/products/x");
+    });
+
+    it("refuses a scope that is not a store code, and a scope when the base URL does not end in /rest/V1", async () => {
+      const { double, transport } = build({});
+      await expect(transport.request({ method: "PUT", path: "/x", body: {}, scope: "all/../V1" })).rejects.toThrow(/store code/);
+      const other = build({}, "https://demo-host.example-domain/api");
+      await expect(other.transport.request({ method: "PUT", path: "/x", body: {}, scope: "all" })).rejects.toThrow(/rest\/V1/);
+      expect(double.calls).toHaveLength(0);
+      expect(other.double.calls).toHaveLength(0);
+    });
+  });
+
   it("does not retry a 4xx", async () => {
     const { double, transport } = build({ "GET /rest/V1/x": json(403, { message: "no" }) });
     await expect(transport.request({ method: "GET", path: "/x" })).rejects.toMatchObject({ kind: "forbidden" });

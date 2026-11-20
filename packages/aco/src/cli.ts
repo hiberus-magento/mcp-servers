@@ -13,8 +13,7 @@
 // only; the IMS client id/secret is read from `ACO_CLIENT_ID`/
 // `ACO_CLIENT_SECRET` environment variables only — there is no flag for
 // either anywhere in `CLI_OPTIONS`.
-import { parseCredentialCliArgs, persistCredential, readTokenFromStdin, redact } from "@hiberus-magento/mcp-core";
-import { pathToFileURL } from "node:url";
+import { parseCredentialCliArgs, persistCredential, readTokenFromStdin, redact, isEntryPoint } from "@hiberus-magento/mcp-core";
 import type { AcoClient, ProvisionOptions, ProvisionVerticalInput } from "./client/index.js";
 import { createAcoClient } from "./client/index.js";
 import {
@@ -502,7 +501,7 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<CliR
 
 const ADMIN_BASE_URL_ENV_VAR = "ACO_ADMIN_BASE_URL";
 const MERCHANDISING_BASE_URL_ENV_VAR = "ACO_MERCHANDISING_BASE_URL";
-const isDirectRun = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isDirectRun = isEntryPoint(import.meta.url);
 
 if (isDirectRun) {
   const adminBaseUrl = process.env[ADMIN_BASE_URL_ENV_VAR];

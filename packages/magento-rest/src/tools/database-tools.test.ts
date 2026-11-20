@@ -113,6 +113,14 @@ describe("db_list_tables and db_describe_table", () => {
     expect(queries(sent)).toEqual([]);
   });
 
+  it("treats a prefixed credential table like the unprefixed one, when describing and when listing", async () => {
+    const { tools, sent, call } = setup(() => ({ columns: ["name"], rows: [{ name: "mg_admin_user" }, { name: "mg_catalog_product_entity" }, { name: "mg_tfa_user_config" }] }));
+    await expect(tools.find((t) => t.name === "magentorest_db_describe_table")?.invoke({ table_name: "mg_admin_user" }, {})).rejects.toThrow(/mg_admin_user/);
+    expect(queries(sent)).toEqual([]);
+    const r = await call("db_list_tables", {});
+    expect(r.body).toMatchObject({ count: 1, tables: [{ name: "mg_catalog_product_entity" }] });
+  });
+
   it("rejects a table name with anything but letters, digits and underscores", () => {
     const { tools } = setup(() => ({ columns: [], rows: [] }));
     expect(() => tools.find((t) => t.name === "magentorest_db_describe_table")?.inputSchema.parse({ table_name: "a`b" })).toThrow();
@@ -136,9 +144,22 @@ describe("db_query", () => {
     expect(queries(sent).length).toBe(before);
   });
 
-  it("does not return the value of a credential column", async () => {
-    const { call } = setup(() => ({ columns: ["email", "password_hash"], rows: [{ email: "a@example.test", password_hash: "$2y$10$abcdefghijklmnopqrstuv" }] }));
-    const r = await call("db_query", { sql: "SELECT email, password_hash FROM customer_entity" });
+  it("refuses a statement that names a credential column, without sending it", async () => {
+    const { tools, sent } = setup(() => ({ columns: ["email", "password_hash"], rows: [{ email: "a@example.test", password_hash: "$2y$10$abcdefghijklmnopqrstuv" }] }));
+    await expect(tools.find((t) => t.name === "magentorest_db_query")?.invoke({ sql: "SELECT email, password_hash FROM customer_entity" }, {})).rejects.toThrow(/credential/i);
+    expect(queries(sent)).toEqual([]);
+  });
+
+  it("does not return the value of a credential column that reaches the result without being named", async () => {
+    const { call } = setup(() => ({
+      columns: ["email", "h"],
+      origins: [
+        { name: "email", table: "customer_entity" },
+        { name: "password_hash", table: "customer_entity" },
+      ],
+      rows: [{ email: "a@example.test", h: "$2y$10$abcdefghijklmnopqrstuv" }],
+    }));
+    const r = await call("db_query", { sql: "SELECT email, h FROM customer_view" });
     expect(r.text).not.toContain("$2y$");
     expect(r.text).toContain("a@example.test");
   });

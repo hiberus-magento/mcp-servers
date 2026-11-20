@@ -14,17 +14,23 @@
 //
 // This is not the security boundary — the database user's grants are. It is what makes a mistake cheap.
 import { DatabaseConfigError, type DatabaseTarget } from "./connection.js";
-import { sanitizeRows } from "./rows.js";
+import { sanitizeRows, type ColumnOrigin } from "./rows.js";
 import { SqlGuardError, guardReadQuery, guardWriteStatement, type WriteKind } from "./sql-guard.js";
 
 export interface RawResult {
   readonly columns: readonly string[];
+  /** Where each column came from (parallel to `columns`), so redaction sees through an alias. */
+  readonly origins?: readonly ColumnOrigin[];
   readonly rows: readonly Record<string, unknown>[];
   readonly affectedRows?: number;
   readonly insertId?: number;
 }
 
 export interface DbConnection {
+  /**
+   * With `values` (even an empty list) the statement is bound on the server as a prepared statement; without, it is
+   * sent as text, which is only for this module's constant session statements.
+   */
   query(sql: string, values?: readonly unknown[], timeoutMs?: number): Promise<RawResult>;
   end(): Promise<void>;
   destroy(): void;
@@ -160,7 +166,7 @@ export function createDatabaseAccess(options: DatabaseAccessOptions): DatabaseAc
           const guarded = guardReadQuery(sql, maxRows);
           const result = await conn.query(guarded.sql, params, queryTimeoutMs);
           const kept = result.rows.slice(0, maxRows);
-          return { columns: result.columns, rows: sanitizeRows(result.columns, kept), truncated: result.rows.length > maxRows };
+          return { columns: result.columns, rows: sanitizeRows(result.columns, kept, result.origins), truncated: result.rows.length > maxRows };
         };
         return await use(run);
       } catch (error) {

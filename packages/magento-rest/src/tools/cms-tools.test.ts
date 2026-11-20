@@ -99,7 +99,7 @@ describe.each(KINDS)("CMS $kind", ({ kind, path, idKey, wrapper, raw }) => {
   // fieldName StoreId) — the REST body for a block or page takes no store assignment, so the original's
   // create never worked here. Without it Magento creates the record for all store views.
   it(`${create} wraps the ${wrapper}, defaults active, and sends NO store_id — Magento refuses that field`, async () => {
-    const { double, call } = build({ [`POST /rest/V1/${path}`]: json(200, injectLeakProbe(raw)) });
+    const { double, call } = build({ [`POST /rest/all/V1/${path}`]: json(200, injectLeakProbe(raw)) });
     const out = await call(create, base);
     const body = JSON.parse(double.calls[0]?.body ?? "{}") as Record<string, Record<string, unknown>>;
     expect(body[wrapper]).toMatchObject({ identifier: `demo-${kind}`, title: "Demo", content: "<p>x</p>", active: true });
@@ -121,14 +121,14 @@ describe.each(KINDS)("CMS $kind", ({ kind, path, idKey, wrapper, raw }) => {
   });
 
   it(`${update} reads the record, then PUTs the merge, keeping what was not changed`, async () => {
-    const { double, call } = build({ [`GET /rest/V1/${path}/5`]: json(200, raw), [`PUT /rest/V1/${path}/5`]: json(200, raw) });
+    const { double, call } = build({ [`GET /rest/all/V1/${path}/5`]: json(200, raw), [`PUT /rest/all/V1/${path}/5`]: json(200, raw) });
     await call(update, { [idKey]: 5, title: "Renamed" });
     expect(double.calls.map((c) => c.method)).toEqual(["GET", "PUT"]);
     expect(JSON.parse(double.calls[1]?.body ?? "{}")).toEqual({ [wrapper]: { id: 5, identifier: raw.identifier, title: "Renamed", content: "<p>Hello</p>", active: true } });
   });
 
   it(`${update} lets an explicit empty content clear it, and a false flag deactivate`, async () => {
-    const { double, call } = build({ [`GET /rest/V1/${path}/5`]: json(200, raw), [`PUT /rest/V1/${path}/5`]: json(200, raw) });
+    const { double, call } = build({ [`GET /rest/all/V1/${path}/5`]: json(200, raw), [`PUT /rest/all/V1/${path}/5`]: json(200, raw) });
     await call(update, { [idKey]: 5, content: "", is_active: false });
     expect(JSON.parse(double.calls[1]?.body ?? "{}")[wrapper]).toMatchObject({ content: "", active: false });
   });
@@ -154,7 +154,7 @@ describe.each(KINDS)("CMS $kind", ({ kind, path, idKey, wrapper, raw }) => {
   });
 
   it(`${create} is sent once even when Magento answers 503`, async () => {
-    const { double, tool } = build({ [`POST /rest/V1/${path}`]: json(503, { message: "busy" }) });
+    const { double, tool } = build({ [`POST /rest/all/V1/${path}`]: json(503, { message: "busy" }) });
     await expect(tool(create).invoke(base, {})).rejects.toMatchObject({ kind: "server" });
     expect(double.calls).toHaveLength(1);
   });
@@ -164,7 +164,7 @@ describe("CMS page extras", () => {
   const base = { identifier: "demo-page", title: "Demo", content: "<p>x</p>" };
 
   it("defaults the layout to 1column and sends the optional SEO fields only when given", async () => {
-    const { double, call } = build({ "POST /rest/V1/cmsPage": json(200, {}) });
+    const { double, call } = build({ "POST /rest/all/V1/cmsPage": json(200, {}) });
     await call("magentorest_create_cms_page", base);
     await call("magentorest_create_cms_page", { ...base, content_heading: "H", meta_title: "T", meta_keywords: "k", meta_description: "D", page_layout: "2columns-left" });
     const first = (JSON.parse(double.calls[0]?.body ?? "{}") as { page: Record<string, unknown> }).page;

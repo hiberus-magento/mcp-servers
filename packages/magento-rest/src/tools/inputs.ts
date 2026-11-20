@@ -4,10 +4,14 @@
 // `page_size` was one of the original's gaps, and a per-tool copy of the cap
 // is a per-tool chance to forget it.
 import { z } from "zod";
-import { CONDITION_TYPES, FIELD_NAME_PATTERN } from "../client/index.js";
+import { CONDITION_TYPES, FIELD_NAME_PATTERN, type MagentoRestClient } from "../client/index.js";
 
 /** Magento caps a SKU at 64 characters. */
-export const sku = z.string().min(1).max(64).describe("The SKU (Stock Keeping Unit) of the product.");
+export const sku = z
+  .string()
+  .min(1)
+  .max(64)
+  .describe("The SKU (Stock Keeping Unit) of the product. A / in it is sent as %2F, which Apache with AllowEncodedSlashes Off answers 404.");
 
 export const entityId = (what: string) => z.number().int().min(1).describe(`The numeric ID of the ${what}.`);
 
@@ -34,3 +38,18 @@ export const isoDate = (what: string) =>
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD")
     .describe(what);
+
+/**
+ * Store scope of a catalog write. Through the base URL (`/rest/V1`) Magento runs as the default store view, so
+ * a write would change only that store view's values; omitted, the write runs in `all`, the global values.
+ */
+export const storeCode = z
+  .string()
+  .regex(/^[A-Za-z][A-Za-z0-9_]{0,31}$/, "a store view code: letters, digits and underscores")
+  .optional()
+  .describe(
+    "Store view code whose own values to change (e.g. default). Omit to change the global values every store view inherits (scope all); a store view that already has its own value keeps it. An unknown code is answered as not found.",
+  );
+
+/** The client view a scoped write uses: the named store view, or `all`. */
+export const inStore = (client: MagentoRestClient, code: string | undefined): MagentoRestClient => client.with({ scope: code ?? "all" });

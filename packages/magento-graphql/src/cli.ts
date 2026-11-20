@@ -15,8 +15,7 @@
 // There is deliberately no command that reads or writes store data: the MCP tools are the data
 // surface, and a second one here would be a second place to keep the write switch honest.
 import { createHash } from "node:crypto";
-import { parseCredentialCliArgs, persistCredential, readTokenFromStdin, redact } from "@hiberus-magento/mcp-core";
-import { pathToFileURL } from "node:url";
+import { parseCredentialCliArgs, persistCredential, readTokenFromStdin, redact, isEntryPoint } from "@hiberus-magento/mcp-core";
 import { MagentoGraphqlError } from "./client/index.js";
 import { MAGENTO_GRAPHQL_DOMAIN, resolveOptionalCustomerToken } from "./credential-provider.js";
 import { createRuntimeResolver } from "./tools/runtime.js";
@@ -100,7 +99,7 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<CliR
 
 // Only runs when this module is the process entrypoint, so `cli.test.ts` can import `runCli`
 // without resolving a real credential or reading real stdin.
-const isDirectRun = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isDirectRun = isEntryPoint(import.meta.url);
 
 if (isDirectRun) {
   const getRuntime = createRuntimeResolver();

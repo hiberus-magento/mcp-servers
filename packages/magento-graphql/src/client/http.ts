@@ -9,11 +9,14 @@
 //     a credential (`errors.ts`);
 //   - a query is retried with backoff, a mutation never is — replaying `addProductsToCart` after
 //     an ambiguous failure could add the same item twice;
-//   - a plaintext base URL is refused unless it is loopback, and TLS verification is not switchable.
+//   - a plaintext base URL is refused unless it is loopback, and TLS verification is not switchable;
+//   - every attempt is aborted after a bounded time (30 s by default), body included, and reported as a timeout;
+//   - a resolver that failed is an error, not data: Magento answers it with HTTP 200, the field `null` in `data`
+//     and the reason in `errors`, so `errors` next to a `data` whose fields are all `null` is a failure.
 //
-// `fetch`, `now`, `sleep` and the token source are injected, so no test waits on a real clock or
+// `fetch`, `now`, `sleep`, the timeout and the token source are injected, so no test waits on a real clock or
 // reaches a real host.
-import { MagentoGraphqlError, classifyGraphqlErrors, classifyHttpFailure } from "./errors.js";
+import { MagentoGraphqlError, classifyGraphqlErrors, classifyHttpFailure, graphqlErrorMessages } from "./errors.js";
 import { GRAPHQL_PACE, TokenBucketRateLimiter } from "./rate-limiter.js";
 import { decideRetry } from "./retry.js";
 
@@ -26,6 +29,8 @@ export interface GraphqlRequest {
   readonly store?: string;
   /** ISO 4217 code, sent as `Content-Currency`. */
   readonly currency?: string;
+  /** The MCP request's signal: when the client cancels the tool call, the in-flight request is aborted and not retried. */
+  readonly signal?: AbortSignal;
 }
 
 export interface GraphqlResult {
@@ -44,11 +49,15 @@ export interface GraphqlTransportDeps {
   /** The customer token, or `undefined` for an anonymous call. Called on every attempt. */
   readonly getToken: () => Promise<string | undefined>;
   readonly defaultStore?: string;
+  /** How long one attempt may take, response body included, before it is aborted. Defaults to `DEFAULT_TIMEOUT_MS`. */
+  readonly timeoutMs?: number;
 }
 
 export interface GraphqlTransport {
   execute(request: GraphqlRequest): Promise<GraphqlResult>;
 }
+
+export const DEFAULT_TIMEOUT_MS = 30_000;
 
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "[::1]"]);
 const STORE_PATTERN = /^[a-z0-9_]{1,32}$/;
@@ -80,9 +89,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/** What `fetch` (or a body read) rejects with when an `AbortSignal.timeout` fires. */
+function isTimeout(cause: unknown): boolean {
+  return isRecord(cause) && cause["name"] === "TimeoutError";
+}
+
+/** Whether Magento reported errors and had nothing to show for them: `data` empty, or every field of it `null`. */
+function allFieldsNull(data: Record<string, unknown>): boolean {
+  return Object.values(data).every((value) => value === null);
+}
+
+function cancelled(cause?: unknown): MagentoGraphqlError {
+  return new MagentoGraphqlError({ kind: "transport", message: "Magento GraphQL request was cancelled by the client.", retryable: false, ...(cause !== undefined ? { cause } : {}) });
+}
+
 export function createGraphqlTransport(deps: GraphqlTransportDeps): GraphqlTransport {
   const baseUrl = validateBaseUrl(deps.baseUrl);
   const random = deps.random ?? Math.random;
+  const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const rateLimiter = new TokenBucketRateLimiter(GRAPHQL_PACE, { now: deps.now, sleep: deps.sleep });
 
   async function attemptOnce(request: GraphqlRequest, headers: Record<string, string>): Promise<{ readonly value: GraphqlResult } | { readonly failure: MagentoGraphqlError; readonly retryAfterMs?: number }> {
@@ -90,6 +114,7 @@ export function createGraphqlTransport(deps: GraphqlTransportDeps): GraphqlTrans
     const token = await deps.getToken();
     const sent = token !== undefined && token !== "" ? { ...headers, Authorization: `Bearer ${token}` } : headers;
     let response: Response;
+    let text: string;
     try {
       response = await deps.fetch(baseUrl, {
         method: "POST",
@@ -97,11 +122,20 @@ export function createGraphqlTransport(deps: GraphqlTransportDeps): GraphqlTrans
         // A redirect would re-send the request (and the token) somewhere the operator never configured.
         redirect: "manual",
         body: JSON.stringify({ query: request.document, ...(request.variables !== undefined ? { variables: request.variables } : {}) }),
+        // A fresh timeout per attempt: a retry must get the whole budget again. It also aborts the body read below.
+        // The caller's signal joins it, so a cancelled tool call stops its request.
+        signal: request.signal !== undefined ? AbortSignal.any([request.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
       });
+      text = await response.text();
     } catch (cause) {
-      return { failure: new MagentoGraphqlError({ kind: "transport", message: "Magento GraphQL request failed before a response was received.", retryable: true, cause }) };
+      if (request.signal?.aborted === true) {
+        return { failure: cancelled(cause) };
+      }
+      const message = isTimeout(cause)
+        ? `Magento GraphQL request timed out after ${timeoutMs / 1000} seconds.`
+        : "Magento GraphQL request failed before a response was received.";
+      return { failure: new MagentoGraphqlError({ kind: "transport", message, retryable: true, cause }) };
     }
-    const text = await response.text();
     if (!response.ok || (response.status >= 300 && response.status < 400)) {
       const after = retryAfterMs(response);
       return { failure: classifyHttpFailure(response.status, text), ...(after !== undefined ? { retryAfterMs: after } : {}) };
@@ -113,17 +147,18 @@ export function createGraphqlTransport(deps: GraphqlTransportDeps): GraphqlTrans
       return { failure: new MagentoGraphqlError({ kind: "unparseable", message: "Magento GraphQL returned a success status with a body that is not JSON.", status: response.status }) };
     }
     const errors = isRecord(body) && Array.isArray(body["errors"]) ? (body["errors"] as readonly unknown[]) : [];
-    const hasData = isRecord(body) && body["data"] !== undefined && body["data"] !== null;
-    if (errors.length > 0 && !hasData) {
+    const data = isRecord(body) ? body["data"] : undefined;
+    const hasData = data !== undefined && data !== null;
+    if (errors.length > 0 && (!hasData || (isRecord(data) && allFieldsNull(data)))) {
       return { failure: classifyGraphqlErrors(errors) };
     }
     if (!isRecord(body) || !hasData) {
       return { failure: new MagentoGraphqlError({ kind: "unparseable", message: "Magento GraphQL returned JSON with neither data nor errors.", status: response.status }) };
     }
     if (errors.length > 0) {
-      // Partial data: the messages are classified only to get the same redaction and caps.
-      const messages = classifyGraphqlErrors(errors).message.replace(/^Magento GraphQL: /, "").split(" | ");
-      return { value: { data: body["data"], errors: messages } };
+      // Partial data: at least one field resolved. Each message is kept whole, with the same redaction and caps.
+      const { shown, extra } = graphqlErrorMessages(errors);
+      return { value: { data: body["data"], errors: extra > 0 ? [...shown, `(+${extra} more)`] : shown } };
     }
     return { value: { data: body["data"] } };
   }
@@ -142,6 +177,10 @@ export function createGraphqlTransport(deps: GraphqlTransportDeps): GraphqlTrans
       if (request.currency !== undefined) headers["Content-Currency"] = request.currency;
       const idempotent = request.kind === "query";
       for (let attempt = 1; ; attempt += 1) {
+        // Checked before every attempt: a call cancelled during a backoff sleep sends nothing more.
+        if (request.signal?.aborted === true) {
+          throw cancelled();
+        }
         const outcome = await attemptOnce(request, headers);
         if ("value" in outcome) {
           return outcome.value;

@@ -12,8 +12,7 @@
 // `db:sql` is exposed here too, purely as an operator diagnostic path, going
 // through the exact same guarded spec as the MCP tool (`commands.ts`'s
 // `dbSqlSpec`) — a guard rejection never spawns a process here either.
-import { parseCredentialCliArgs, persistCredential, readTokenFromStdin, redact } from "@hiberus-magento/mcp-core";
-import { pathToFileURL } from "node:url";
+import { parseCredentialCliArgs, persistCredential, readTokenFromStdin, redact, isEntryPoint } from "@hiberus-magento/mcp-core";
 import {
   createMagentoCloudAllowlist,
   describeDbTargetSelectionFailure,
@@ -297,7 +296,7 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<CliR
 // `cli.ts` guard).
 // ---------------------------------------------------------------------------
 const MAGENTO_CLOUD_BINARY_NAME = "magento-cloud";
-const isDirectRun = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isDirectRun = isEntryPoint(import.meta.url);
 
 if (isDirectRun) {
   const { homedir } = await import("node:os");

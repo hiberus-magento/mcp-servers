@@ -65,9 +65,10 @@ for (const tool of assembleTools()) {
   server.registerTool(
     tool.name,
     { description: tool.description, inputSchema: tool.inputSchema.shape, annotations: tool.annotations },
-    async (args: unknown) => {
+    async (args: unknown, extra) => {
       try {
-        const result = await tool.invoke(args, {});
+        // The SDK aborts `extra.signal` when the client sends notifications/cancelled for this call.
+        const result = await tool.invoke(args, { signal: extra.signal });
         return { content: [...result.content], isError: result.isError };
       } catch (error) {
         // `defineTool.invoke` already answers a missing credential; anything else (a classified

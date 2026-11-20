@@ -13,7 +13,7 @@
 // deep response cannot overflow the stack.
 import { z } from "zod";
 import { restPath, type SearchFilter } from "../client/index.js";
-import { currentPage, entityId, pageSize } from "./inputs.js";
+import { currentPage, entityId, inStore, pageSize, storeCode } from "./inputs.js";
 import type { MagentoRestTool, ToolFactory } from "./rest-tool.js";
 import { listOf, pagedListOf } from "./shapes.js";
 
@@ -124,11 +124,12 @@ export function categoryTools({ readTool, writeTool, shapes }: ToolFactory): rea
           include_in_menu: z.boolean().optional().describe("Include in the navigation menu (default true)."),
           description: z.string().max(65_535).optional().describe("Category description."),
           url_key: z.string().max(255).optional().describe("URL key."),
+          store_code: storeCode,
         })
         .strict(),
       shape: shapes.category,
       run: (args, client) =>
-        client.post("/categories", {
+        inStore(client, args.store_code).post("/categories", {
           category: {
             name: args.name,
             parent_id: args.parent_id,
@@ -151,16 +152,17 @@ export function categoryTools({ readTool, writeTool, shapes }: ToolFactory): rea
           include_in_menu: z.boolean().optional().describe("Include in the navigation menu."),
           description: z.string().max(65_535).optional().describe("New description."),
           position: z.number().int().min(0).optional().describe("Sort position."),
+          store_code: storeCode,
         })
         .strict(),
       shape: shapes.category,
-      run: ({ category_id, description, ...fields }, client) => {
+      run: ({ category_id, description, store_code, ...fields }, client) => {
         const attributes = prose("description", description);
         const direct = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
         if (Object.keys(direct).length === 0 && attributes.length === 0) {
           throw new Error("magentorest_update_category: nothing to update — pass at least one field besides the category ID.");
         }
-        return client.put(restPath`/categories/${category_id}`, { category: { ...direct, ...(attributes.length > 0 ? { custom_attributes: attributes } : {}) } });
+        return inStore(client, store_code).put(restPath`/categories/${category_id}`, { category: { ...direct, ...(attributes.length > 0 ? { custom_attributes: attributes } : {}) } });
       },
     }),
 

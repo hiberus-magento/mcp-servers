@@ -50,3 +50,81 @@ describe("sanitizeRows", () => {
     expect(rows[0]).toEqual({ password_hash: "x" });
   });
 });
+
+// The driver reports where each column came from (mysql2's `orgName` and `orgTable`), so an alias does not hide it.
+describe("sanitizeRows with the columns' origins", () => {
+  it("redacts a credential column read under an alias", () => {
+    const out = sanitizeRows(["entity_id", "ph"], [{ entity_id: 1, ph: "$2y$10$synthetic" }], [
+      { name: "entity_id", table: "customer_entity" },
+      { name: "password_hash", table: "customer_entity" },
+    ]);
+    expect(out[0]).toEqual({ entity_id: 1, ph: REDACTED });
+  });
+
+  it("redacts an aliased configuration value whose aliased path is a secret, and keeps an ordinary one", () => {
+    const origins = [
+      { name: "path", table: "core_config_data" },
+      { name: "value", table: "core_config_data" },
+    ];
+    const out = sanitizeRows(["p", "v"], [{ p: "payment/gateway/api_key", v: "abc" }, { p: "web/secure/base_url", v: "https://shop.example.test/" }], origins);
+    expect(out.map((r) => r["v"])).toEqual([REDACTED, "https://shop.example.test/"]);
+  });
+
+  it("treats a prefixed configuration table the same way", () => {
+    const origins = [
+      { name: "path", table: "mg_core_config_data" },
+      { name: "value", table: "mg_core_config_data" },
+    ];
+    const out = sanitizeRows(["path", "v"], [{ path: "system/smtp/password", v: "abc" }], origins);
+    expect(out[0]).toEqual({ path: "system/smtp/password", v: REDACTED });
+  });
+
+  it("redacts a configuration value when its path is not in the result", () => {
+    const out = sanitizeRows(["config_id", "v"], [{ config_id: 7, v: "abc" }], [
+      { name: "config_id", table: "core_config_data" },
+      { name: "value", table: "core_config_data" },
+    ]);
+    expect(out[0]).toEqual({ config_id: 7, v: REDACTED });
+  });
+
+  it("keeps a NULL configuration value as NULL", () => {
+    const out = sanitizeRows(["v"], [{ v: null }], [{ name: "value", table: "core_config_data" }]);
+    expect(out[0]).toEqual({ v: null });
+  });
+
+  it("keeps ordinary columns as before, including a column named value in another table", () => {
+    const out = sanitizeRows(["sku", "value"], [{ sku: "DEMO-1", value: "Red" }], [
+      { name: "sku", table: "catalog_product_entity" },
+      { name: "value", table: "catalog_product_entity_varchar" },
+    ]);
+    expect(out[0]).toEqual({ sku: "DEMO-1", value: "Red" });
+  });
+
+  it("redacts every configuration value when the table is joined to itself, since the path may be another row's", () => {
+    const origins = [
+      { name: "path", table: "core_config_data", alias: "c1" },
+      { name: "value", table: "core_config_data", alias: "c2" },
+    ];
+    const out = sanitizeRows(["path", "value"], [{ path: "general/locale/code", value: "synthetic-secret" }], origins);
+    expect(out[0]).toEqual({ path: "general/locale/code", value: REDACTED });
+  });
+
+  it("redacts every configuration value when two aliases of the table are in the result, even with paths beside them", () => {
+    const origins = [
+      { name: "path", table: "core_config_data", alias: "c1" },
+      { name: "value", table: "core_config_data", alias: "c1" },
+      { name: "path", table: "core_config_data", alias: "c2" },
+    ];
+    const out = sanitizeRows(["p1", "v1", "p2"], [{ p1: "general/locale/code", v1: "en_US", p2: "general/locale/timezone" }], origins);
+    expect(out[0]?.["v1"]).toBe(REDACTED);
+  });
+
+  it("still pairs a value with the path of the same alias", () => {
+    const origins = [
+      { name: "path", table: "core_config_data", alias: "c" },
+      { name: "value", table: "core_config_data", alias: "c" },
+    ];
+    const out = sanitizeRows(["path", "value"], [{ path: "general/locale/code", value: "en_US" }], origins);
+    expect(out[0]).toEqual({ path: "general/locale/code", value: "en_US" });
+  });
+});

@@ -44,7 +44,7 @@ executable to run`.
 - `magentorest_get_product_by_sku` (read-only) — Use this to read one product by its SKU: name, price, status, visibility, type, timestamps, catalog attributes and category links.
 - `magentorest_search_products` (read-only) — Use this to find products whose name contains a phrase. Returns a bounded page of summaries (id, sku, name, price, status, type) and the total count.
 - `magentorest_advanced_product_search` (read-only) — Use this to filter products on one field with a chosen comparison (eq, like, gt, gteq, lt, lteq, in, ...) and sort the result. Returns a bounded page of summaries and the total count.
-- `magentorest_create_product` — Use this to create a new product. Adds a catalog record; the SKU must be unique. Does not touch stock or categories.
+- `magentorest_create_product` — Use this to create a new product. Adds a catalog record; the SKU must be unique. Does not touch stock or categories. Without website_ids it goes to the default website only: the website of store_code's store view, or the store's only website; with several websites and no store_code it refuses and asks for website_ids (magentorest_get_websites lists them).
 - `magentorest_update_product` — Use this to change fields of an existing product. Only the fields you pass are sent; at least one is required. Overwrites the current values.
 - `magentorest_update_product_attribute` — Use this to set ONE attribute of a product by code (name, price, status, description, a custom attribute, ...). Overwrites the current value. The identity attributes sku, id, entity_id and type_id are refused.
 - `magentorest_delete_product` — Use this to permanently delete a product by SKU. Irreversible: the product, its images and its URL rewrites are removed.
@@ -102,11 +102,11 @@ executable to run`.
 - `magentorest_get_abandoned_carts` (read-only) — Use this to find abandoned carts: active, non-empty carts not updated for at least a number of days, most recently updated first. Each entry names the owner (or Guest), the item count and the dates. Returns a bounded page, the total count and the cutoff used.
 - `magentorest_get_cms_block_by_id` (read-only) — Use this to read one CMS block by ID, including its content (HTML), title, identifier, dates and whether it is active.
 - `magentorest_search_cms_blocks` (read-only) — Use this to find CMS blocks by identifier (exact), part of the title, or active status. Filters are combined with AND. Returns a bounded page of summaries WITHOUT the content, and the total count; read one by ID for its content.
-- `magentorest_update_cms_block` — Use this to change a CMS block's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront.
+- `magentorest_update_cms_block` — Use this to change a CMS block's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront. The block ends up assigned to all store views: Magento resets a block's store assignment on every REST update.
 - `magentorest_delete_cms_block` — Use this to permanently delete a CMS block by ID. Irreversible: it disappears from the storefront immediately.
 - `magentorest_get_cms_page_by_id` (read-only) — Use this to read one CMS page by ID, including its content (HTML), title, identifier, dates and whether it is active.
 - `magentorest_search_cms_pages` (read-only) — Use this to find CMS pages by identifier (exact), part of the title, or active status. Filters are combined with AND. Returns a bounded page of summaries WITHOUT the content, and the total count; read one by ID for its content.
-- `magentorest_update_cms_page` — Use this to change a CMS page's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront.
+- `magentorest_update_cms_page` — Use this to change a CMS page's identifier, title, content or active flag. Only the fields you pass change; at least one is required. Overwrites the current values on the live storefront. The page keeps its store assignment.
 - `magentorest_delete_cms_page` — Use this to permanently delete a CMS page by ID. Irreversible: it disappears from the storefront immediately.
 - `magentorest_create_cms_block` — Use this to create a CMS block. Adds a block for all store views (Magento's REST body takes no store assignment) that is active unless you say otherwise.
 - `magentorest_create_cms_page` — Use this to create a CMS page at a URL key. Adds a page for all store views (Magento's REST body takes no store assignment) that is active, with a one-column layout, unless you say otherwise.
@@ -129,15 +129,15 @@ executable to run`.
 - `magentorest_get_tax_rates` (read-only) — Use this to list the tax rates: code, rate, country, region and postcode (or postcode range). Returns a bounded page and the total count.
 - `magentorest_get_tax_rules` (read-only) — Use this to list the tax rules: code, priority, and the customer tax classes, product tax classes and tax rates each one combines. Returns a bounded page and the total count. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_get_tax_classes` (read-only) — Use this to list the tax classes, optionally only the CUSTOMER or only the PRODUCT ones. Returns one page of up to 100 and the total count.
-- `magentorest_get_revenue` (read-only) — Use this to total the revenue of a period: revenue, currency, order count, average order value and tax. Computed from the orders in the period; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial.
+- `magentorest_get_revenue` (read-only) — Use this to total the revenue of a period: revenue, currency, order count, average order value and tax. Computed from the orders in the period; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial. With no status it leaves out canceled and closed orders. Amounts in different currencies are never added together: when the orders span several, the totals are null and by_currency gives each currency's own totals.
 - `magentorest_get_order_count` (read-only) — Use this to count the orders of a period, optionally by status. The count is Magento's own total, so it is exact and is never partial.
-- `magentorest_get_product_sales` (read-only) — Use this to see what sold in a period: orders, items, units, revenue, and the ten best-selling products by quantity with their revenue. Optionally for one country (billing or shipping). Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial.
-- `magentorest_get_revenue_by_country` (read-only) — Use this to total the revenue of a period for one country (orders billed or shipped there): revenue, currency, order count, average order value and tax. Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial.
+- `magentorest_get_product_sales` (read-only) — Use this to see what sold in a period: orders, items, units, revenue, and the ten best-selling products by quantity with their revenue. Optionally for one country (billing or shipping). Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial. With no status it leaves out canceled and closed orders. Amounts in different currencies are never added together: when the orders span several, the revenue figures are null and by_currency gives each currency's own revenue and order count.
+- `magentorest_get_revenue_by_country` (read-only) — Use this to total the revenue of a period for one country (orders billed or shipped there): revenue, currency, order count, average order value and tax. Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial. With no status it leaves out canceled and closed orders. Amounts in different currencies are never added together: when the orders span several, the totals are null and by_currency gives each currency's own totals.
 - `magentorest_get_customer_ordered_products_by_email` (read-only) — Use this to list every order of one customer, found by exact email, with each order's lines (SKU, name, price, quantity). Returns the customer's id, name and email, never their addresses. For a product's own detail use magentorest_get_product_by_sku. Reads at most max_pages pages of 100 orders and says when the result is partial.
 - `magentorest_db_status` (read-only) — Use this to check that the database connection works: returns the server version, the database name, that the session is read-only, and whether database writes are enabled. Run it first when a database tool fails. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_db_list_tables` (read-only) — Use this to list the tables of the Magento database, optionally only those whose name contains a fragment (e.g. `sales_order`). Returns each table's name, engine and approximate row count (an estimate, not a count: use magentorest_db_stats or a COUNT(*) for exact figures). **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_db_describe_table` (read-only) — Use this to see the columns of one table: name, type, whether it can be NULL, key, default and extra. Refuses the tables that hold credentials (administrators, OAuth tokens, integrations). **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
-- `magentorest_db_query` (read-only) — Use this for a question the other tools cannot answer: runs ONE read-only SELECT and returns its columns and rows. Name the columns (SELECT * is refused; COUNT(*) is fine), pass values as ? placeholders in params, and expect at most max_rows rows (default 100, at most 500; a LIMIT above that is refused, none is added for you). No comments, no second statement, no INTO, no locking, and no credential tables (administrators, OAuth tokens, integrations); values of columns named like a password, hash or token, and of secret configuration rows, come back as [redacted]. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
+- `magentorest_db_query` (read-only) — Use this for a question the other tools cannot answer: runs ONE read-only SELECT and returns its columns and rows. Name the columns (SELECT * and TABLE are refused; COUNT(*) and a * b are fine), pass values as ? placeholders in params (?? identifier placeholders are refused; a literal in the SQL must be single-quoted, without backslashes, never double-quoted), and expect at most max_rows rows (default 100, at most 500): a LIMIT above that is refused, and LIMIT max_rows is added when the statement has none. No comments, no second statement, no INTO, no locking reads, no credential tables (administrators, OAuth tokens, integrations, sessions, ACL; table prefixes included), and no column named like a password, hash or token anywhere in the statement; values of such columns that reach the result anyway (a view, an alias), and of secret configuration rows, come back as [redacted]. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_db_magento_tables` (read-only) — Use this to see the well-known Magento 2 tables grouped by what they hold (products, categories, customers, orders, quotes, invoices, shipments, CMS, EAV, URL rewrites, store), each marked with whether it exists in this database. Table prefixes are not applied. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_db_product_by_sku` (read-only) — Use this for a quick look at one product straight from the database: id, SKU, type, created and updated dates, quantity and in-stock flag (legacy stock table). For the full product use magentorest_get_product_by_sku. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_db_recent_orders` (read-only) — Use this to see the latest orders straight from the database: id, increment id, status, state, customer email and name, totals, currency and dates. Newest first; limit defaults to 10, at most 100. Never returns addresses or payment data. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
@@ -148,7 +148,7 @@ executable to run`.
 
 - `MAGENTO_REST_BASE_URL` (required) — The Magento REST root every magentorest_* tool addresses, e.g. https://<host>/rest/V1 (or /rest/<store-code>/V1 for one store view). Resolved on the first tool call and refused without it; tools/list still works. Must be https — plain http is accepted only for localhost.
 - `MAGENTO_REST_TOKEN` (optional) — A Magento integration access token or admin token, sent as a Bearer. Every tool call needs one, but it may come from this variable OR from the credential file written by `hiberus-magento-rest auth token set`, so neither source is required on its own.
-- `MAGENTO_REST_FIELDS_FILE` (optional) — Path to a JSON file that ADDS fields to what a resource exposes, e.g. {"product":{"add":["cost"]}}. Additive only — a resource may carry only `add`, so a file can widen the shipped list but never narrow or replace it — and credential and payment fields (passwords, hashes, tokens, secrets, card and payment data) can never be added. Read once at startup; a file that cannot be read or does not validate stops the server with exit code 1 rather than starting with a half-applied configuration.
+- `MAGENTO_REST_FIELDS_FILE` (optional) — Path to a JSON file that adjusts the fields a resource exposes, e.g. {"product":{"add":["cost"],"remove":["weight"]}}. A resource may carry only `add` and `remove`, so a file can widen or narrow the shipped list but never replace it — and credential and payment fields (passwords, hashes, tokens, secrets, card and payment data) can never be added. Read once at startup; a file that cannot be read or does not validate stops the server with exit code 1 rather than starting with a half-applied configuration.
 - `MAGENTO_REST_ALLOW_WRITES` (optional) — Set to exactly `true` to register the write tools (create, update, delete, cancel, invoice, refund, ...). Unset, or any other value, and the server registers read tools only — a write tool is then absent from tools/list, not merely refused. Read once at startup.
 - `MAGENTO_REST_GROUPS` (optional) — Comma-separated tool groups to load, e.g. `products,customers`, so a project registers only the tools it needs instead of every one. Groups: `products`, `store`, `categories`, `customers`, `orders`, `sales-documents`, `stock`, `carts`, `cms`, `attributes`, `media`, `promotions`, `tax`, `analytics`, `database` (only with MAGENTO_REST_DATABASE_CONNECTION; naming it without one stops the server). Case-insensitive; blanks and repeats are ignored. Unset or empty loads every group (`database` too, when a connection is configured). A name that is not a group stops the server with exit code 1, listing the valid ones. MAGENTO_REST_ALLOW_WRITES still decides whether the write tools of a loaded group are registered. Read once at startup.
 - `MAGENTO_REST_DATABASE_CONNECTION` (optional) — Adds the `database` tool group (magentorest_db_*): direct, read-only access to the Magento database. A URL with NO password, e.g. `mysql://reader@127.0.0.1:3306/magento`; a password in it stops the server. A host that is not this machine uses verified TLS unless you write `?ssl=false`. Unset, there are no database tools. Use a database user with the narrowest grants you can: SELECT only unless you also enable writes. The URL is validated at startup (exit code 1 if it is invalid); the password is only needed when a tool is called.
@@ -207,6 +207,50 @@ startup. Reads that hit a `429` or `5xx` are retried with backoff; a write is
 sent exactly once, because replaying an invoice or a refund after an ambiguous
 failure could capture or refund twice. Use a separate, narrowly scoped
 integration for the configuration that enables writes.
+
+### Store scope of writes
+
+Through `/rest/V1`, Magento runs a request as the **default store view**. A
+product or category saved that way gets values for that one store view, and a
+CMS block or page saved without a store assignment is assigned to that one
+store view. So:
+
+- the catalog writes (`create_product`, `update_product`,
+  `update_product_attribute`, `add_product_image`, `update_product_media`,
+  `create_category`, `update_category`) run in the **`all`** scope by default:
+  they change the global values every store view inherits. A store view that
+  already has its own value keeps it. Pass `store_code` to change one store
+  view's own value instead;
+- `create_product` always sends the website: `website_ids` when given, else the
+  **default website only** — the website of the `store_code` store view, or the
+  store's only website. Magento's REST API does not say which website is the
+  default, so with several websites and no `store_code` the tool refuses and asks
+  for `website_ids` (left alone, Magento would put a product created in the
+  global scope on every website);
+- the CMS creates and updates always run in `all`, so a new block or page is on
+  all store views. A page update keeps the page's store assignment. A **block**
+  update does not: Magento resets a block's assignment on every REST update
+  (here, to all store views), and its REST interface can neither read nor set
+  one, so change a block that belongs to some store views only in the admin;
+- reads, and writes with no store-scoped values (orders, invoices, stock,
+  deletes, category moves), use `MAGENTO_REST_BASE_URL` as configured.
+
+The scoped URL is built from the base URL, `/rest/<scope>/V1`, so a store-scoped
+write needs a base URL ending in `/rest/V1` or `/rest/<store-code>/V1`. An
+unknown `store_code` is answered as not found. Checked against the Magento
+2.4.5–2.4.8 source, not yet against a live multi-store instance.
+
+### A SKU that contains `/`
+
+A SKU is sent as one URL path segment, so a `/` in it travels encoded as `%2F`.
+Apache with its default `AllowEncodedSlashes Off` answers **404** to such a
+URL before Magento sees it, and the tool reports the product as not found.
+This affects every tool that takes a SKU in the path, writes included. If your
+SKUs contain `/` and the store runs behind Apache, set
+`AllowEncodedSlashes NoDecode` on the virtual host. Without that, only finding
+the product works: `magentorest_advanced_product_search` with `field: sku`
+returns its summary, because the SKU then travels in the query string. Not
+checked against a live Apache.
 
 ## Tool groups
 
@@ -271,13 +315,23 @@ to say, explicitly, that it does not. The URL is checked at startup; the passwor
 needed when a tool is called.
 
 **Reads** (eight tools) run in a `READ ONLY` session, with a 15 second timeout and a cap on
-rows. `db_query` takes one `SELECT`: name the columns (`SELECT *` is refused, `COUNT(*)` is
-fine), pass values as `?` parameters, expect at most `max_rows` (default 100, at most 500).
-It refuses comments, a second statement, `INTO`, locking, and the functions that read files
-or stall the server. It will not touch the tables that hold credentials (administrators,
-OAuth tokens, integrations) or the `mysql` schema, and the value of any column named like a
-password, hash or token — and of a configuration row whose path says it is a secret — comes
-back as `[redacted]`. The other seven tools use fixed statements.
+rows. `db_query` takes one `SELECT`: name the columns (`SELECT *` is refused under any
+modifier, and so is `TABLE t`; `COUNT(*)` and `a * b` are fine), pass values as `?`
+parameters, expect at most `max_rows` (default 100, at most 500). Values are bound by the
+database server as a prepared statement, never pasted into the SQL text. A literal written in
+the SQL must be single-quoted and contain no backslash; double quotes are refused, because
+what they and a backslash mean depends on the server's SQL mode.
+A `LIMIT` above `max_rows` is refused; a statement without one gets `LIMIT max_rows` added.
+It refuses comments, a second statement, `INTO`, locking reads (`FOR UPDATE`, `FOR SHARE`,
+`LOCK IN SHARE MODE`), `??` identifier placeholders, and the functions that read files or
+stall the server. It will not touch the tables that hold credentials (administrators, OAuth
+tokens, integrations, two-factor settings, sessions, ACL roles and rules — also under a table
+prefix, so `mg_admin_user` is refused like `admin_user`) or the `mysql` schema, and it refuses
+any column named like a password, hash or token wherever it is written (selected, aliased,
+inside an expression or in a `WHERE`). The value of such a column that reaches the result
+anyway (through a view or an alias, judged by the column's original name), and of a
+configuration value whose path is a secret, is not in the result, or may belong to another
+row (the configuration table joined to itself), comes back as `[redacted]`. The other seven tools use fixed statements.
 
 **Writes** are a separate switch. `MAGENTO_REST_ALLOW_WRITES` does not enable them:
 
@@ -289,13 +343,18 @@ Only the exact text `true` registers `db_execute`; without a connection it stops
 It runs **one** `INSERT`, `UPDATE` or `DELETE` per call (the last two need a `WHERE`), in a
 transaction. `dry_run: true` runs it and rolls back, so you see how many rows it would
 change; if more than `max_affected` (default 100, at most 10000) would change, it rolls back
-by itself. No `DROP`, `ALTER`, `TRUNCATE`, `REPLACE` or `LOAD`. A change made this way skips
+by itself. No `DROP`, `ALTER`, `TRUNCATE`, `REPLACE` or `LOAD`, and the same rules on
+values and literals as `db_query` (`?` parameters, single quotes, no backslashes). A change made this way skips
 Magento's validation, indexing and events, so it may not show on the storefront until a
 reindex and a cache flush.
 
-**These rules make a mistake cheap; they are not the security boundary.** The boundary is
-the database user. Create one for this server with `SELECT` only, and add `INSERT`/`UPDATE`/
-`DELETE` on the tables you mean to change only if you enable writes. Table prefixes
+**These rules make a mistake cheap; they are not the security boundary.** They are a
+best-effort check on the text of a statement, and a check on text can have holes (an
+expression such as `CONCAT(value)`, a derived table or a UNION hides which table a column
+came from, so a configuration value read that way is not redacted). The boundary is
+the database user. Create one for this server with `SELECT` only, without access to the
+credential tables above, and add `INSERT`/`UPDATE`/`DELETE` on the tables you mean to change
+only if you enable writes. Table prefixes
 (`db.table_prefix`) are not applied to the fixed statements. Text is decoded as UTF-8
 (`utf8mb4`); a column in another character set must be converted in the query.
 
@@ -342,7 +401,8 @@ See the [onboarding guide](https://github.com/hiberus-magento/mcp-servers/blob/m
   endpoints (the methods are per cart), and the first fell back to returning the
   store configuration — an answer to a different question.
 - **No store assignment when creating a CMS block or page.** A live Magento refuses
-  a `store_id` in that body; the record is created for all store views.
+  a `store_id` in that body; the write runs in the `all` scope, so the record is on
+  all store views (see "Store scope of writes").
 - **No URL-rewrite search.** The original called `/url-rewrite`, which is not a
   core Magento endpoint: a stock 2.4.8 answers 404.
 - **No order-statuses tool.** The original called `/orders/statuses`, which is not

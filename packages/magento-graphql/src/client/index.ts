@@ -7,7 +7,7 @@
 // `query()` and `mutate()` each check the document with the operation guard BEFORE anything is
 // sent and refuse the other's operation (design D1). That check, not a tool's annotation, is
 // what keeps the generic query tool read-only.
-import { createGraphqlTransport, type GraphqlResult, type GraphqlTransportDeps } from "./http.js";
+import { createGraphqlTransport, type GraphqlResult, type GraphqlTransport, type GraphqlTransportDeps } from "./http.js";
 import { OperationGuardError, inspectDocument } from "./operation-guard.js";
 
 export { MagentoGraphqlError, type MagentoGraphqlErrorKind } from "./errors.js";
@@ -20,16 +20,25 @@ export interface OperationOptions {
   readonly currency?: string;
 }
 
+/** Options every request of a client view carries. */
+export interface RequestOptions {
+  readonly signal?: AbortSignal;
+}
+
 export interface MagentoGraphqlClient {
   /** Runs exactly one read-only query; anything else is refused before a request is made. */
   query(document: string, options?: OperationOptions): Promise<GraphqlResult>;
   /** Runs exactly one mutation; anything else is refused before a request is made. */
   mutate(document: string, options?: OperationOptions): Promise<GraphqlResult>;
+  /** The same client, every request also carrying these options. */
+  with(options: RequestOptions): MagentoGraphqlClient;
 }
 
 export function createMagentoGraphqlClient(deps: GraphqlTransportDeps): MagentoGraphqlClient {
-  const transport = createGraphqlTransport(deps);
+  return clientView(createGraphqlTransport(deps), {});
+}
 
+function clientView(transport: GraphqlTransport, bound: RequestOptions): MagentoGraphqlClient {
   function run(kind: "query" | "mutation", document: string, options: OperationOptions | undefined): Promise<GraphqlResult> {
     const info = inspectDocument(document);
     if (info.operations !== 1) {
@@ -40,11 +49,12 @@ export function createMagentoGraphqlClient(deps: GraphqlTransportDeps): MagentoG
         kind === "query" ? `This tool runs queries only; the document is a ${info.kind}.` : `This tool runs mutations only; the document is a ${info.kind === "query" ? "query" : info.kind}.`,
       );
     }
-    return transport.execute({ kind, document, ...(options?.variables !== undefined ? { variables: options.variables } : {}), ...(options?.store !== undefined ? { store: options.store } : {}), ...(options?.currency !== undefined ? { currency: options.currency } : {}) });
+    return transport.execute({ kind, document, ...(options?.variables !== undefined ? { variables: options.variables } : {}), ...(options?.store !== undefined ? { store: options.store } : {}), ...(options?.currency !== undefined ? { currency: options.currency } : {}), ...bound });
   }
 
   return {
     query: async (document, options) => run("query", document, options),
     mutate: async (document, options) => run("mutation", document, options),
+    with: (more) => clientView(transport, { ...bound, ...more }),
   };
 }

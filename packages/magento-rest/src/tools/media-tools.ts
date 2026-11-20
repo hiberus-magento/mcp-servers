@@ -21,7 +21,7 @@
 // error (errors keep Magento's message template only).
 import { z } from "zod";
 import { restPath } from "../client/index.js";
-import { entityId, sku } from "./inputs.js";
+import { entityId, inStore, sku, storeCode } from "./inputs.js";
 import type { MagentoRestTool, ToolFactory } from "./rest-tool.js";
 
 const IMAGE_ROLES = ["image", "small_image", "thumbnail", "swatch_image"] as const;
@@ -97,11 +97,12 @@ export function mediaTools({ readTool, writeTool, shapes }: ToolFactory): readon
           position: position.optional().describe("Sort position (default 0)."),
           types: roles.optional().describe("Roles: image, small_image, thumbnail, swatch_image."),
           disabled: z.boolean().optional().describe("Hide the image (default false)."),
+          store_code: storeCode,
         })
         .strict(),
       shape: [],
-      run: ({ sku, image_base64, image_type, image_name, label, position, types, disabled }, client) =>
-        client.post(restPath`/products/${sku}/media`, {
+      run: ({ sku, image_base64, image_type, image_name, label, position, types, disabled, store_code }, client) =>
+        inStore(client, store_code).post(restPath`/products/${sku}/media`, {
           entry: {
             media_type: "image",
             label: label ?? image_name,
@@ -125,10 +126,12 @@ export function mediaTools({ readTool, writeTool, shapes }: ToolFactory): readon
           position: position.optional().describe("New sort position."),
           types: roles.optional().describe("New roles."),
           disabled: z.boolean().optional().describe("Whether the image is hidden."),
+          store_code: storeCode,
         })
         .strict(),
       shape: [],
-      run: async ({ sku, entry_id, label, position, types, disabled }, client) => {
+      run: async ({ sku, entry_id, label, position, types, disabled, store_code }, client) => {
+        const scoped = inStore(client, store_code);
         if (label === undefined && position === undefined && types === undefined && disabled === undefined) {
           throw new Error("magentorest_update_product_media: nothing to update — pass at least one field besides the SKU and entry ID.");
         }
@@ -136,8 +139,8 @@ export function mediaTools({ readTool, writeTool, shapes }: ToolFactory): readon
         // ("There is no MediaGalleryEntryConverter for given type") — which is why the original's
         // update never worked. The entry is read, and its own type and fields go back with the
         // changes applied; an explicit `false` or `[]` is a real value, not "keep the old one".
-        const existing = await client.get(restPath`/products/${sku}/media/${entry_id}`);
-        return client.put(restPath`/products/${sku}/media/${entry_id}`, {
+        const existing = await scoped.get(restPath`/products/${sku}/media/${entry_id}`);
+        return scoped.put(restPath`/products/${sku}/media/${entry_id}`, {
           entry: {
             id: entry_id,
             media_type: readText(existing, "media_type") ?? "image",

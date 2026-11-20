@@ -114,8 +114,10 @@ export function createToolFactory(getClient: () => MagentoRestClient, options: T
       description,
       inputSchema: spec.input,
       annotations,
-      handler: async (args) => {
-        const raw = await spec.run(args, getClient());
+      handler: async (args, ctx) => {
+        // Bound to the MCP request's signal: when the client cancels the call, its in-flight request is aborted.
+        const client = getClient();
+        const raw = await spec.run(args, ctx.signal !== undefined ? client.with({ signal: ctx.signal }) : client);
         const projected = project(raw, spec.shape);
         if (hasContent(raw) && isEmptyShell(projected)) {
           return NOTHING_REPORTED_NOTICE;

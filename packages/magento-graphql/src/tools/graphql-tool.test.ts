@@ -7,7 +7,7 @@
 import { SYNTHETIC_MAGENTO_GRAPHQL_URL } from "@hiberus-magento/mcp-testing";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createMagentoGraphqlClient } from "../client/index.js";
+import { MagentoGraphqlError, createMagentoGraphqlClient } from "../client/index.js";
 import { createFetchDouble, data, gqlErrors } from "../testing/fetch-double.js";
 import { createToolFactory } from "./graphql-tool.js";
 import { UNVERIFIED_MARKER } from "./verification.js";
@@ -21,6 +21,15 @@ const setup = (responder: Parameters<typeof createFetchDouble>[0], options: Para
 const input = z.object({ term: z.string() }).strict();
 
 describe("createToolFactory", () => {
+  it("binds the call to the MCP request's signal: a cancelled call sends nothing (fixed and dynamic tools)", async () => {
+    const { double, factory } = setup(data({ products: { total_count: 1 } }));
+    const fixed = factory.readTool({ name: "magentographql_c", description: "Use this to c.", input, document: "query C { products { total_count } }" });
+    const dynamic = factory.dynamicQueryTool({ name: "magentographql_d", description: "Use this to d.", input, run: (_a, client) => client.query("query D { products { total_count } }") });
+    await expect(fixed.invoke({ term: "" }, { signal: AbortSignal.abort() })).rejects.toThrow(/cancelled/);
+    await expect(dynamic.invoke({ term: "" }, { signal: AbortSignal.abort() })).rejects.toThrow(/cancelled/);
+    expect(double.calls).toHaveLength(0);
+  });
+
   it("runs the fixed document with the variables the tool builds, and unwraps `pick`", async () => {
     const { double, factory } = setup(data({ products: { total_count: 1 } }));
     const tool = factory.readTool({ name: "magentographql_x", description: "Use this to x.", input, document: "query X($s: String) { products(search: $s) { total_count } }", variables: (a) => ({ s: a.term }), pick: "products" });
@@ -37,9 +46,15 @@ describe("createToolFactory", () => {
   });
 
   it("shows partial-data errors next to the data instead of dropping them", async () => {
-    const { factory } = setup(gqlErrors(["The current customer isn't authorized."], { customer: null }));
-    const tool = factory.readTool({ name: "magentographql_x", description: "Use this to x.", input, document: "{ customer { email } }", pick: "customer" });
+    const { factory } = setup(gqlErrors(["The current customer isn't authorized."], { customer: null, storeConfig: { store_code: "default" } }));
+    const tool = factory.readTool({ name: "magentographql_x", description: "Use this to x.", input, document: "{ customer { email } storeConfig { store_code } }", pick: "customer" });
     expect(JSON.parse((await tool.invoke({ term: "" }, {})).content[0]?.text ?? "")).toEqual({ data: null, errors: ["The current customer isn't authorized."] });
+  });
+
+  it("fails, instead of returning null data, when every requested field is null next to an error", async () => {
+    const { factory } = setup(gqlErrors(["The current customer isn't authorized."], { customer: null }, "graphql-authorization"));
+    const tool = factory.readTool({ name: "magentographql_x", description: "Use this to x.", input, document: "{ customer { email } }", pick: "customer" });
+    await expect(tool.invoke({ term: "" }, {})).rejects.toBeInstanceOf(MagentoGraphqlError);
   });
 
   it("applies `transform` to the picked value", async () => {

@@ -1740,7 +1740,7 @@ export const GENERATED_OPERATIONS: readonly GeneratedOperation[] = [
     operation: "resendConfirmationEmail",
     kind: "mutation",
     group: "account",
-    effect: "update",
+    effect: "action",
     description: "Use this to resends the confirmation email to a customer.",
     document: "mutation ResendConfirmationEmail($email: String!) { resendConfirmationEmail(email: $email) }",
     input: () => z.object({ email: z.string().describe("The email address to send the confirmation email to.") }).strict(),

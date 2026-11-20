@@ -17,8 +17,8 @@
 // The writes are only registered when `MAGENTO_REST_ALLOW_WRITES=true`
 // (`tools/index.ts`); this module defines them either way.
 import { z } from "zod";
-import { restPath } from "../client/index.js";
-import { conditionType, currentPage, entityId, fieldName, pageSize, sku, sortDirection, DEFAULT_SEARCH_PAGE_SIZE } from "./inputs.js";
+import { restPath, type MagentoRestClient } from "../client/index.js";
+import { conditionType, currentPage, entityId, fieldName, pageSize, sku, sortDirection, storeCode, inStore, DEFAULT_SEARCH_PAGE_SIZE } from "./inputs.js";
 import type { MagentoRestTool, ToolFactory } from "./rest-tool.js";
 import { listOf } from "./shapes.js";
 
@@ -28,6 +28,31 @@ const primitiveValue = z.union([z.string(), z.number(), z.boolean()]);
 
 const prose = (code: string, value: string | undefined): { attribute_code: string; value: string }[] =>
   value === undefined ? [] : [{ attribute_code: code, value }];
+
+function records(value: unknown): readonly Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter((entry): entry is Record<string, unknown> => entry !== null && typeof entry === "object") : [];
+}
+
+/**
+ * The website a new product goes to when the agent names none. Magento's REST API does not say which website is
+ * the default, so: the website of the named store view, or the only website (the admin website, id 0, aside).
+ */
+async function defaultWebsite(client: MagentoRestClient, storeCode: string | undefined): Promise<number> {
+  if (storeCode !== undefined) {
+    const view = records(await client.get("/store/storeViews")).find((entry) => entry["code"] === storeCode);
+    if (view === undefined || typeof view["website_id"] !== "number") {
+      throw new Error(`magentorest_create_product: there is no store view with code "${storeCode}" (magentorest_get_store_views lists them).`);
+    }
+    return view["website_id"];
+  }
+  const websites = records(await client.get("/store/websites")).filter((entry) => typeof entry["id"] === "number" && entry["id"] !== 0);
+  if (websites.length !== 1) {
+    throw new Error(
+      "magentorest_create_product: this Magento has several websites and its REST API does not say which one is the default; pass website_ids (magentorest_get_websites lists them) or a store_code.",
+    );
+  }
+  return websites[0]?.["id"] as number;
+}
 
 export function productTools({ readTool, writeTool, shapes }: ToolFactory): readonly MagentoRestTool[] {
   return [
@@ -83,7 +108,8 @@ export function productTools({ readTool, writeTool, shapes }: ToolFactory): read
 
     writeTool({
       name: "magentorest_create_product",
-      description: "Use this to create a new product. Adds a catalog record; the SKU must be unique. Does not touch stock or categories.",
+      description:
+        "Use this to create a new product. Adds a catalog record; the SKU must be unique. Does not touch stock or categories. Without website_ids it goes to the default website only: the website of store_code's store view, or the store's only website; with several websites and no store_code it refuses and asks for website_ids (magentorest_get_websites lists them).",
       effect: "create",
       input: z
         .object({
@@ -100,11 +126,15 @@ export function productTools({ readTool, writeTool, shapes }: ToolFactory): read
           meta_title: z.string().max(255).optional().describe("SEO meta title."),
           meta_description: z.string().max(1000).optional().describe("SEO meta description."),
           url_key: z.string().max(255).optional().describe("URL key."),
+          website_ids: z.array(z.number().int().min(1)).min(1).max(100).optional().describe("Website IDs to assign the product to (default: the default website, see the description)."),
+          store_code: storeCode,
         })
         .strict(),
       shape: shapes.product,
-      run: (args, client) =>
-        client.post("/products", {
+      run: async (args, client) => {
+        // Magento would put a product created in the global scope on EVERY website; the website is always sent.
+        const websiteIds = args.website_ids ?? [await defaultWebsite(client, args.store_code)];
+        return inStore(client, args.store_code).post("/products", {
           product: {
             sku: args.sku,
             name: args.name,
@@ -121,8 +151,10 @@ export function productTools({ readTool, writeTool, shapes }: ToolFactory): read
               ...prose("meta_description", args.meta_description),
               ...prose("url_key", args.url_key),
             ],
+            extension_attributes: { website_ids: websiteIds },
           },
-        }),
+        });
+      },
     }),
 
     writeTool({
@@ -139,16 +171,17 @@ export function productTools({ readTool, writeTool, shapes }: ToolFactory): read
           weight: z.number().min(0).optional().describe("New weight."),
           description: z.string().max(65_535).optional().describe("New full description."),
           short_description: z.string().max(65_535).optional().describe("New short description."),
+          store_code: storeCode,
         })
         .strict(),
       shape: shapes.product,
-      run: ({ sku, description, short_description, ...fields }, client) => {
+      run: ({ sku, description, short_description, store_code, ...fields }, client) => {
         const attributes = [...prose("description", description), ...prose("short_description", short_description)];
         const direct = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
         if (Object.keys(direct).length === 0 && attributes.length === 0) {
           throw new Error("magentorest_update_product: nothing to update — pass at least one field besides the SKU.");
         }
-        return client.put(restPath`/products/${sku}`, { product: { ...direct, ...(attributes.length > 0 ? { custom_attributes: attributes } : {}) } });
+        return inStore(client, store_code).put(restPath`/products/${sku}`, { product: { ...direct, ...(attributes.length > 0 ? { custom_attributes: attributes } : {}) } });
       },
     }),
 
@@ -157,17 +190,20 @@ export function productTools({ readTool, writeTool, shapes }: ToolFactory): read
       description:
         "Use this to set ONE attribute of a product by code (name, price, status, description, a custom attribute, ...). Overwrites the current value. The identity attributes sku, id, entity_id and type_id are refused.",
       effect: "update",
-      input: z.object({ sku, attribute_code: fieldName("Attribute code to set, e.g. price or url_key."), value: primitiveValue.describe("New value: a string, number or boolean.") }).strict(),
+      input: z
+        .object({ sku, attribute_code: fieldName("Attribute code to set, e.g. price or url_key."), value: primitiveValue.describe("New value: a string, number or boolean."), store_code: storeCode })
+        .strict(),
       shape: shapes.product,
-      run: async ({ sku, attribute_code, value }, client) => {
+      run: async ({ sku, attribute_code, value, store_code }, client) => {
+        const scoped = inStore(client, store_code);
         if (IDENTITY_ATTRIBUTES.has(attribute_code)) {
           throw new Error(`magentorest_update_product_attribute: "${attribute_code}" is an identity attribute and cannot be changed here.`);
         }
-        const current = await client.get(restPath`/products/${sku}`);
+        const current = await scoped.get(restPath`/products/${sku}`);
         const customs =
           current !== null && typeof current === "object" && "custom_attributes" in current && Array.isArray(current.custom_attributes) ? (current.custom_attributes as unknown[]) : [];
         const isCustom = customs.some((entry) => entry !== null && typeof entry === "object" && "attribute_code" in entry && entry.attribute_code === attribute_code);
-        return client.put(restPath`/products/${sku}`, {
+        return scoped.put(restPath`/products/${sku}`, {
           product: isCustom ? { custom_attributes: [{ attribute_code, value }] } : { [attribute_code]: value },
         });
       },

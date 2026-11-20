@@ -16,9 +16,8 @@
 // extra positional argument — its handler (`setToken`) has no parameter to
 // receive one at all, so a positional token would have nowhere to go even
 // if this check were removed (design.md, Decision 6, layers 1–2).
-import { parseCredentialCliArgs, persistCredential, readTokenFromStdin, redact } from "@hiberus-magento/mcp-core";
+import { parseCredentialCliArgs, persistCredential, readTokenFromStdin, redact, isEntryPoint } from "@hiberus-magento/mcp-core";
 import { createHash } from "node:crypto";
-import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { createEdsClient, type ApiKeyRecord, type EdsClient } from "./client/index.js";
 import { EDS_DOMAIN, createEdsTokenProvider, resolveEdsCredentialDirect } from "./credential-provider.js";
@@ -284,7 +283,7 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<CliR
 // ---------------------------------------------------------------------------
 
 const BASE_URL = "https://admin.hlx.page";
-const isDirectRun = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isDirectRun = isEntryPoint(import.meta.url);
 
 if (isDirectRun) {
   const org = process.env.EDS_ORG;

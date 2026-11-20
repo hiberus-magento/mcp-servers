@@ -77,7 +77,7 @@ describe("magentorest_get_revenue", () => {
     const { call } = build({ "GET /rest/V1/orders": paged(three) });
     const out = (await call("magentorest_get_revenue", { date_range: "last week" })) as Out;
     expect(out.result).toEqual({ revenue: 200, currency: "EUR", order_count: 3, average_order_value: 66.67, tax_amount: 40 });
-    expect(out.query).toEqual({ date_range: "Last week", status: "All", include_tax: true, period: { start_date: "2026-03-02", end_date: "2026-03-08" } });
+    expect(out.query).toEqual({ date_range: "Last week", status: "All except canceled and closed", include_tax: true, period: { start_date: "2026-03-02", end_date: "2026-03-08" } });
     expect(out.coverage).toEqual({ orders_analysed: 3, orders_in_period: 3, truncated: false });
   });
 
@@ -136,6 +136,78 @@ describe("magentorest_get_revenue", () => {
     const out = (await call("magentorest_get_revenue", { date_range: "today" })) as Out;
     expect(out.result["currency"]).toBe("mixed");
     expect(out.result["currencies"]).toEqual(["EUR", "USD"]);
+  });
+
+  it("excludes canceled and closed orders server-side when no status is given, and says so", async () => {
+    const { double, call } = build({ "GET /rest/V1/orders": paged(three) });
+    const out = (await call("magentorest_get_revenue", { date_range: "last week" })) as Out;
+    const q = params(double.calls[0]?.url);
+    const f = (k: string): string | null => q.get(`searchCriteria[filter_groups][2][filters][0][${k}]`);
+    expect([f("field"), f("value"), f("condition_type")]).toEqual(["state", "canceled,closed", "nin"]);
+    expect(q.get("searchCriteria[filter_groups][3][filters][0][field]")).toBeNull();
+    expect(out.query["status"]).toBe("All except canceled and closed");
+  });
+
+  it("keeps the exact status filter, and no state exclusion, when a status is given — even canceled", async () => {
+    const { double, call } = build({ "GET /rest/V1/orders": paged(three) });
+    const out = (await call("magentorest_get_revenue", { date_range: "last week", status: "canceled" })) as Out;
+    const q = params(double.calls[0]?.url);
+    const f = (k: string): string | null => q.get(`searchCriteria[filter_groups][2][filters][0][${k}]`);
+    expect([f("field"), f("value"), f("condition_type")]).toEqual(["status", "canceled", "eq"]);
+    expect(q.get("searchCriteria[filter_groups][3][filters][0][field]")).toBeNull();
+    expect(out.query["status"]).toBe("canceled");
+  });
+
+  it("never adds amounts in different currencies: null totals, a per-currency breakdown, and a warning", async () => {
+    const orders = [
+      order(1),
+      order(2, { base_grand_total: 50, base_tax_amount: 10 }),
+      order(3, { base_currency_code: "USD", order_currency_code: "USD", base_grand_total: 30, base_tax_amount: 3 }),
+      { entity_id: 4, grand_total: 12, tax_amount: 2, order_currency_code: "USD" },
+    ];
+    const { call } = build({ "GET /rest/V1/orders": paged(orders) });
+    const out = (await call("magentorest_get_revenue", { date_range: "today" })) as Out;
+    expect(out.result).toEqual({
+      revenue: null,
+      currency: "mixed",
+      currencies: ["EUR", "USD"],
+      order_count: 4,
+      average_order_value: null,
+      tax_amount: null,
+      by_currency: [
+        { currency: "EUR", revenue: 150, order_count: 2, average_order_value: 75, tax_amount: 30 },
+        { currency: "USD", revenue: 42, order_count: 2, average_order_value: 21, tax_amount: 5 },
+      ],
+    });
+    expect(out.warning).toMatch(/currenc/i);
+    expect(out.warning).toContain("by_currency");
+    expect(out.warning).not.toMatch(/partial/i);
+  });
+
+  it("applies include_tax inside each currency of the breakdown", async () => {
+    const orders = [order(1), order(2, { base_currency_code: "USD", base_grand_total: 30, base_tax_amount: 3 })];
+    const { call } = build({ "GET /rest/V1/orders": paged(orders) });
+    const out = (await call("magentorest_get_revenue", { date_range: "today", include_tax: false })) as Out;
+    expect(out.result["by_currency"]).toEqual([
+      { currency: "EUR", revenue: 80, order_count: 1, average_order_value: 80, tax_amount: 20 },
+      { currency: "USD", revenue: 27, order_count: 1, average_order_value: 27, tax_amount: 3 },
+    ]);
+  });
+
+  it("combines the partial-result and mixed-currency warnings in the one warning", async () => {
+    const orders = many(250, (i) => order(i + 1, i % 2 === 0 ? {} : { base_currency_code: "USD" }));
+    const { call } = build({ "GET /rest/V1/orders": paged(orders) });
+    const out = (await call("magentorest_get_revenue", { date_range: "this month", max_pages: 1 })) as Out;
+    expect(out.warning).toMatch(/partial/i);
+    expect(out.warning).toContain("by_currency");
+    expect(out.result["revenue"]).toBeNull();
+  });
+
+  it("keeps today's shape with a single currency: no breakdown and no currency warning", async () => {
+    const { call } = build({ "GET /rest/V1/orders": paged(three) });
+    const out = (await call("magentorest_get_revenue", { date_range: "today" })) as Out;
+    expect(out.result).not.toHaveProperty("by_currency");
+    expect(out).not.toHaveProperty("warning");
   });
 
   it("falls back to the order-currency totals when the base ones are absent", async () => {
@@ -233,7 +305,7 @@ describe("magentorest_get_product_sales", () => {
         { sku: SKU2, name: "Demo Lamp", quantity: 1, revenue: 30 },
       ],
     });
-    expect(out.query).toMatchObject({ status: "All", country: "All" });
+    expect(out.query).toMatchObject({ status: "All except canceled and closed", country: "All" });
     expect(out.coverage).toEqual({ orders_analysed: 2, orders_in_period: 2, truncated: false });
   });
 
@@ -272,6 +344,43 @@ describe("magentorest_get_product_sales", () => {
     expect(out.warning).toMatch(/partial/i);
   });
 
+  it("excludes canceled and closed orders by default, and keeps an explicit status exact", async () => {
+    const { double, call } = build({ "GET /rest/V1/orders": paged(sales) });
+    await call("magentorest_get_product_sales", { date_range: "this month" });
+    await call("magentorest_get_product_sales", { date_range: "this month", status: "complete" });
+    const g2 = (i: number): (string | null)[] => {
+      const q = params(double.calls[i]?.url);
+      return ["field", "value", "condition_type"].map((k) => q.get(`searchCriteria[filter_groups][2][filters][0][${k}]`));
+    };
+    expect(g2(0)).toEqual(["state", "canceled,closed", "nin"]);
+    expect(g2(1)).toEqual(["status", "complete", "eq"]);
+  });
+
+  it("never adds revenue in different currencies: null totals, a per-currency breakdown, and a warning", async () => {
+    const orders = [
+      order(1, { base_grand_total: 100, items: [{ sku: SKU, name: "Demo Tent", price: 50, base_price: 50, qty_ordered: 2 }] }),
+      order(2, { base_currency_code: "USD", order_currency_code: "USD", base_grand_total: 30, items: [{ sku: SKU, name: "Demo Tent", price: 15, base_price: 15, qty_ordered: 2 }] }),
+    ];
+    const { call } = build({ "GET /rest/V1/orders": paged(orders) });
+    const out = (await call("magentorest_get_product_sales", { date_range: "this month" })) as Out;
+    expect(out.result).toEqual({
+      total_orders: 2,
+      total_order_items: 2,
+      total_product_quantity: 4,
+      average_products_per_order: 2,
+      total_revenue: null,
+      average_revenue_per_product: null,
+      currency: "mixed",
+      currencies: ["EUR", "USD"],
+      top_products: [{ sku: SKU, name: "Demo Tent", quantity: 4, revenue: null }],
+      by_currency: [
+        { currency: "EUR", total_revenue: 100, total_orders: 1 },
+        { currency: "USD", total_revenue: 30, total_orders: 1 },
+      ],
+    });
+    expect(out.warning).toContain("by_currency");
+  });
+
   it("does not echo the orders or their addresses", async () => {
     const { call } = build({ "GET /rest/V1/orders": paged(sales.map((o) => injectLeakProbe(o) as Json)) });
     const text = JSON.stringify(await call("magentorest_get_product_sales", { date_range: "this month" }));
@@ -308,6 +417,21 @@ describe("magentorest_get_revenue_by_country", () => {
     expect(params(double.calls[0]?.url).get("searchCriteria[filter_groups][2][filters][0][value]")).toBe("complete");
     expect(out.coverage).toMatchObject({ truncated: true });
     expect(out.warning).toMatch(/partial/i);
+  });
+
+  it("excludes canceled and closed orders by default, says so, and splits mixed currencies", async () => {
+    const mixed = [order(1), order(2, { base_currency_code: "USD", base_grand_total: 30, base_tax_amount: 3 })];
+    const { double, call } = build({ "GET /rest/V1/orders": paged(mixed) });
+    const out = (await call("magentorest_get_revenue_by_country", { date_range: "this month", country: "ES" })) as Out;
+    const q = params(double.calls[0]?.url);
+    expect(["field", "value", "condition_type"].map((k) => q.get(`searchCriteria[filter_groups][2][filters][0][${k}]`))).toEqual(["state", "canceled,closed", "nin"]);
+    expect(out.query["status"]).toBe("All except canceled and closed");
+    expect(out.result).toMatchObject({ revenue: null, average_order_value: null, tax_amount: null, order_count: 2 });
+    expect(out.result["by_currency"]).toEqual([
+      { currency: "EUR", revenue: 100, order_count: 1, average_order_value: 100, tax_amount: 20 },
+      { currency: "USD", revenue: 30, order_count: 1, average_order_value: 30, tax_amount: 3 },
+    ]);
+    expect(out.warning).toContain("by_currency");
   });
 
   it("requires the country, and refuses an unknown one", async () => {

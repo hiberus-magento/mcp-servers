@@ -25,6 +25,17 @@ describe("createToolFactory", () => {
     expect(getClient).toHaveBeenCalledTimes(1);
   });
 
+  it("hands the tool a client bound to the MCP request's signal, so a cancelled call aborts its request", async () => {
+    const bound = { get: vi.fn(async () => ({ id: 2 })) } as unknown as MagentoRestClient;
+    const withOptions = vi.fn(() => bound);
+    const base = { with: withOptions } as unknown as MagentoRestClient;
+    const tool = createToolFactory(() => base).readTool({ name: "magentorest_c", description: "C.", input: z.object({}).strict(), shape: ["id"], run: (_a, c) => c.get("/x") });
+    const controller = new AbortController();
+    const result = await tool.invoke({}, { signal: controller.signal });
+    expect(withOptions).toHaveBeenCalledWith({ signal: controller.signal });
+    expect(result.content[0]?.text).toBe('{"id":2}');
+  });
+
   it("a read tool carries the three read-only annotations and access `read`", () => {
     const tool = factory().readTool({ name: "magentorest_r", description: "R.", input: z.object({}).strict(), shape: ["id"], run: async () => ({}) });
     expect(tool.access).toBe("read");

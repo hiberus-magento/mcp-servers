@@ -96,6 +96,40 @@ describe("createGraphqlTransport", () => {
     expect(result.errors).toEqual(["The current customer isn't authorized."]);
   });
 
+  // Magento answers a failing resolver with HTTP 200, `data` holding the field as null, and the error next to it.
+  it("throws the classified error, with its remedy, when every requested field is null", async () => {
+    const { transport } = build(gqlErrors(["The current customer isn't authorized."], { customer: null }, "graphql-authorization"));
+    const error = (await transport.execute({ kind: "query", document: "{ customer { email } }" }).catch((e: unknown) => e)) as MagentoGraphqlError;
+    expect(error).toBeInstanceOf(MagentoGraphqlError);
+    expect(error.kind).toBe("unauthorized");
+    expect(error.message).toContain("The current customer isn't authorized.");
+    expect(error.remedy).toContain("MAGENTO_GRAPHQL_TOKEN");
+  });
+
+  it("throws the classified error when `data` is an empty object", async () => {
+    const { transport } = build(gqlErrors(["Could not find a cart with ID \"AbC123xyz\""], {}, "graphql-no-such-entity"));
+    const error = (await transport.execute({ kind: "mutation", document: "mutation { a }" }).catch((e: unknown) => e)) as MagentoGraphqlError;
+    expect(error).toBeInstanceOf(MagentoGraphqlError);
+    expect(error.kind).toBe("not-found");
+  });
+
+  it("keeps each partial-data message whole, even one containing ' | '", async () => {
+    const { transport } = build(gqlErrors(["first | still first", "second"], { storeConfig: { store_code: "x" }, customer: null }));
+    expect((await transport.execute({ kind: "query", document: Q })).errors).toEqual(["first | still first", "second"]);
+  });
+
+  it("redacts and caps partial-data messages as a classified error does", async () => {
+    const many = Array.from({ length: 7 }, (_, i) => `problem ${i} ${"x".repeat(600)} Bearer demo-bearer-99`);
+    const { transport } = build(gqlErrors(many, { storeConfig: { store_code: "x" } }));
+    const errors = (await transport.execute({ kind: "query", document: Q })).errors ?? [];
+    expect(errors).toHaveLength(6);
+    expect(errors.at(-1)).toBe("(+2 more)");
+    for (const message of errors) {
+      expect(message).not.toContain("demo-bearer-99");
+      expect(message.length).toBeLessThanOrEqual(240);
+    }
+  });
+
   it("throws a classified error for an HTTP failure that carries neither the body nor the token", async () => {
     const { transport } = build(json(502, "<html>secret-internal-host</html>"), { token: SYNTHETIC_MAGENTO_CUSTOMER_TOKEN, ...{} });
     const error = (await transport.execute({ kind: "mutation", document: "mutation { a }" }).catch((e: unknown) => e)) as MagentoGraphqlError;
@@ -161,6 +195,87 @@ describe("createGraphqlTransport", () => {
       calls = 0;
       await make().execute({ kind: "mutation", document: "mutation { a }" }).catch(() => undefined);
       expect(calls).toBe(1);
+    });
+  });
+
+  describe("timeout", () => {
+    // What undici rejects with when an `AbortSignal.timeout` fires.
+    const timeoutError = () => new DOMException("The operation was aborted due to timeout", "TimeoutError");
+
+    const transportWith = (fetch: typeof globalThis.fetch, timeoutMs?: number) =>
+      createGraphqlTransport({ fetch, now: () => 0, sleep: async () => undefined, random: () => 0, baseUrl: SYNTHETIC_MAGENTO_GRAPHQL_URL, getToken: async () => undefined, ...(timeoutMs !== undefined ? { timeoutMs } : {}) });
+
+    it("gives every attempt its own abort signal and reports a timeout as a transport error naming the default 30 seconds", async () => {
+      const signals: unknown[] = [];
+      const timingOut = (async (_input: unknown, init?: RequestInit) => {
+        signals.push(init?.signal);
+        throw timeoutError();
+      }) as unknown as typeof globalThis.fetch;
+      const error = (await transportWith(timingOut).execute({ kind: "query", document: Q }).catch((e: unknown) => e)) as MagentoGraphqlError;
+      expect(error).toBeInstanceOf(MagentoGraphqlError);
+      expect(error.kind).toBe("transport");
+      expect(error.message).toMatch(/timed out after 30 seconds/);
+      expect(signals).toHaveLength(3);
+      expect(signals.every((s) => s instanceof AbortSignal)).toBe(true);
+      expect(new Set(signals).size).toBe(3);
+    });
+
+    it("never retries a mutation that timed out", async () => {
+      let calls = 0;
+      const timingOut = (async () => {
+        calls += 1;
+        throw timeoutError();
+      }) as unknown as typeof globalThis.fetch;
+      const error = (await transportWith(timingOut).execute({ kind: "mutation", document: "mutation { a }" }).catch((e: unknown) => e)) as MagentoGraphqlError;
+      expect(error.kind).toBe("transport");
+      expect(error.message).toMatch(/timed out/);
+      expect(calls).toBe(1);
+    });
+
+    it("aborts a request that outlives the injected timeout, also while the body is being read", async () => {
+      const hangsUntilAborted = (async (_input: unknown, init?: RequestInit) => {
+        const signal = init?.signal as AbortSignal;
+        const body = new ReadableStream({
+          start(controller) {
+            signal.addEventListener("abort", () => controller.error(signal.reason));
+          },
+        });
+        return new Response(body, { status: 200 });
+      }) as unknown as typeof globalThis.fetch;
+      const error = (await transportWith(hangsUntilAborted, 20).execute({ kind: "mutation", document: "mutation { a }" }).catch((e: unknown) => e)) as MagentoGraphqlError;
+      expect(error).toBeInstanceOf(MagentoGraphqlError);
+      expect(error.kind).toBe("transport");
+      expect(error.message).toMatch(/timed out after 0\.02 seconds/);
+    });
+  });
+
+  describe("cancellation", () => {
+    const cancellable = () => {
+      const calls: unknown[] = [];
+      const fetch = ((input: unknown, init?: RequestInit) => {
+        calls.push(input);
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason as Error));
+        });
+      }) as unknown as typeof globalThis.fetch;
+      const transport = createGraphqlTransport({ fetch, now: () => 0, sleep: async () => undefined, random: () => 0, baseUrl: SYNTHETIC_MAGENTO_GRAPHQL_URL, getToken: async () => undefined, timeoutMs: 60_000 });
+      return { calls, transport };
+    };
+
+    it("aborts the in-flight request when the caller's signal aborts, is not retried, and says it was cancelled", async () => {
+      const { calls, transport } = cancellable();
+      const controller = new AbortController();
+      const pending = transport.execute({ kind: "query", document: Q, signal: controller.signal });
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      controller.abort();
+      await expect(pending).rejects.toMatchObject({ kind: "transport", retryable: false, message: expect.stringMatching(/cancelled/) as unknown });
+      expect(calls).toHaveLength(1);
+    });
+
+    it("sends nothing when the signal is already aborted", async () => {
+      const { calls, transport } = cancellable();
+      await expect(transport.execute({ kind: "query", document: Q, signal: AbortSignal.abort() })).rejects.toThrow(/cancelled/);
+      expect(calls).toHaveLength(0);
     });
   });
 

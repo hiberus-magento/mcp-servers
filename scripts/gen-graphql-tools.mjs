@@ -201,7 +201,8 @@ function inputObjectSource(type) {
 function effectOf(name) {
   if (/^(delete|remove|clear|revoke|close)/.test(name)) return "delete";
   if (/^(create|register)/.test(name) && !/^create(PaypalExpressToken|PayflowProToken|PaymentOrder|VaultCard)/.test(name)) return "create";
-  if (/^(update|set|rename|apply|assign|resend|confirmEmail|resetPassword|changeCustomerPassword|subscribe|syncPaymentOrder)/.test(name)) return "update";
+  // Not `resend`: each resendConfirmationEmail sends another email, so it is an action, like requestPasswordResetEmail.
+  if (/^(update|set|rename|apply|assign|confirmEmail|resetPassword|changeCustomerPassword|subscribe|syncPaymentOrder)/.test(name)) return "update";
   return "action";
 }
 

@@ -13,7 +13,14 @@
 //     store. The amounts summed are the base-currency ones (`base_grand_total`,
 //     `base_tax_amount`, falling back to the order-currency ones), and the
 //     currency is read from the orders: one code, `null` when there are none,
-//     or `mixed` with the list when they span several;
+//     or `mixed` with the list when they span several. Amounts in different
+//     currencies are never added together: when the orders span several, the
+//     cross-currency totals are `null`, `by_currency` carries one total per
+//     currency, and a `warning` says so;
+//   - with no `status`, revenue, product sales and revenue by country leave out
+//     orders in state `canceled` or `closed` (a server-side `state nin` filter),
+//     because their money was never kept; `query.status` says so. An explicit
+//     `status` is an exact filter, `canceled` included;
 //   - DATES are UTC (`client/date-range.ts`), where the original used the
 //     server's local time, and anything unparseable is refused up front;
 //   - a COUNTRY must be a known name or a two-letter code. The original turned
@@ -102,7 +109,7 @@ function money(order: unknown, baseKey: string, plainKey: string): number {
 function currencyOf(orders: readonly unknown[]): { readonly currency: string | null; readonly currencies?: readonly string[] } {
   const codes = new Set<string>();
   for (const order of orders) {
-    const code = text(field(order, "base_currency_code")) ?? text(field(order, "order_currency_code"));
+    const code = orderCurrency(order);
     if (code !== undefined) {
       codes.add(code);
     }
@@ -120,6 +127,42 @@ function orderFilters(range: DateRange, orderStatus: string | undefined): Search
     [{ field: "created_at", value: formatMagentoTimestamp(range.endDate), conditionType: "lteq" }],
     ...(orderStatus !== undefined ? [[{ field: "status", value: orderStatus }]] : []),
   ];
+}
+
+/** Order states whose money was not kept; the revenue reads leave them out unless a status is asked for. */
+const EXCLUDED_STATES = ["canceled", "closed"] as const;
+const DEFAULT_REVENUE_STATUS = "All except canceled and closed";
+
+/** The revenue reads' filters: an explicit status is exact; none excludes the canceled and closed states (Magento's `nin` takes a comma-separated list). */
+function revenueFilters(range: DateRange, orderStatus: string | undefined): SearchFilter[][] {
+  return orderStatus !== undefined
+    ? orderFilters(range, orderStatus)
+    : [...orderFilters(range, undefined), [{ field: "state", value: EXCLUDED_STATES.join(","), conditionType: "nin" }]];
+}
+
+/** The order's currency: the base one, falling back to the order currency (the same rule the amounts follow). */
+function orderCurrency(order: unknown): string | undefined {
+  return text(field(order, "base_currency_code")) ?? text(field(order, "order_currency_code"));
+}
+
+/** Orders grouped by currency code, sorted by code. Orders with no code are not part of any group. */
+function byCurrency(orders: readonly unknown[]): [string, unknown[]][] {
+  const groups = new Map<string, unknown[]>();
+  for (const order of orders) {
+    const code = orderCurrency(order);
+    if (code !== undefined) {
+      groups.set(code, [...(groups.get(code) ?? []), order]);
+    }
+  }
+  return [...groups.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+const MIXED_CURRENCY_WARNING = "These orders span several currencies, so no cross-currency total is given (those totals are null): read by_currency for each currency's own totals.";
+
+/** One `warning` string: the partial-result one and the mixed-currency one, when either applies. */
+function warningOf(fetched: AllPagesResult, mixed: boolean): { readonly warning?: string } {
+  const messages = [coverage(fetched).warning, mixed ? MIXED_CURRENCY_WARNING : undefined].filter((m): m is string => m !== undefined);
+  return messages.length > 0 ? { warning: messages.join(" ") } : {};
 }
 
 function fetchOrders(client: MagentoRestClient, filters: SearchFilter[][], pages: number | undefined): Promise<AllPagesResult> {
@@ -147,7 +190,7 @@ function inCountry(order: unknown, code: string): boolean {
   return [billing, shipping].some((candidate) => candidate?.toUpperCase() === code);
 }
 
-function summarizeRevenue(orders: readonly unknown[], withTax: boolean): Record<string, unknown> {
+function revenueTotals(orders: readonly unknown[], withTax: boolean): { revenue: number; order_count: number; average_order_value: number; tax_amount: number } {
   let gross = 0;
   let tax = 0;
   for (const order of orders) {
@@ -157,16 +200,44 @@ function summarizeRevenue(orders: readonly unknown[], withTax: boolean): Record<
   const revenue = withTax ? gross : gross - tax;
   return {
     revenue: round2(revenue),
-    ...currencyOf(orders),
     order_count: orders.length,
     average_order_value: orders.length > 0 ? round2(revenue / orders.length) : 0,
     tax_amount: round2(tax),
   };
 }
 
+/** The revenue result. With orders in several currencies the cross-currency amounts are null and `by_currency` holds each currency's totals. */
+function summarizeRevenue(orders: readonly unknown[], withTax: boolean): { readonly result: Record<string, unknown>; readonly mixed: boolean } {
+  const totals = revenueTotals(orders, withTax);
+  const currency = currencyOf(orders);
+  const groups = byCurrency(orders);
+  if (groups.length <= 1) {
+    return { result: { revenue: totals.revenue, ...currency, order_count: totals.order_count, average_order_value: totals.average_order_value, tax_amount: totals.tax_amount }, mixed: false };
+  }
+  return {
+    result: {
+      revenue: null,
+      ...currency,
+      order_count: totals.order_count,
+      average_order_value: null,
+      tax_amount: null,
+      by_currency: groups.map(([code, group]) => ({ currency: code, ...revenueTotals(group, withTax) })),
+    },
+    mixed: true,
+  };
+}
+
 const PERIOD: Shape = ["start_date", "end_date"];
 const COVERAGE: Shape = ["orders_analysed", "orders_in_period", "truncated"];
-const REVENUE_RESULT: Shape = ["revenue", "currency", "currencies", "order_count", "average_order_value", "tax_amount"];
+const REVENUE_RESULT: Shape = [
+  "revenue",
+  "currency",
+  "currencies",
+  "order_count",
+  "average_order_value",
+  "tax_amount",
+  ["by_currency", ["currency", "revenue", "order_count", "average_order_value", "tax_amount"]],
+];
 
 const revenueShape = (extraQuery: readonly string[]): Shape => [
   ["query", ["date_range", "status", "include_tax", ...extraQuery, ["period", PERIOD]]],
@@ -180,17 +251,19 @@ export function analyticsTools({ readTool }: ToolFactory): readonly MagentoRestT
     readTool({
       name: "magentorest_get_revenue",
       description:
-        "Use this to total the revenue of a period: revenue, currency, order count, average order value and tax. Computed from the orders in the period; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial.",
+        "Use this to total the revenue of a period: revenue, currency, order count, average order value and tax. Computed from the orders in the period; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial. With no status it leaves out canceled and closed orders. Amounts in different currencies are never added together: when the orders span several, the totals are null and by_currency gives each currency's own totals.",
       input: z.object({ date_range: dateRange, status, include_tax: includeTax, max_pages: maxPages }).strict(),
       shape: revenueShape([]),
       run: async ({ date_range, status: orderStatus, include_tax, max_pages }, client) => {
         const range = parseDateRange(date_range, new Date());
         const withTax = include_tax !== false;
-        const fetched = await fetchOrders(client, orderFilters(range, orderStatus), max_pages);
+        const fetched = await fetchOrders(client, revenueFilters(range, orderStatus), max_pages);
+        const { result, mixed } = summarizeRevenue(fetched.items, withTax);
         return {
-          query: { ...periodOf(range), status: orderStatus ?? "All", include_tax: withTax },
-          result: summarizeRevenue(fetched.items, withTax),
-          ...coverage(fetched),
+          query: { ...periodOf(range), status: orderStatus ?? DEFAULT_REVENUE_STATUS, include_tax: withTax },
+          result,
+          coverage: coverage(fetched).coverage,
+          ...warningOf(fetched, mixed),
         };
       },
     }),
@@ -210,7 +283,7 @@ export function analyticsTools({ readTool }: ToolFactory): readonly MagentoRestT
     readTool({
       name: "magentorest_get_product_sales",
       description:
-        "Use this to see what sold in a period: orders, items, units, revenue, and the ten best-selling products by quantity with their revenue. Optionally for one country (billing or shipping). Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial.",
+        "Use this to see what sold in a period: orders, items, units, revenue, and the ten best-selling products by quantity with their revenue. Optionally for one country (billing or shipping). Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial. With no status it leaves out canceled and closed orders. Amounts in different currencies are never added together: when the orders span several, the revenue figures are null and by_currency gives each currency's own revenue and order count.",
       input: z.object({ date_range: dateRange, status, country: country.optional(), max_pages: maxPages }).strict(),
       shape: [
         ["query", ["date_range", "status", "country", ["period", PERIOD]]],
@@ -226,6 +299,7 @@ export function analyticsTools({ readTool }: ToolFactory): readonly MagentoRestT
             "currency",
             "currencies",
             ["top_products", ["sku", "name", "quantity", "revenue"]],
+            ["by_currency", ["currency", "total_revenue", "total_orders"]],
           ],
         ],
         ["coverage", COVERAGE],
@@ -234,8 +308,10 @@ export function analyticsTools({ readTool }: ToolFactory): readonly MagentoRestT
       run: async ({ date_range, status: orderStatus, country: countryInput, max_pages }, client) => {
         const range = parseDateRange(date_range, new Date());
         const code = countryInput !== undefined ? normalizeCountry(countryInput) : undefined;
-        const fetched = await fetchOrders(client, orderFilters(range, orderStatus), max_pages);
+        const fetched = await fetchOrders(client, revenueFilters(range, orderStatus), max_pages);
         const orders = code !== undefined ? fetched.items.filter((order) => inCountry(order, code)) : fetched.items;
+        const groups = byCurrency(orders);
+        const mixed = groups.length > 1;
 
         let itemCount = 0;
         let quantity = 0;
@@ -259,20 +335,30 @@ export function analyticsTools({ readTool }: ToolFactory): readonly MagentoRestT
         const top = [...products.values()]
           .sort((a, b) => b.quantity - a.quantity)
           .slice(0, TOP_PRODUCTS)
-          .map((entry) => ({ sku: entry.sku, name: entry.name, quantity: entry.quantity, revenue: round2(entry.revenue) }));
+          .map((entry) => ({ sku: entry.sku, name: entry.name, quantity: entry.quantity, revenue: mixed ? null : round2(entry.revenue) }));
         return {
-          query: { ...periodOf(range), status: orderStatus ?? "All", country: countryInput ?? "All" },
+          query: { ...periodOf(range), status: orderStatus ?? DEFAULT_REVENUE_STATUS, country: countryInput ?? "All" },
           result: {
             total_orders: orders.length,
             total_order_items: itemCount,
             total_product_quantity: quantity,
             average_products_per_order: orders.length > 0 ? round2(quantity / orders.length) : 0,
-            total_revenue: round2(revenue),
-            average_revenue_per_product: quantity > 0 ? round2(revenue / quantity) : 0,
+            total_revenue: mixed ? null : round2(revenue),
+            average_revenue_per_product: mixed ? null : quantity > 0 ? round2(revenue / quantity) : 0,
             ...currencyOf(orders),
             top_products: top,
+            ...(mixed
+              ? {
+                  by_currency: groups.map(([currencyCode, group]) => ({
+                    currency: currencyCode,
+                    total_revenue: round2(group.reduce((sum: number, order) => sum + money(order, "base_grand_total", "grand_total"), 0)),
+                    total_orders: group.length,
+                  })),
+                }
+              : {}),
           },
-          ...coverage(fetched),
+          coverage: coverage(fetched).coverage,
+          ...warningOf(fetched, mixed),
         };
       },
     }),
@@ -280,19 +366,21 @@ export function analyticsTools({ readTool }: ToolFactory): readonly MagentoRestT
     readTool({
       name: "magentorest_get_revenue_by_country",
       description:
-        "Use this to total the revenue of a period for one country (orders billed or shipped there): revenue, currency, order count, average order value and tax. Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial.",
+        "Use this to total the revenue of a period for one country (orders billed or shipped there): revenue, currency, order count, average order value and tax. Computed from the orders; it returns no order details. Reads at most max_pages pages of 100 orders and says when the result is partial. With no status it leaves out canceled and closed orders. Amounts in different currencies are never added together: when the orders span several, the totals are null and by_currency gives each currency's own totals.",
       input: z.object({ date_range: dateRange, country, status, include_tax: includeTax, max_pages: maxPages }).strict(),
       shape: revenueShape(["country", "normalized_country"]),
       run: async ({ date_range, country: countryInput, status: orderStatus, include_tax, max_pages }, client) => {
         const range = parseDateRange(date_range, new Date());
         const code = normalizeCountry(countryInput) as string;
         const withTax = include_tax !== false;
-        const fetched = await fetchOrders(client, orderFilters(range, orderStatus), max_pages);
+        const fetched = await fetchOrders(client, revenueFilters(range, orderStatus), max_pages);
         const orders = fetched.items.filter((order) => inCountry(order, code));
+        const { result, mixed } = summarizeRevenue(orders, withTax);
         return {
-          query: { ...periodOf(range), country: countryInput, normalized_country: code, status: orderStatus ?? "All", include_tax: withTax },
-          result: summarizeRevenue(orders, withTax),
-          ...coverage(fetched),
+          query: { ...periodOf(range), country: countryInput, normalized_country: code, status: orderStatus ?? DEFAULT_REVENUE_STATUS, include_tax: withTax },
+          result,
+          coverage: coverage(fetched).coverage,
+          ...warningOf(fetched, mixed),
         };
       },
     }),

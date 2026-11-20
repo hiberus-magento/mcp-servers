@@ -14,8 +14,7 @@
 // without it prints the plan and stops. Plan and apply run in ONE process
 // here (the plan store is in memory), with the same checks `aem_apply` runs.
 import { existsSync, readFileSync, rmSync } from "node:fs";
-import { pathToFileURL } from "node:url";
-import { credentialFilePath, MissingCredentialError, parseCredentialCliArgs, persistCredential, readTokenFromStdin, redact } from "@hiberus-magento/mcp-core";
+import { credentialFilePath, MissingCredentialError, parseCredentialCliArgs, persistCredential, readTokenFromStdin, redact, isEntryPoint } from "@hiberus-magento/mcp-core";
 import { AemAuthError, probeAuth, queryPages } from "./client/index.js";
 import { parseConfig } from "./config.js";
 import { assertEnvName, credentialDomain, normalizeToken, resolveAemTokenDirect } from "./credential-provider.js";
@@ -237,7 +236,7 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<CliR
   return result;
 }
 
-const isDirectRun = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isDirectRun = isEntryPoint(import.meta.url);
 
 if (isDirectRun) {
   const argv = process.argv.slice(2);

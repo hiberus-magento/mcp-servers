@@ -92,14 +92,22 @@ function categoryOf(entry: unknown): string | undefined {
   return typeof category === "string" ? category : undefined;
 }
 
-/** The GraphQL `errors` array of a response as one error. Takes `unknown` entries: the server is not trusted to shape them. */
-export function classifyGraphqlErrors(errors: readonly unknown[]): MagentoGraphqlError {
+/**
+ * Magento's messages from a GraphQL `errors` array, each redacted and cut to length, at most five of them; `extra`
+ * counts the ones left out. Takes `unknown` entries: the server is not trusted to shape them.
+ */
+export function graphqlErrorMessages(errors: readonly unknown[]): { readonly shown: readonly string[]; readonly extra: number } {
   const messages = errors
     .map((entry) => ((entry as RawGraphqlError | null)?.message))
     .filter((message): message is string => typeof message === "string" && message !== "")
     .map((message) => redact(message).slice(0, MAX_MESSAGE_CHARS));
   const shown = messages.slice(0, MAX_MESSAGES);
-  const extra = messages.length - shown.length;
+  return { shown, extra: messages.length - shown.length };
+}
+
+/** The GraphQL `errors` array of a response as one error. Takes `unknown` entries: the server is not trusted to shape them. */
+export function classifyGraphqlErrors(errors: readonly unknown[]): MagentoGraphqlError {
+  const { shown, extra } = graphqlErrorMessages(errors);
   const categories = errors.map(categoryOf);
   const kind: MagentoGraphqlErrorKind = categories.some((c) => c === "graphql-authorization" || c === "graphql-authentication")
     ? "unauthorized"
