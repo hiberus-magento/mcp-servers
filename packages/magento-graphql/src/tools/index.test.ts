@@ -2,8 +2,9 @@
 //
 // RED-first. The assembled surface and the ONE place the write switch is enforced; plus the
 // repository-wide checks over every shipped document (design D3).
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { GROUP_NAMES, allMagentoGraphqlTools, assertUniqueNames, createMagentoGraphqlTools, parseGroups } from "./index.js";
+import { GROUP_NAMES, allMagentoGraphqlTools, assertUniqueNames, createMagentoGraphqlTools, parseGroups, unsupportedTools } from "./index.js";
 import { inspectDocument, MAX_SELECTION_DEPTH } from "../client/index.js";
 
 const getRuntime = () => {
@@ -30,10 +31,10 @@ describe("createMagentoGraphqlTools", () => {
     expect(createMagentoGraphqlTools({ getRuntime, writesEnabled: false, groups: ["cart"] }).map((t) => t.name)).toEqual(["magentographql_get_cart"]);
   });
 
-  it("names the twenty groups", () => {
+  it("names the twenty-one groups", () => {
     expect([...GROUP_NAMES].sort()).toEqual([
       "account", "cart", "categories", "checkout", "cms", "company", "compare", "customer", "gift-and-rewards", "gift-registry",
-      "orders", "payments", "products", "purchase-orders", "query", "quotes", "requisition-lists", "returns", "store", "wishlist",
+      "orders", "payments", "product-alerts", "products", "purchase-orders", "query", "quotes", "requisition-lists", "returns", "store", "wishlist",
     ]);
   });
 
@@ -85,5 +86,30 @@ describe("every shipped tool", () => {
 
   it("never interpolates: every document takes its values from variables", () => {
     for (const t of all) expect(t.document ?? "", t.name).not.toMatch(/\$\{/);
+  });
+});
+
+describe("unsupportedTools", () => {
+  it("names the tools whose operation the store lacks, by kind, and never the generic query tool", () => {
+    const tools = allMagentoGraphqlTools();
+    const offered = new Set(["query:storeConfig", "query:__schema", "mutation:createCompany"]);
+    const names = unsupportedTools(tools, (kind, operation) => offered.has(`${kind}:${operation}`));
+    expect(names).not.toContain("magentographql_get_store_config");
+    expect(names).not.toContain("magentographql_create_company");
+    expect(names).not.toContain("magentographql_query");
+    expect(names).not.toContain("magentographql_list_operations");
+    expect(names).toContain("magentographql_get_company");
+    expect(names).toContain("magentographql_add_products_to_cart");
+    // Left enabled: the two offered, the generic query tool and the two introspection reads.
+    expect(names).toHaveLength(tools.length - 5);
+  });
+});
+
+describe("the documented mutation-tool count", () => {
+  it("in servers.json is within 10% of the real number of write tools", () => {
+    const manifest = readFileSync(new URL("../../../../servers.json", import.meta.url), "utf8");
+    const stated = Number(/about (\d+) of them/.exec(manifest)?.[1]);
+    const real = all.filter((t) => t.access === "write").length;
+    expect(Math.abs(stated - real) / real).toBeLessThanOrEqual(0.1);
   });
 });

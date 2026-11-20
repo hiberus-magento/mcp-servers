@@ -31,16 +31,25 @@ const COVERED = new Set([
 
 // One group per operation. An operation missing here stops the generator, so a new schema operation is placed on purpose.
 const GROUPS = {
-  products: ["productReviewRatingsMetadata", "createProductReview"],
-  store: ["attributesForm", "attributesList", "customAttributeMetadataV2", "route", "pickupLocations", "recaptchaFormConfig", "recaptchaV3Config", "contactUs", "sendEmailToFriend", "dynamicBlocks"],
+  products: ["productReviewRatingsMetadata", "createProductReview", "reviews", "inventoryAvailability", "inventoryStoreAvailability"],
+  // Price and stock alerts of the signed-in customer: their own group, so an operator can leave them out.
+  "product-alerts": [
+    "isSubscribedProductAlertPrice", "isSubscribedProductAlertStock", "subscribeProductAlertPrice", "subscribeProductAlertStock", "unsubscribeProductAlertPrice", "unsubscribeProductAlertPriceAll",
+    "unsubscribeProductAlertStock", "unsubscribeProductAlertStockAll",
+  ],
+  store: [
+    "attributesForm", "attributesList", "customAttributeMetadataV2", "route", "pickupLocations", "recaptchaFormConfig", "recaptchaV3Config", "contactUs", "sendEmailToFriend", "dynamicBlocks", "commerceOptimizer",
+  ],
   account: [
     "generateCustomerToken", "generateCustomerTokenAsAdmin", "revokeCustomerToken", "createCustomerV2", "updateCustomerV2", "updateCustomerEmail", "changeCustomerPassword",
     "requestPasswordResetEmail", "resetPassword", "confirmEmail", "resendConfirmationEmail", "isEmailAvailable", "deleteCustomer", "subscribeEmailToNewsletter",
     "createCustomerAddress", "updateCustomerAddressV2", "deleteCustomerAddressV2", "customerDownloadableProducts", "customerGroup", "customerSegments", "exchangeExternalCustomerToken",
+    "exchangeOtpForCustomerToken",
   ],
   cart: [
     "createGuestCart", "addProductsToNewCart", "addSimpleProductsToCart", "addVirtualProductsToCart", "addConfigurableProductsToCart", "addBundleProductsToCart", "addDownloadableProductsToCart",
     "applyCouponsToCart", "removeCouponsFromCart", "clearCart", "clearCustomerCart", "mergeCarts", "assignCustomerToGuestCart", "setCartAsInactive", "setGiftOptionsOnCart", "reorderItems",
+    "selectFreeGiftForCart",
   ],
   checkout: [
     "setShippingAddressesOnCart", "setBillingAddressOnCart", "setShippingMethodsOnCart", "setPaymentMethodOnCart", "setGuestEmailOnCart", "estimateShippingMethods", "estimateTotals",
@@ -56,6 +65,7 @@ const GROUPS = {
   payments: [
     "getPaymentConfig", "getPaymentOrder", "getPaymentSDK", "getVaultConfig", "customerPaymentTokens", "getHostedProUrl", "getPayflowLinkToken", "createPaypalExpressToken", "createPayflowProToken",
     "handlePayflowProResponse", "appendPaymentServicesStorefrontLogs", "createPaymentOrder", "syncPaymentOrder", "completeOrder", "createVaultCardPaymentToken", "createVaultCardSetupToken", "deletePaymentToken",
+    "createBraintreeClientToken", "createBraintreePayPalClientToken", "createBraintreePayPalVaultClientToken",
   ],
   "gift-and-rewards": [
     "giftCardAccount", "applyGiftCardToCart", "removeGiftCardFromCart", "redeemGiftCardBalanceAsStoreCredit", "applyStoreCreditToCart", "removeStoreCreditFromCart", "applyRewardPointsToCart", "removeRewardPointsFromCart",
@@ -67,6 +77,7 @@ const GROUPS = {
   company: [
     "company", "isCompanyAdminEmailAvailable", "isCompanyEmailAvailable", "isCompanyRoleNameAvailable", "isCompanyUserEmailAvailable", "createCompany", "updateCompany", "createCompanyRole", "updateCompanyRole",
     "deleteCompanyRole", "createCompanyTeam", "updateCompanyTeam", "deleteCompanyTeam", "createCompanyUser", "updateCompanyUser", "deleteCompanyUserV2", "updateCompanyStructure", "acceptCompanyInvitation",
+    "updateCompanyConfig", "createCompanyAddress", "updateCompanyAddress", "deleteCompanyAddress", "setDefaultCompanyAddress", "assignChildCompany", "unassignChildCompany",
   ],
   "purchase-orders": [
     "placePurchaseOrder", "placeOrderForPurchaseOrder", "addPurchaseOrderComment", "addPurchaseOrderItemsToCart", "approvePurchaseOrders", "rejectPurchaseOrders", "cancelPurchaseOrders", "validatePurchaseOrders",
@@ -75,22 +86,27 @@ const GROUPS = {
   quotes: [
     "negotiableQuote", "negotiableQuotes", "negotiableQuoteTemplate", "negotiableQuoteTemplates", "requestNegotiableQuote", "sendNegotiableQuoteForReview", "renameNegotiableQuote", "duplicateNegotiableQuote",
     "closeNegotiableQuotes", "deleteNegotiableQuotes", "removeNegotiableQuoteItems", "updateNegotiableQuoteQuantities", "setNegotiableQuoteBillingAddress", "setNegotiableQuoteShippingAddress",
-    "setNegotiableQuoteShippingMethods", "setNegotiableQuotePaymentMethod", "placeNegotiableQuoteOrder", "setLineItemNote", "requestNegotiableQuoteTemplateFromQuote", "openNegotiableQuoteTemplate",
+    "setNegotiableQuoteShippingMethods", "setNegotiableQuotePaymentMethod", "placeNegotiableQuoteOrder", "placeNegotiableQuoteOrderV2", "setLineItemNote", "requestNegotiableQuoteTemplateFromQuote", "openNegotiableQuoteTemplate",
     "acceptNegotiableQuoteTemplate", "cancelNegotiableQuoteTemplate", "deleteNegotiableQuoteTemplate", "generateNegotiableQuoteFromTemplate", "submitNegotiableQuoteTemplateForReview",
     "removeNegotiableQuoteTemplateItems", "updateNegotiableQuoteTemplateQuantities", "setNegotiableQuoteTemplateShippingAddress", "setQuoteTemplateLineItemNote",
+    "setQuoteTemplateExpirationDate",
   ],
   "requisition-lists": [
     "createRequisitionList", "updateRequisitionList", "deleteRequisitionList", "addProductsToRequisitionList", "updateRequisitionListItems", "deleteRequisitionListItems", "addRequisitionListItemsToCart",
     "copyItemsBetweenRequisitionLists", "moveItemsBetweenRequisitionLists", "moveLineItemToRequisitionList",
+    "publicRequisitionList", "sharedRequisitionList", "addPublicRequisitionListItemsToCart", "importSharedRequisitionList", "sharePublicRequisitionList", "shareRequisitionListByEmail",
+    "shareRequisitionListByToken",
   ],
 };
 
 // Groups, or single operations, that exist only on Adobe Commerce; the description says so, because on Open Source
 // Magento they answer "Cannot query field".
 const COMMERCE_ONLY_GROUPS = new Set(["gift-and-rewards", "gift-registry", "company", "purchase-orders", "quotes", "requisition-lists", "returns"]);
-const COMMERCE_ONLY_OPERATIONS = new Set(["dynamicBlocks", "giftCardAccount", "customerSegments"]);
+const COMMERCE_ONLY_OPERATIONS = new Set(["dynamicBlocks", "giftCardAccount", "customerSegments", "commerceOptimizer"]);
 // Groups whose operations act on the signed-in customer.
-const TOKEN_GROUPS = new Set(["wishlist", "returns", "company", "purchase-orders", "quotes", "requisition-lists", "gift-registry"]);
+const TOKEN_GROUPS = new Set(["wishlist", "returns", "company", "purchase-orders", "quotes", "requisition-lists", "gift-registry", "product-alerts"]);
+// ...except these, which work without one: a public requisition list is reached by its token alone.
+const NO_TOKEN_OPERATIONS = new Set(["publicRequisitionList", "addPublicRequisitionListItemsToCart"]);
 const TOKEN_OPERATIONS = new Set([
   "revokeCustomerToken", "updateCustomerV2", "updateCustomerEmail", "changeCustomerPassword", "deleteCustomer", "createCustomerAddress", "updateCustomerAddressV2", "deleteCustomerAddressV2", "customerGroup",
   "customerDownloadableProducts", "customerPaymentTokens", "assignCustomerToGuestCart", "clearCustomerCart", "reorderItems", "mergeCarts", "subscribeEmailToNewsletter", "createVaultCardPaymentToken",
@@ -98,6 +114,9 @@ const TOKEN_OPERATIONS = new Set([
 ]);
 // Operations that take a password as an argument: it passes through the conversation, and the description says so.
 const PASSWORD_OPERATIONS = new Set(["generateCustomerToken", "generateCustomerTokenAsAdmin", "createCustomerV2", "updateCustomerEmail", "changeCustomerPassword", "resetPassword", "deleteCustomer"]);
+
+// Operations that answer with a customer token.
+const CREDENTIAL_OPERATIONS = new Set(["generateCustomerToken", "generateCustomerTokenAsAdmin", "exchangeExternalCustomerToken", "exchangeOtpForCustomerToken"]);
 
 const SENSITIVE_FIELD = /password|secret|cvv|api_key|card_number|private_key/i;
 const MAX_DOCUMENT = 6500;
@@ -199,10 +218,15 @@ function inputObjectSource(type) {
 
 // ---- operations ------------------------------------------------------------------------------------------------
 function effectOf(name) {
-  if (/^(delete|remove|clear|revoke|close)/.test(name)) return "delete";
-  if (/^(create|register)/.test(name) && !/^create(PaypalExpressToken|PayflowProToken|PaymentOrder|VaultCard)/.test(name)) return "create";
+  // Ending a subscription or a company link removes it, and doing it twice leaves the same state.
+  if (/^(delete|remove|clear|revoke|close|unsubscribe|unassign)/.test(name)) return "delete";
+  // A payment-SDK token (PayPal, Payflow, Braintree, vault) is issued afresh on every call, not a record the customer keeps.
+  if (/^(create|register)/.test(name) && !/^create(PaypalExpressToken|PayflowProToken|PaymentOrder|VaultCard|Braintree)/.test(name)) return "create";
+  // Importing a shared requisition list adds a new list to the account each time.
+  if (name === "importSharedRequisitionList") return "create";
   // Not `resend`: each resendConfirmationEmail sends another email, so it is an action, like requestPasswordResetEmail.
-  if (/^(update|set|rename|apply|assign|confirmEmail|resetPassword|changeCustomerPassword|subscribe|syncPaymentOrder)/.test(name)) return "update";
+  // Choosing the free gift replaces the previous choice, so it is an update.
+  if (/^(update|set|rename|apply|assign|confirmEmail|resetPassword|changeCustomerPassword|subscribe|syncPaymentOrder|selectFreeGiftForCart)/.test(name)) return "update";
   return "action";
 }
 
@@ -213,10 +237,10 @@ function descriptionOf(op, group, kind) {
   const lower = /^[A-Z][a-z]/.test(text) ? text[0].toLowerCase() + text.slice(1) : text;
   const notes = [];
   if (COMMERCE_ONLY_GROUPS.has(group) || COMMERCE_ONLY_OPERATIONS.has(op.name)) notes.push("Adobe Commerce only: Open Source Magento does not have it.");
-  if (TOKEN_GROUPS.has(group) || TOKEN_OPERATIONS.has(op.name)) notes.push("Needs a customer token.");
+  if ((TOKEN_GROUPS.has(group) && !NO_TOKEN_OPERATIONS.has(op.name)) || TOKEN_OPERATIONS.has(op.name)) notes.push("Needs a customer token.");
   if (PASSWORD_OPERATIONS.has(op.name)) notes.push("Takes a password as an argument, which then passes through the conversation.");
-  if (op.name === "generateCustomerToken" || op.name === "generateCustomerTokenAsAdmin" || op.name === "exchangeExternalCustomerToken") notes.push("Returns a credential into the conversation; store it with `hiberus-magento-graphql auth token set` rather than reusing it from here.");
-  if (op.name === "placeOrder") notes.push("Places a real order from the cart: not idempotent and never retried.");
+  if (CREDENTIAL_OPERATIONS.has(op.name)) notes.push("Returns a credential into the conversation; store it with `hiberus-magento-graphql auth token set` rather than reusing it from here.");
+  if (op.name === "placeOrder" || op.name === "placeNegotiableQuoteOrderV2") notes.push("Places a real order from the cart: not idempotent and never retried.");
   return `Use this to ${lower}.${notes.length > 0 ? ` ${notes.join(" ")}` : ""}`.slice(0, 700);
 }
 

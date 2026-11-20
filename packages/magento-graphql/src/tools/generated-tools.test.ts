@@ -14,9 +14,9 @@ const all = (): ReturnType<typeof buildToolHarness> => buildToolHarness((f) => G
 const CART = "AbC123xyz";
 
 describe("generated operations", () => {
-  it("cover 193 operations, each in a group the server knows, with a unique name and a fixed document", () => {
-    expect(GENERATED_OPERATIONS).toHaveLength(193);
-    expect(new Set(GENERATED_OPERATIONS.map((o) => o.name)).size).toBe(193);
+  it("cover 224 operations, each in a group the server knows, with a unique name and a fixed document", () => {
+    expect(GENERATED_OPERATIONS).toHaveLength(224);
+    expect(new Set(GENERATED_OPERATIONS.map((o) => o.name)).size).toBe(224);
     for (const o of GENERATED_OPERATIONS) {
       expect(GROUP_NAMES, o.name).toContain(o.group);
       expect(o.document, o.name).toContain(o.operation);
@@ -64,6 +64,13 @@ describe("generated operations", () => {
     ["magentographql_cancel_order", { destructiveHint: true, idempotentHint: false }],
     // Every call sends another email, so twice is not the same as once.
     ["magentographql_resend_confirmation_email", { destructiveHint: true, idempotentHint: false }],
+    // Operations of the latest Adobe Commerce + B2B schema, placed on purpose (design D14).
+    ["magentographql_unsubscribe_product_alert_price", { destructiveHint: true, idempotentHint: true }],
+    ["magentographql_unassign_child_company", { destructiveHint: true, idempotentHint: true }],
+    ["magentographql_select_free_gift_for_cart", { destructiveHint: true, idempotentHint: true }],
+    ["magentographql_import_shared_requisition_list", { destructiveHint: false, idempotentHint: false }],
+    ["magentographql_create_braintree_client_token", { destructiveHint: true, idempotentHint: false }],
+    ["magentographql_share_requisition_list_by_email", { destructiveHint: true, idempotentHint: false }],
   ])("%s has the annotations of its effect", (name, expected) => {
     expect(all().tool(name).annotations).toMatchObject({ readOnlyHint: false, ...expected });
   });
@@ -76,6 +83,26 @@ describe("generated operations", () => {
     expect(h.tool("magentographql_create_customer_v2").description).toMatch(/password/);
     expect(h.tool("magentographql_create_wishlist").description).toMatch(/customer token/i);
     expect(h.tool("magentographql_create_company").description).toMatch(/Adobe Commerce only/);
+    expect(h.tool("magentographql_exchange_otp_for_customer_token").description).toMatch(/credential into the conversation/);
+    expect(h.tool("magentographql_place_negotiable_quote_order_v2").description).toMatch(/real order/);
+    expect(h.tool("magentographql_subscribe_product_alert_stock").description).toMatch(/customer token/i);
+    // A public requisition list is read by its token, without a signed-in customer.
+    expect(h.tool("magentographql_get_public_requisition_list").description).not.toMatch(/customer token/i);
+  });
+
+  it("places every operation of the latest Adobe Commerce + B2B schema in the group of its area", () => {
+    const groupOf = (operation: string): string | undefined => GENERATED_OPERATIONS.find((o) => o.operation === operation)?.group;
+    expect(groupOf("subscribeProductAlertPrice")).toBe("product-alerts");
+    expect(groupOf("isSubscribedProductAlertStock")).toBe("product-alerts");
+    expect(groupOf("reviews")).toBe("products");
+    expect(groupOf("inventoryAvailability")).toBe("products");
+    expect(groupOf("commerceOptimizer")).toBe("store");
+    expect(groupOf("createBraintreeClientToken")).toBe("payments");
+    expect(groupOf("exchangeOtpForCustomerToken")).toBe("account");
+    expect(groupOf("selectFreeGiftForCart")).toBe("cart");
+    expect(groupOf("createCompanyAddress")).toBe("company");
+    expect(groupOf("shareRequisitionListByToken")).toBe("requisition-lists");
+    expect(groupOf("placeNegotiableQuoteOrderV2")).toBe("quotes");
   });
 
   it("selects only what the document names: no password-shaped field reaches an answer", () => {

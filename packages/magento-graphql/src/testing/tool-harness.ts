@@ -1,7 +1,8 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
 // The scaffolding every tool-module test repeats: a real client over the fetch double, a tool
-// factory, and `call` shorthand. Lives beside the fetch double, outside `client/`.
+// factory, and `call` shorthand. Lives beside the fetch double, outside `client/`. The client does not adapt
+// documents to a store schema here, so every recorded request is the tool's own; adaptation has its own tests.
 import { SYNTHETIC_MAGENTO_GRAPHQL_URL } from "@hiberus-magento/mcp-testing";
 import { createMagentoGraphqlClient } from "../client/index.js";
 import { createToolFactory, type MagentoGraphqlTool, type ToolFactory } from "../tools/graphql-tool.js";
@@ -19,7 +20,7 @@ export interface ToolHarness {
 
 export function buildToolHarness(makeTools: (factory: ToolFactory) => readonly MagentoGraphqlTool[], responder: Responder): ToolHarness {
   const double = createFetchDouble(responder);
-  const client = createMagentoGraphqlClient({ fetch: double.fetch, now: () => 0, sleep: async () => undefined, baseUrl: SYNTHETIC_MAGENTO_GRAPHQL_URL, getToken: async () => undefined });
+  const client = createMagentoGraphqlClient({ fetch: double.fetch, now: () => 0, sleep: async () => undefined, baseUrl: SYNTHETIC_MAGENTO_GRAPHQL_URL, getToken: async () => undefined, adaptToSchema: false });
   const tools = makeTools(createToolFactory(() => client));
   const tool = (name: string): MagentoGraphqlTool => {
     const found = tools.find((t) => t.name === name);

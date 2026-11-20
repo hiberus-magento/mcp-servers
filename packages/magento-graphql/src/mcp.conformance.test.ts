@@ -8,21 +8,27 @@
 // designed" is provable: the write switch, the groups, and a refusal to start on a bad
 // configuration (exit code 1, reason on stderr, nothing on stdout).
 import { spawn } from "node:child_process";
+import { mkdtempSync } from "node:fs";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { JsonRpcClient, describeConformance } from "@hiberus-magento/mcp-testing";
+import { introspectionOf } from "./testing/schema-double.js";
 import { allMagentoGraphqlTools } from "./tools/index.js";
 
 const packageDir = fileURLToPath(new URL("../", import.meta.url));
 const serverPath = fileURLToPath(new URL("../dist/mcp.js", import.meta.url));
 
-// This server builds 216 tool input schemas when it starts with every group loaded, so it costs more CPU to start than
+// This server builds 247 tool input schemas when it starts with every group loaded, so it costs more CPU to start than
 // the six-to-nine-tool servers the shared 75 ms was derived from. MAGENTO_GRAPHQL_GROUPS builds only the schemas of the
 // groups it names. The figure and how it was derived are in `packages/mcp-testing/src/conformance/cold-start.ts`.
 describeConformance({
   serverPath,
   packageDir,
-  startupCpuBudget: { ms: 150, reason: "constructs 216 tool input schemas at startup with every group loaded (about 30 ms more CPU than the 95-tool magento-rest, measured; a few groups cost about 65 ms)" },
+  startupCpuBudget: { ms: 150, reason: "constructs 247 tool input schemas at startup with every group loaded (about 30 ms more CPU than the 95-tool magento-rest, measured; a few groups cost about 65 ms)" },
 });
 
 interface ListedTool {
@@ -157,5 +163,51 @@ describe("MAGENTO_GRAPHQL_GROUPS on the built bundle", () => {
     expect(result.stderr).toContain("custmers");
     expect(result.stderr).toContain("cart");
     expect(result.stdout).toBe("");
+  });
+});
+
+// Design D14: once the connected store's schema is known, every tool whose operation it lacks is disabled, and the
+// client is told the list changed. A loopback HTTP server plays a store that has the store-config query but no B2B.
+describe("tools the connected store does not offer, on the built bundle", () => {
+  let store: Server;
+  let url: string;
+  beforeAll(async () => {
+    const schema = introspectionOf({ Query: { storeConfig: "StoreConfig" }, StoreConfig: { store_code: "String", locale: "String" } });
+    store = createServer((request, response) => {
+      let body = "";
+      request.on("data", (chunk: Buffer) => (body += chunk.toString("utf8")));
+      request.on("end", () => {
+        const query = (JSON.parse(body) as { query: string }).query;
+        response.setHeader("content-type", "application/json");
+        response.end(JSON.stringify({ data: query.includes("__schema") ? schema : { storeConfig: { store_code: "demo_store", locale: "en_US" } } }));
+      });
+    });
+    await new Promise<void>((resolve) => store.listen(0, "127.0.0.1", resolve));
+    url = `http://127.0.0.1:${(store.address() as AddressInfo).port}/graphql`;
+  });
+  afterAll(() => new Promise<void>((resolve) => store.close(() => resolve())));
+
+  it("disables them after the first call reads the schema, and sends notifications/tools/list_changed", async () => {
+    const home = mkdtempSync(join(tmpdir(), "magento-graphql-adapt-"));
+    const client = new JsonRpcClient({ command: process.execPath, args: [serverPath], env: baseEnv({ MAGENTO_GRAPHQL_BASE_URL: url, MAGENTO_GRAPHQL_GROUPS: "store,company", HOME: home, XDG_CONFIG_HOME: home }) });
+    try {
+      await client.request("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "adapt", version: "0.0.0" } });
+      client.notify("notifications/initialized");
+      const before = ((await client.request("tools/list")) as { tools: readonly ListedTool[] }).tools.map((t) => t.name);
+      expect(before).toContain("magentographql_get_company");
+
+      const result = (await client.request("tools/call", { name: "magentographql_get_store_config", arguments: {} })) as { isError?: boolean; content: { text: string }[] };
+      expect(result.isError).not.toBe(true);
+      expect(result.content[0]?.text).toContain("demo_store");
+
+      const after = ((await client.request("tools/list")) as { tools: readonly ListedTool[] }).tools.map((t) => t.name);
+      expect(after).toContain("magentographql_get_store_config");
+      expect(after).not.toContain("magentographql_get_company");
+      expect(after.some((n) => n.includes("compan"))).toBe(false);
+      const notified = client.rawStdoutLines.some((l) => (l.parsed as { method?: string } | undefined)?.method === "notifications/tools/list_changed");
+      expect(notified).toBe(true);
+    } finally {
+      client.close();
+    }
   });
 });

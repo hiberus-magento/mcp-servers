@@ -11,7 +11,7 @@
 // deprecated others); every selected field is now non-deprecated, and `get_category` / `get_category_tree` / `get_product` / `get_route`
 // were run again after moving to `categories`, `route`, `itemsV2` and `uid`.
 //
-// Verified so far: 32 of the 216 tools, run on 2026-11-05 against a local Magento Open Source 2.4.8-p5
+// Verified so far: 32 of the 247 tools, run on 2026-11-05 against a local Magento Open Source 2.4.8-p5
 // (a development stack behind Varnish and TLS, with test data), anonymously and through the built MCP
 // server. Each returned data from the real schema, not only a well-formed error; the corrections the run
 // forced are in design.md D10. Only a tool that returned data is listed.

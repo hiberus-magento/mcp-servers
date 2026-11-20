@@ -8,7 +8,7 @@
 // error, so it is a plain Error naming the variable.
 import { redact } from "@hiberus-magento/mcp-core";
 import { ZodError } from "zod";
-import { MagentoGraphqlError, OperationGuardError, createMagentoGraphqlClient, type MagentoGraphqlClient } from "../client/index.js";
+import { MagentoGraphqlError, OperationGuardError, createMagentoGraphqlClient, type MagentoGraphqlClient, type OffersOperation } from "../client/index.js";
 import { resolveOptionalCustomerToken } from "../credential-provider.js";
 import { parseGroups } from "./index.js";
 
@@ -21,7 +21,12 @@ export interface MagentoGraphqlRuntime {
   readonly client: MagentoGraphqlClient;
 }
 
-export function createRuntimeResolver(): () => MagentoGraphqlRuntime {
+export interface RuntimeResolverOptions {
+  /** Told once, when the connected store's schema has been read, which operations it offers (design D14). */
+  readonly onSchema?: (offers: OffersOperation) => void;
+}
+
+export function createRuntimeResolver(options: RuntimeResolverOptions = {}): () => MagentoGraphqlRuntime {
   let runtime: MagentoGraphqlRuntime | undefined;
   return () => {
     if (runtime !== undefined) {
@@ -45,6 +50,7 @@ export function createRuntimeResolver(): () => MagentoGraphqlRuntime {
       // On every attempt, never cached: a token stored while the server runs applies on the next call.
       getToken: async () => resolveOptionalCustomerToken(),
       ...(store !== undefined && store !== "" ? { defaultStore: store } : {}),
+      ...(options.onSchema !== undefined ? { onSchema: options.onSchema } : {}),
     });
     runtime = { client };
     return runtime;
