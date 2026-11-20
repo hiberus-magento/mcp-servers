@@ -154,6 +154,8 @@ function loadHttp(): ReturnType<typeof readHttpConfig> {
 }
 
 const http = loadHttp();
+// Under Docker's default 10 s stop timeout, so requests in flight finish before the container is killed.
+const HTTP_SHUTDOWN_GRACE_MS = 5_000;
 
 if (http.enabled) {
   // Opt-in network mode for callers that cannot own a child process (a PHP middleware). Stateless:
@@ -179,6 +181,14 @@ if (http.enabled) {
         }
       },
     });
+    // As PID 1 in a container Node has no default SIGTERM handler; without this `docker stop` waits and kills.
+    // Installed before the "listening" line, so whoever waits for that line can already stop the server.
+    for (const signal of ["SIGTERM", "SIGINT"] as const) {
+      process.once(signal, () => {
+        logger.info(`magento-graphql: ${signal} received, closing the HTTP endpoint`);
+        void endpoint.close(HTTP_SHUTDOWN_GRACE_MS).then(() => process.exit(0));
+      });
+    }
     logger.info(`magento-graphql: listening on http://${endpoint.host}:${endpoint.port}/mcp`);
   } catch (error) {
     logger.error(`magento-graphql: refusing to start — ${error instanceof Error ? error.message : "invalid HTTP configuration"}`);

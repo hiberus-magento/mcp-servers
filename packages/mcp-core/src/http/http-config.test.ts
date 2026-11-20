@@ -55,6 +55,15 @@ describe("readHttpConfig", () => {
     }
   });
 
+  it("trims the token, so a secret file's trailing newline does not turn every call into a 401", () => {
+    const config = readHttpConfig(names("MAGENTO_GRAPHQL"), { MAGENTO_GRAPHQL_HTTP_PORT: "3100", MAGENTO_GRAPHQL_HTTP_TOKEN: `${TOKEN}\n` });
+    expect(config).toMatchObject({ enabled: true, token: TOKEN });
+  });
+
+  it("treats a whitespace-only token as missing", () => {
+    expect(() => readHttpConfig(names("MAGENTO_GRAPHQL"), { MAGENTO_GRAPHQL_HTTP_PORT: "3100", MAGENTO_GRAPHQL_HTTP_TOKEN: "  \n" })).toThrow(/MAGENTO_GRAPHQL_HTTP_TOKEN is required/);
+  });
+
   it("never puts the token in an error message", () => {
     try {
       readHttpConfig(names("MAGENTO_GRAPHQL"), { MAGENTO_GRAPHQL_HTTP_PORT: "nope", MAGENTO_GRAPHQL_HTTP_TOKEN: TOKEN });

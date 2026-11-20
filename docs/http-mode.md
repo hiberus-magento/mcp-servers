@@ -57,7 +57,7 @@ curl -s "$URL" "${HEADERS[@]}" \
 ```
 
 - **No `initialize` first, no session header.** Call `tools/list` or `tools/call` directly. Only `POST` is
-  needed.
+  served; `GET` and `DELETE` answer `405`, which is how a standard MCP client learns there is no stream.
 - **`tools/list`** returns each tool's `inputSchema` (JSON Schema) and `annotations.readOnlyHint`, which is
   what a caller needs to describe the tool to a model and to tell reads from writes.
 - **`tools/call`** takes `name` and `arguments`. A success looks like
@@ -80,9 +80,11 @@ HTTP statuses are for the transport and for security, and never carry Magento da
 | `401` | Token missing or wrong. |
 | `403` | `Host` or `Origin` not allowed. See "From another container". |
 | `404` | Any path other than `/mcp`. |
-| `405` | A method other than `POST`, `GET` or `DELETE`. |
+| `405` | Any method other than `POST` (the reply carries `Allow: POST`). |
 | `406` | The `Accept` header lacks `application/json, text/event-stream`. The body says so. |
 | `413` | Request body over 1 MiB. |
+| `415` | `Content-Type` is not `application/json`. |
+| `400` | The body is not valid JSON (a JSON-RPC parse error). |
 | `500` | Unexpected failure. The body is generic; the detail goes to the server's stderr. |
 
 A JSON-RPC problem (unknown method, invalid arguments) is a JSON-RPC `error` object, also with HTTP `200`,
@@ -115,6 +117,13 @@ not a tool result: `{"jsonrpc":"2.0","id":3,"error":{"code":-32601,"message":"Me
 
 - **The token is a secret.** Pass it through the deployment's secret mechanism, not a committed file, and
   never log it. It is compared in constant time and never echoed back, including in error replies.
+  Surrounding whitespace is trimmed, so a secret file's trailing newline is harmless.
+- **Stopping it.** `SIGTERM` or `SIGINT` stops accepting requests, gives the ones in flight 5 seconds, and
+  exits `0`, inside Docker's default 10-second stop timeout.
+- **The access log.** Each request writes one line to stderr, for example
+  `[INFO] http: POST /mcp 200 tools/call magentographql_get_store_config 42ms`: method, path, status,
+  JSON-RPC method, tool name and duration. Never headers, the token, arguments or results. Refusals are
+  `[WARN]`, failures `[ERROR]`.
 - **Run one process per store.** The Magento credential is fixed for the life of the process, so a service
   talks to exactly one store. For two stores, run two services on two ports.
 
@@ -126,8 +135,10 @@ not a tool result: `{"jsonrpc":"2.0","id":3,"error":{"code":-32601,"message":"Me
   work. A customer-facing assistant would need a per-call customer token, which this mode does not offer.
 - **Nothing is kept between calls.** Anything that must survive (a cart id, say) lives in Magento or in the
   caller; pass it back in `arguments`.
-- **Set a timeout on the caller.** The server does not cut a slow tool call short. Give the HTTP client its
-  own timeout, shorter than the one the surrounding system imposes on a tool.
+- **Set a timeout on the caller.** Each request to Magento gives up after 30 seconds, and a read that hits
+  a `429` or `5xx` is retried, so a tool call can take longer than that. Hanging up does not stop a call
+  already under way. Give the HTTP client its own timeout, shorter than the one the surrounding system
+  imposes on a tool.
 - **Cost per call.** Each request builds a fresh MCP server and registers its tools before answering. With
   all 247 `magento-graphql` tools (writes on) that is more work than with a few groups; load fewer groups
   if latency matters.

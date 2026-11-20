@@ -72,6 +72,13 @@ describe("startHttpEndpoint — authentication", () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it("accepts the scheme name in any case (RFC 7235: it is case-insensitive)", async () => {
+    const { url, handler } = await start();
+    const response = await post(url, { token: null, headers: { authorization: `bearer ${TOKEN}` } });
+    expect(response.status).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   it("never echoes the expected token in a refusal", async () => {
     const { url } = await start();
     const response = await post(url, { token: "x".repeat(40) });
@@ -106,6 +113,52 @@ describe("startHttpEndpoint — passthrough", () => {
     const response = await fetch(url, { method: "PUT", headers: { authorization: `Bearer ${TOKEN}` } });
     expect(response.status).toBe(405);
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  // Stateless servers have no SSE stream to offer. The MCP spec says such a server answers GET with 405;
+  // an empty 200 makes the SDK client reconnect forever, and each reconnect builds a whole server.
+  it.each(["GET", "DELETE"])("answers 405 with Allow: POST on %s, without calling the handler", async (method) => {
+    const { url, handler } = await start();
+    const response = await fetch(url, { method, headers: { authorization: `Bearer ${TOKEN}`, accept: "text/event-stream" } });
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("POST");
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("stops reading the handler's stream when the client goes away mid-reply", async () => {
+    let cancelled = false;
+    const chunk = new Uint8Array(64 * 1024);
+    const { endpoint } = await start({
+      handler: async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull: (controller) => controller.enqueue(chunk),
+            cancel: () => {
+              cancelled = true;
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        ),
+    });
+    const http = await import("node:http");
+    await new Promise<void>((resolve, reject) => {
+      const req = http.request(
+        { host: "127.0.0.1", port: endpoint.port, path: "/mcp", method: "POST", headers: { authorization: `Bearer ${TOKEN}`, "content-type": "application/json" } },
+        (res) => {
+          // Read nothing, then leave: the server's writes back up and it waits for a drain that never comes.
+          res.pause();
+          setTimeout(() => {
+            req.destroy();
+            resolve();
+          }, 100);
+        },
+      );
+      req.on("error", () => undefined);
+      req.on("close", () => resolve());
+      req.end(RPC);
+      setTimeout(() => reject(new Error("no response")), 2000);
+    });
+    await vi.waitFor(() => expect(cancelled).toBe(true), { timeout: 2000 });
   });
 
   it("answers 413 when the body exceeds the cap, without calling the handler", async () => {
@@ -191,6 +244,44 @@ describe("startHttpEndpoint — host and origin screening", () => {
   });
 });
 
+describe("startHttpEndpoint — access log", () => {
+  async function logged(run: (url: string) => Promise<unknown>): Promise<string> {
+    const lines: string[] = [];
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
+      lines.push(String(chunk));
+      return true;
+    });
+    try {
+      const { url } = await start();
+      await run(url);
+      return lines.join("");
+    } finally {
+      stderr.mockRestore();
+    }
+  }
+
+  it("writes one line per call to stderr: method, status, JSON-RPC method, tool name, duration", async () => {
+    const body = JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "demo_tool", arguments: { secret_arg: "hidden-value" } } });
+    const out = await logged((url) => post(url, { body }));
+    expect(out).toMatch(/\[INFO\] http: POST \/mcp 200 tools\/call demo_tool \d+ms\n/);
+    expect(out).not.toContain("hidden-value");
+    expect(out).not.toContain("secret_arg");
+    expect(out).not.toContain(TOKEN);
+  });
+
+  it("logs a refusal with its status and no body detail", async () => {
+    const out = await logged((url) => post(url, { token: "x".repeat(40) }));
+    expect(out).toMatch(/\[WARN\] http: POST \/mcp 401 \d+ms\n/);
+    expect(out).not.toContain("x".repeat(40));
+  });
+
+  it("cannot be used to forge log lines through the tool name", async () => {
+    const body = JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "a\n[ERROR] forged", arguments: {} } });
+    const out = await logged((url) => post(url, { body }));
+    expect(out).not.toContain("\n[ERROR] forged");
+  });
+});
+
 describe("startHttpEndpoint — startup rules", () => {
   it("refuses a token shorter than 32 characters", async () => {
     await expect(startHttpEndpoint({ token: "short", handler: async () => new Response("ok"), port: 0 })).rejects.toThrow(/at least 32/);
@@ -200,5 +291,21 @@ describe("startHttpEndpoint — startup rules", () => {
     const { endpoint } = await start();
     expect(endpoint.host).toBe("127.0.0.1");
     expect((endpoint.address as AddressInfo).address).toBe("127.0.0.1");
+  });
+
+  it("lets a request in flight finish when closed with a grace period", async () => {
+    let release: () => void = () => undefined;
+    const { endpoint, url } = await start({
+      handler: () => new Promise<Response>((resolve) => (release = () => resolve(new Response("done")))),
+    });
+    const inFlight = post(url);
+    await vi.waitFor(() => expect(release).not.toBe(undefined));
+    await new Promise((r) => setTimeout(r, 50));
+    const closed = endpoint.close(2000);
+    release();
+    const response = await inFlight;
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("done");
+    await closed;
   });
 });

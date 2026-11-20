@@ -55,7 +55,8 @@ export function readHttpConfig(names: HttpEnvNames, env: Readonly<Record<string,
   if (!Number.isInteger(port) || port < 0 || port > MAX_PORT) {
     throw new Error(`${names.port} must be an integer between 0 and ${MAX_PORT}.`);
   }
-  const token = env[names.token];
+  // Trimmed: a token read from a secret file usually ends in a newline, and a caller never sends one.
+  const token = env[names.token]?.trim();
   if (token === undefined || token === "") {
     throw new Error(`${names.token} is required when ${names.port} is set. Generate one with \`openssl rand -hex 32\`.`);
   }

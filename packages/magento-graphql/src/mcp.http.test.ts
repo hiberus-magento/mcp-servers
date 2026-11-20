@@ -111,6 +111,22 @@ describe(`magento-graphql HTTP mode on the built bundle: ${serverPath}`, () => {
   it("writes nothing to stdout", () => {
     expect(running.stdout()).toBe("");
   });
+
+  it("answers 405 with Allow: POST to GET, so a standard client does not reconnect in a loop", async () => {
+    const response = await fetch(running.url, { headers: { authorization: `Bearer ${TOKEN}`, accept: ACCEPT } });
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("POST");
+  });
+});
+
+// As PID 1 in a container Node has no default SIGTERM handler, so without one `docker stop` waits and kills.
+describe("magento-graphql HTTP mode shuts down on a signal", () => {
+  it.each(["SIGTERM", "SIGINT"] as const)("closes the endpoint and exits 0 on %s", async (signal) => {
+    const running = await startHttp({});
+    const exit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => running.child.once("exit", (code, sig) => resolve({ code, signal: sig })));
+    running.child.kill(signal);
+    expect(await exit).toEqual({ code: 0, signal: null });
+  });
 });
 
 // Design D14 over HTTP: each request builds a fresh server, so the tools a store lacks must be remembered
