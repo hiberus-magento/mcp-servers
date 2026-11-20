@@ -1,6 +1,6 @@
 {
   "name": "@hiberus-magento/aem-sites",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "MCP server and CLI for the Adobe Experience Manager (AEM) as a Cloud Service Sites author — pages, page properties, sheets and replication behind a plan/apply confirmation.",
   "keywords": [
     "mcp",

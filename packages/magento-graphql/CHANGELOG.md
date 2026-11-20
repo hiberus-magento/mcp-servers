@@ -1,0 +1,11 @@
+# @hiberus-magento/magento-graphql
+
+## 0.1.0
+
+### Minor Changes
+
+- f4dcba1: First release of `@hiberus-magento/magento-graphql`: an MCP server (`hiberus-magento-graphql-mcp`) and operator CLI (`hiberus-magento-graphql`) for the Magento 2 / Adobe Commerce GraphQL API. Query tools are registered by default; mutation tools only when `MAGENTO_GRAPHQL_ALLOW_WRITES=true`. A response whose requested fields are all null with errors (Magento's usual failure shape, e.g. a customer query without a token or a failed mutation) is reported as an error with its remedy, and every request attempt is bounded by a timeout. A tool call the MCP client cancels aborts its in-flight request. The 247 tools in 21 groups are generated from the latest Adobe Commerce schema with B2B and adapt to the connected store: its schema is read once, each curated or generated query is trimmed to the fields, arguments and types the store has, and a tool whose operation the store lacks answers that it is not offered and is then disabled (one `notifications/tools/list_changed` for all of them); an argument the caller gave that the store cannot take is named in the answer's `warnings`, and a schema read that fails in transit, on a 5xx/429/401/403/404 or with a proxy page is tried again a minute later. Without introspection the full query is sent and a query is retried without each field Magento reports missing, at most five times; the generic `magentographql_query` is never adapted.
+
+### Patch Changes
+
+- 890d774: Fix the operator CLI doing nothing when started through its npm/npx bin. npm and npx run a bin through a symlink in `node_modules/.bin`, and the entry-point check compared that symlink path with the real file, so commands such as `auth token set` and `auth status` printed nothing, stored nothing and exited 0. The check now compares real paths.

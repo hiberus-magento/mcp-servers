@@ -1,6 +1,6 @@
 {
   "name": "@hiberus-magento/eds",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "MCP server and CLI for the Adobe Edge Delivery Services (EDS) Admin API — publish state, site config, indexing, snapshots and the audit log.",
   "keywords": [
     "mcp",
