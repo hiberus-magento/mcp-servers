@@ -6,6 +6,8 @@
 export { createStdioServer, type StdioServerBootstrap } from "./bootstrap/stdout-guard.js";
 export { logger, type LogLevel, type Logger } from "./bootstrap/logger.js";
 export { isEntryPoint } from "./bootstrap/entry-point.js";
+export { startHttpEndpoint, MIN_TOKEN_LENGTH, type HttpEndpoint, type HttpEndpointOptions } from "./http/http-endpoint.js";
+export { readHttpConfig, type HttpConfig, type HttpEnvNames } from "./http/http-config.js";
 export { SERVER_VERSION_DEFINE, serverVersion } from "./version/server-version.js";
 
 export {
