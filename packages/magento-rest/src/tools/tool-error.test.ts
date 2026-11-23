@@ -62,6 +62,8 @@ describe("errorBodyFor", () => {
     expect(top.success || nested.success).toBe(false);
     if (!top.success) expect(errorBodyFor(top.error)).toMatchObject({ code: "invalid_argument", argument: "customer_email" });
     if (!nested.success) expect(errorBodyFor(nested.error)).toMatchObject({ code: "invalid_argument", argument: "sort.path" });
+    const long = z.object({}).strict().safeParse({ ["k".repeat(500)]: 1 });
+    if (!long.success) expect(errorBodyFor(long.error).argument).toBe("k".repeat(64));
   });
 
   it("a refused SQL statement is invalid_argument on the sql argument", () => {
