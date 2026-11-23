@@ -15,8 +15,9 @@
 // shared fd-1 conformance probe `await import()`s this exact built bundle
 // and relies on the connect having already run.
 //
-// Write tools are registered ONLY when MAGENTO_REST_ALLOW_WRITES=true, read
-// once, here, at startup (see `tools/index.ts`). That the server came up in
+// Write tools are registered ONLY when MCP_WRITES_ENABLED=true (the name an MCP
+// host sets) or, when that variable is absent, MAGENTO_REST_ALLOW_WRITES=true;
+// read once, here, at startup (see `tools/runtime.ts`). That the server came up in
 // write mode is logged to stderr so an operator can see it.
 //
 // MAGENTO_REST_DATABASE_CONNECTION (a URL with no password) adds the `database` tool group; its writes have a
@@ -40,7 +41,7 @@ import type { FieldConfig } from "./tools/field-config.js";
 import { createDatabaseAccess, type DatabaseAccess } from "./db/access.js";
 import { resolveDatabasePassword } from "./db/connection.js";
 import { createMagentoRestTools, type MagentoRestTool } from "./tools/index.js";
-import { createRuntimeResolver, readDatabaseSettingsFromEnv, readFieldConfigFromEnv, readGroupsFromEnv, toErrorResult, writesEnabled } from "./tools/runtime.js";
+import { createRuntimeResolver, customerDataEnabled, readDatabaseSettingsFromEnv, readFieldConfigFromEnv, readGroupsFromEnv, toErrorResult, writesEnabled, writesSwitchName } from "./tools/runtime.js";
 
 // The SDK constructs a real `AjvJsonSchemaValidator` at server-construction
 // time unless an explicit `jsonSchemaValidator` is supplied. After the
@@ -93,10 +94,11 @@ const database = loadDatabase();
 
 const getRuntime = createRuntimeResolver();
 const writes = writesEnabled();
+const customerData = customerDataEnabled();
 
 function assembleTools(): readonly MagentoRestTool[] {
   try {
-    return createMagentoRestTools({ getRuntime, writesEnabled: writes, fieldConfig, groups, ...(database !== undefined ? { database } : {}) });
+    return createMagentoRestTools({ getRuntime, writesEnabled: writes, customerData, fieldConfig, groups, ...(database !== undefined ? { database } : {}) });
   } catch (error) {
     // The one way assembly can fail is a group the configuration cannot satisfy (`database` without a connection).
     logger.error(`magento-rest: refusing to start — ${error instanceof Error ? error.message : "invalid tool configuration"}`);
@@ -113,12 +115,18 @@ function buildServer(): McpServer {
   for (const tool of tools) {
     server.registerTool(
       tool.name,
-      { description: tool.description, inputSchema: tool.inputSchema.shape, annotations: tool.annotations },
+      {
+        description: tool.description,
+        inputSchema: tool.inputSchema.shape,
+        // A read tool declares the shape of its `structuredContent` (Kora contract R-2); the SDK lists it and checks every answer against it.
+        ...(tool.outputSchema !== undefined ? { outputSchema: tool.outputSchema.shape } : {}),
+        annotations: tool.annotations,
+      },
       async (args: unknown, extra) => {
         try {
           // The SDK aborts `extra.signal` when the client sends notifications/cancelled for this call.
           const result = await tool.invoke(args, { signal: extra.signal });
-          return { content: [...result.content], isError: result.isError };
+          return { content: [...result.content], ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {}), isError: result.isError };
         } catch (error) {
           // `defineTool.invoke` already answers the credential errors; anything
           // else (a classified Magento failure, an invalid argument, a
@@ -146,8 +154,12 @@ if (database !== undefined) {
   logger.warn(`magento-rest: database tools are enabled (MAGENTO_REST_DATABASE_CONNECTION); queries run in a read-only session${database.writesEnabled ? ", and db_execute is ENABLED (MAGENTO_REST_DATABASE_ALLOW_WRITES=true): this server can change database rows." : "."}`);
 }
 
+if (customerData) {
+  logger.warn("magento-rest: customer personal data is ON (MAGENTO_REST_CUSTOMER_DATA=true); results carry customer names, emails and order identities.");
+}
+
 if (writes) {
-  logger.warn("magento-rest: write tools are ENABLED (MAGENTO_REST_ALLOW_WRITES=true); this server can change Magento data.");
+  logger.warn(`magento-rest: write tools are ENABLED (${writesSwitchName()}=true); this server can change Magento data.`);
 }
 
 // Spelled out here as literals so scripts/manifest-env.mjs can match them to servers.json.

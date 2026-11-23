@@ -148,7 +148,7 @@ describe("field configuration", () => {
   const callProduct = async (fieldConfig?: Parameters<typeof createMagentoRestTools>[0]["fieldConfig"]): Promise<Record<string, unknown>> => {
     const tools = createMagentoRestTools({ getRuntime: runtime, writesEnabled: false, ...(fieldConfig !== undefined ? { fieldConfig } : {}) });
     const tool = tools.find((t) => t.name === "magentorest_get_product_by_sku");
-    return JSON.parse((await tool?.invoke({ sku: SKU }, {}))?.content[0]?.text ?? "{}") as Record<string, unknown>;
+    return ((await tool?.invoke({ sku: SKU }, {}))?.structuredContent?.["result"] ?? {}) as Record<string, unknown>;
   };
 
   it("without a configuration, a field outside the shipped list does not reach the caller", async () => {

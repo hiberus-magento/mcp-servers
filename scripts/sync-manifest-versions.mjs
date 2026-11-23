@@ -1,11 +1,12 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
-// Copies each package's version from its package.json into servers.json.
+// Copies each package's version from its package.json into servers.json, and into the package's own server.json
+// (the MCP registry manifest an MCP host reads from the installed package) when it ships one.
 // `changeset version` bumps package.json files only; servers.json's
 // `version` feeds the README's pinned install snippets (gen-readme.mjs) and
 // the packages' manifest tests, so the release workflow runs this right after
 // it, and the "Version Packages" pull request carries both.
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -32,6 +33,31 @@ export function syncManifestVersions(manifest, versionOf) {
   return { manifest: { ...manifest, servers }, changed };
 }
 
+/**
+ * @param {{ version: string, packages: Array<{ version?: string }> }} serverJson
+ * @param {string} version
+ * @returns {{ serverJson: object, changed: boolean }}
+ */
+export function syncServerJsonVersion(serverJson, version) {
+  const changed = serverJson.version !== version || serverJson.packages.some((pack) => pack.version !== version);
+  if (!changed) return { serverJson, changed };
+  return { serverJson: { ...serverJson, version, packages: serverJson.packages.map((pack) => ({ ...pack, version })) }, changed };
+}
+
+/** Each package's server.json, brought to the version in its package.json. */
+function syncServerJsonFiles() {
+  for (const dir of readdirSync(PACKAGES_DIR)) {
+    const path = join(PACKAGES_DIR, dir, "server.json");
+    if (!existsSync(path)) continue;
+    const { version } = JSON.parse(readFileSync(join(PACKAGES_DIR, dir, "package.json"), "utf8"));
+    const { serverJson, changed } = syncServerJsonVersion(JSON.parse(readFileSync(path, "utf8")), version);
+    if (changed) {
+      writeFileSync(path, `${JSON.stringify(serverJson, null, 2)}\n`);
+      console.log(`packages/${dir}/server.json: -> ${version}`);
+    }
+  }
+}
+
 function workspaceVersions() {
   const versions = new Map();
   for (const dir of readdirSync(PACKAGES_DIR)) {
@@ -46,6 +72,7 @@ function workspaceVersions() {
 }
 
 function main() {
+  syncServerJsonFiles();
   const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
   const versions = workspaceVersions();
   const { manifest: synced, changed } = syncManifestVersions(manifest, (name) => versions.get(name));

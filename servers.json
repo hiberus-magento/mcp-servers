@@ -396,7 +396,7 @@
         {
           "name": "magentorest_get_customer_by_id",
           "readOnly": true,
-          "description": "Use this to read one customer by numeric ID: name, email, group, website, store and the default address IDs. Date of birth, tax number and the address book are not returned."
+          "description": "Use this to read one customer by numeric ID: group, website, store and the default address IDs, plus name and email only when the server runs with MAGENTO_REST_CUSTOMER_DATA=true. Date of birth, tax number and the address book are not returned."
         },
         {
           "name": "magentorest_search_customers",
@@ -411,7 +411,7 @@
         {
           "name": "magentorest_get_customer_addresses",
           "readOnly": true,
-          "description": "Use this to list a customer's addresses by location: country, region, city, postcode and which is the default billing or shipping address. Street, telephone and the addressee are not returned."
+          "description": "Use this to list a customer's addresses by location: country, region and which is the default billing or shipping address, plus city and postcode only when the server runs with MAGENTO_REST_CUSTOMER_DATA=true. Street, telephone and the addressee are not returned."
         },
         {
           "name": "magentorest_create_customer",
@@ -431,7 +431,7 @@
         {
           "name": "magentorest_get_order_by_id",
           "readOnly": true,
-          "description": "Use this to read one order by entity ID: status, state, totals, currency, the customer as the order records it, and the order lines. Billing and shipping addresses and payment details are not returned."
+          "description": "Use this to read one order by entity ID: status, state, totals, currency and the order lines; who placed it (customer ID, name, email) only when the server runs with MAGENTO_REST_CUSTOMER_DATA=true. Billing and shipping addresses and payment details are not returned."
         },
         {
           "name": "magentorest_get_order_by_increment_id",
@@ -556,7 +556,7 @@
         {
           "name": "magentorest_get_cart_by_id",
           "readOnly": true,
-          "description": "Use this to read one cart by ID: activity, item count and quantity, currency, the customer's identity (id, name, email, group) and the cart lines. Addresses are not returned."
+          "description": "Use this to read one cart by ID: activity, item count and quantity, currency and the cart lines; the customer's identity (id, name, email, group) only when the server runs with MAGENTO_REST_CUSTOMER_DATA=true. Addresses are not returned."
         },
         {
           "name": "magentorest_search_carts",
@@ -571,7 +571,7 @@
         {
           "name": "magentorest_get_abandoned_carts",
           "readOnly": true,
-          "description": "Use this to find abandoned carts: active, non-empty carts not updated for at least a number of days, most recently updated first. Each entry names the owner (or Guest), the item count and the dates. Returns a bounded page, the total count and the cutoff used."
+          "description": "Use this to find abandoned carts: active, non-empty carts not updated for at least a number of days, most recently updated first. Each entry gives the item count and the dates, and names the owner (or Guest) only when the server runs with MAGENTO_REST_CUSTOMER_DATA=true. Returns a bounded page, the total count and the cutoff used."
         },
         {
           "name": "magentorest_get_cms_block_by_id",
@@ -748,7 +748,7 @@
         {
           "name": "magentorest_get_customer_ordered_products_by_email",
           "readOnly": true,
-          "description": "Use this to list every order of one customer, found by exact email, with each order's lines (SKU, name, price, quantity). Returns the customer's id, name and email, never their addresses. For a product's own detail use magentorest_get_product_by_sku. Reads at most max_pages pages of 100 orders and says when the result is partial."
+          "description": "Use this to list every order of one customer, found by exact email, with each order's lines (SKU, name, price, quantity). Returns the customer's id, name and email only when the server runs with MAGENTO_REST_CUSTOMER_DATA=true, never their addresses. For a product's own detail use magentorest_get_product_by_sku. Reads at most max_pages pages of 100 orders and says when the result is partial."
         },
         {
           "name": "magentorest_db_status",
@@ -827,14 +827,24 @@
             "description": "Path to a JSON file that adjusts the fields a resource exposes, e.g. {\"product\":{\"add\":[\"cost\"],\"remove\":[\"weight\"]}}. A resource may carry only `add` and `remove`, so a file can widen or narrow the shipped list but never replace it — and credential and payment fields (passwords, hashes, tokens, secrets, card and payment data) can never be added. Read once at startup; a file that cannot be read or does not validate stops the server with exit code 1 rather than starting with a half-applied configuration."
           },
           {
+            "name": "MCP_WRITES_ENABLED",
+            "required": false,
+            "description": "The write switch an MCP host sets itself. Exactly `true` registers the write tools (create, update, delete, cancel, invoice, refund, ...); any other value, `false` included, registers read tools only, and then MAGENTO_REST_ALLOW_WRITES is ignored. Unset, MAGENTO_REST_ALLOW_WRITES decides. Read once at startup."
+          },
+          {
             "name": "MAGENTO_REST_ALLOW_WRITES",
             "required": false,
-            "description": "Set to exactly `true` to register the write tools (create, update, delete, cancel, invoice, refund, ...). Unset, or any other value, and the server registers read tools only — a write tool is then absent from tools/list, not merely refused. Read once at startup."
+            "description": "The write switch for standalone use, read only when MCP_WRITES_ENABLED is unset. Set to exactly `true` to register the write tools (create, update, delete, cancel, invoice, refund, ...). Unset, or any other value, and the server registers read tools only — a write tool is then absent from tools/list, not merely refused. Read once at startup."
+          },
+          {
+            "name": "MAGENTO_REST_CUSTOMER_DATA",
+            "required": false,
+            "description": "Set to exactly `true` to include customer personal data in REST tool results: an order's customer ID, name and email, a cart's customer, a customer's name and email, and the city and postcode of their addresses. Unset, or any other value, and every REST tool result leaves them out, and a MAGENTO_REST_FIELDS_FILE cannot add them back. Off by default so a host that must keep personal data out of a model's context (GDPR) gets that without setting anything. The database tools (MAGENTO_REST_DATABASE_CONNECTION) are not filtered: they return what the SQL selects."
           },
           {
             "name": "MAGENTO_REST_GROUPS",
             "required": false,
-            "description": "Comma-separated tool groups to load, e.g. `products,customers`, so a project registers only the tools it needs instead of every one. Groups: `products`, `store`, `categories`, `customers`, `orders`, `sales-documents`, `stock`, `carts`, `cms`, `attributes`, `media`, `promotions`, `tax`, `analytics`, `database` (only with MAGENTO_REST_DATABASE_CONNECTION; naming it without one stops the server). Case-insensitive; blanks and repeats are ignored. Unset or empty loads every group (`database` too, when a connection is configured). A name that is not a group stops the server with exit code 1, listing the valid ones. MAGENTO_REST_ALLOW_WRITES still decides whether the write tools of a loaded group are registered. Read once at startup."
+            "description": "Comma-separated tool groups to load, e.g. `products,customers`, so a project registers only the tools it needs instead of every one. Groups: `products`, `store`, `categories`, `customers`, `orders`, `sales-documents`, `stock`, `carts`, `cms`, `attributes`, `media`, `promotions`, `tax`, `analytics`, `database` (only with MAGENTO_REST_DATABASE_CONNECTION; naming it without one stops the server). Case-insensitive; blanks and repeats are ignored. Unset or empty loads every group (`database` too, when a connection is configured). A name that is not a group stops the server with exit code 1, listing the valid ones. The write switch (MCP_WRITES_ENABLED, or MAGENTO_REST_ALLOW_WRITES when it is unset) still decides whether the write tools of a loaded group are registered. Read once at startup."
           },
           {
             "name": "MAGENTO_REST_DATABASE_CONNECTION",

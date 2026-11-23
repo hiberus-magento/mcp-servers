@@ -23,6 +23,8 @@ import { BASE_SHAPES } from "./shapes.js";
 
 export const BASE_URL_ENV_VAR = "MAGENTO_REST_BASE_URL";
 export const ALLOW_WRITES_ENV_VAR = "MAGENTO_REST_ALLOW_WRITES";
+export const MCP_WRITES_ENV_VAR = "MCP_WRITES_ENABLED";
+export const CUSTOMER_DATA_ENV_VAR = "MAGENTO_REST_CUSTOMER_DATA";
 export const FIELDS_FILE_ENV_VAR = "MAGENTO_REST_FIELDS_FILE";
 export const GROUPS_ENV_VAR = "MAGENTO_REST_GROUPS";
 
@@ -59,9 +61,27 @@ export function createRuntimeResolver(): () => MagentoRestRuntime {
  * enables them: `1`, `yes` and `TRUE` do not, so a half-remembered value
  * fails closed rather than open. Read once at startup — a server that is
  * read-only when it starts cannot be talked into writing by a later call.
+ *
+ * `MCP_WRITES_ENABLED` is the name an MCP host sets itself (Kora contract R-6); `MAGENTO_REST_ALLOW_WRITES` stays
+ * for standalone use. When `MCP_WRITES_ENABLED` is present at all it decides alone, so a host running a read-only
+ * process cannot be overridden by the other variable left in the environment.
  */
 export function writesEnabled(): boolean {
-  return process.env[ALLOW_WRITES_ENV_VAR] === "true";
+  return process.env[writesSwitchName()] === "true";
+}
+
+/** The variable that decides write mode: `MCP_WRITES_ENABLED` when present, otherwise `MAGENTO_REST_ALLOW_WRITES`. */
+export function writesSwitchName(): typeof MCP_WRITES_ENV_VAR | typeof ALLOW_WRITES_ENV_VAR {
+  return process.env[MCP_WRITES_ENV_VAR] !== undefined ? MCP_WRITES_ENV_VAR : ALLOW_WRITES_ENV_VAR;
+}
+
+/**
+ * Whether results carry customer personal data (names, email, an order's customer identity). Off unless the exact
+ * string `true`: a host that must keep personal data out of a model's context gets that without setting anything.
+ * Read once at startup.
+ */
+export function customerDataEnabled(): boolean {
+  return process.env[CUSTOMER_DATA_ENV_VAR] === "true";
 }
 
 /**

@@ -5,7 +5,7 @@
 // packages' manifest tests read. These tests pin the step that copies the
 // published version back into the manifest.
 import { describe, expect, it } from "vitest";
-import { syncManifestVersions } from "./sync-manifest-versions.mjs";
+import { syncManifestVersions, syncServerJsonVersion } from "./sync-manifest-versions.mjs";
 
 const entry = (id, version) => ({ id, package: `@hiberus-magento/${id}`, version });
 
@@ -44,5 +44,30 @@ describe("syncManifestVersions", () => {
     const manifest = { servers: [entry("ghost", "0.0.0")] };
 
     expect(() => syncManifestVersions(manifest, () => undefined)).toThrow(/@hiberus-magento\/ghost/);
+  });
+});
+
+// A package's server.json (the MCP registry manifest a host reads from the installed package) carries the version
+// twice, and a host refuses the package when either differs from the installed version.
+describe("syncServerJsonVersion", () => {
+  const serverJson = (version) => ({ name: "io.github.demo/alpha", version, packages: [{ registryType: "npm", identifier: "@hiberus-magento/alpha", version, transport: { type: "stdio" } }] });
+
+  it("sets the top-level and the npm package version, and says it changed", () => {
+    const { serverJson: synced, changed } = syncServerJsonVersion(serverJson("0.1.0"), "0.2.0");
+    expect(synced.version).toBe("0.2.0");
+    expect(synced.packages[0].version).toBe("0.2.0");
+    expect(changed).toBe(true);
+  });
+
+  it("reports no change when both already match", () => {
+    const input = serverJson("0.2.0");
+    expect(syncServerJsonVersion(input, "0.2.0")).toEqual({ serverJson: input, changed: false });
+  });
+
+  it("does not modify the server.json it was given", () => {
+    const input = serverJson("0.1.0");
+    syncServerJsonVersion(input, "0.2.0");
+    expect(input.version).toBe("0.1.0");
+    expect(input.packages[0].version).toBe("0.1.0");
   });
 });

@@ -6,7 +6,7 @@
 // never replayed, and a plaintext base URL is refused (a Bearer over http is
 // a Bearer on the wire).
 import { StaticTokenProvider } from "@hiberus-magento/mcp-core";
-import { SYNTHETIC_MAGENTO_BASE_URL, SYNTHETIC_MAGENTO_TOKEN } from "@hiberus-magento/mcp-testing";
+import { SYNTHETIC_MAGENTO_BASE_URL, SYNTHETIC_MAGENTO_CUSTOMER_EMAIL, SYNTHETIC_MAGENTO_TOKEN } from "@hiberus-magento/mcp-testing";
 import { describe, expect, it } from "vitest";
 import { createFetchDouble, json } from "../testing/fetch-double.js";
 import { MagentoRestError } from "./errors.js";
@@ -280,5 +280,47 @@ describe("createRestTransport base URL", () => {
 
   it("refuses credentials embedded in the URL", () => {
     expect(make("https://user:pw@demo-host.example-domain/rest/V1")).toThrow(/credentials/i);
+  });
+});
+
+describe("createRestTransport — what answered (provenance)", () => {
+  it("reports the method and the path from /rest on, without host or query, with the time Magento answered", async () => {
+    const { transport } = build({ "GET /rest/V1/orders": json(200, { items: [] }) });
+    const answers: unknown[] = [];
+    await transport.request({ method: "GET", path: "/orders", query: `searchCriteria[filter_groups][0][filters][0][value]=${encodeURIComponent(SYNTHETIC_MAGENTO_CUSTOMER_EMAIL)}`, onAnswered: (answer) => answers.push(answer) });
+    expect(answers).toEqual([{ endpoint: "GET /rest/V1/orders", readAt: "1970-01-01T00:00:00.000Z" }]);
+  });
+
+  it("names the store view of a scoped request, and of a base URL with a store code", async () => {
+    const scoped = build({ "GET /rest/demo_view/V1/products/x": json(200, {}) });
+    const answers: unknown[] = [];
+    await scoped.transport.request({ method: "GET", path: "/products/x", scope: "demo_view", onAnswered: (answer) => answers.push(answer) });
+    const viewBase = build({ "GET /rest/demo_view/V1/products/x": json(200, {}) }, SYNTHETIC_MAGENTO_BASE_URL.replace("/rest/V1", "/rest/demo_view/V1"));
+    await viewBase.transport.request({ method: "GET", path: "/products/x", onAnswered: (answer) => answers.push(answer) });
+    expect(answers).toEqual([
+      { endpoint: "GET /rest/demo_view/V1/products/x", readAt: "1970-01-01T00:00:00.000Z", storeView: "demo_view" },
+      { endpoint: "GET /rest/demo_view/V1/products/x", readAt: "1970-01-01T00:00:00.000Z", storeView: "demo_view" },
+    ]);
+  });
+
+  it("names no store view for the global scope, which is not a store view", async () => {
+    const { transport } = build({ "GET /rest/all/V1/products/x": json(200, {}) });
+    const answers: unknown[] = [];
+    await transport.request({ method: "GET", path: "/products/x", scope: "all", onAnswered: (answer) => answers.push(answer) });
+    expect(answers).toEqual([{ endpoint: "GET /rest/all/V1/products/x", readAt: "1970-01-01T00:00:00.000Z" }]);
+  });
+
+  it("names no store view when the base URL itself is the global /rest/all/V1", async () => {
+    const { transport } = build({ "GET /rest/all/V1/orders/5": json(200, {}) }, SYNTHETIC_MAGENTO_BASE_URL.replace("/rest/V1", "/rest/all/V1"));
+    const answers: unknown[] = [];
+    await transport.request({ method: "GET", path: "/orders/5", onAnswered: (answer) => answers.push(answer) });
+    expect(answers).toEqual([{ endpoint: "GET /rest/all/V1/orders/5", readAt: "1970-01-01T00:00:00.000Z" }]);
+  });
+
+  it("reports nothing for a request that failed", async () => {
+    const { transport } = build({ "GET /rest/V1/orders/9": json(404, { message: "No such entity." }) });
+    const answers: unknown[] = [];
+    await expect(transport.request({ method: "GET", path: "/orders/9", onAnswered: (answer) => answers.push(answer) })).rejects.toBeInstanceOf(MagentoRestError);
+    expect(answers).toEqual([]);
   });
 });

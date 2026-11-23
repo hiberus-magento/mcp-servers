@@ -54,6 +54,8 @@ export interface ToolCallContent {
 
 export interface ToolCallResult {
   readonly content: readonly ToolCallContent[];
+  /** Present when the tool declares an `outputSchema`: the result itself, which `content` mirrors as text. */
+  readonly structuredContent?: Record<string, unknown>;
   readonly isError?: boolean;
 }
 
@@ -61,6 +63,12 @@ export interface ToolDefinition<TIn extends z.ZodObject, TOut, D extends string>
   readonly name: string;
   readonly description: NonEmpty<D>;
   readonly inputSchema: TIn;
+  /**
+   * The shape of a successful result. When present, the handler's result is returned as `structuredContent` (an MCP
+   * client validates it against this schema) and mirrored exactly as JSON text in `content`, so the handler must return
+   * an object. A result whose JSON is over the output cap is refused with an error rather than truncated.
+   */
+  readonly outputSchema?: z.ZodObject;
   readonly annotations: ToolAnnotations;
   readonly handler: (args: z.infer<TIn>, ctx: ToolContext) => Promise<TOut>;
 }
@@ -69,6 +77,7 @@ export interface RegisteredTool<TIn extends z.ZodObject, TOut> {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: TIn;
+  readonly outputSchema?: z.ZodObject;
   readonly annotations: ToolAnnotations;
   readonly handler: (args: z.infer<TIn>, ctx: ToolContext) => Promise<TOut>;
   invoke(rawArgs: unknown, ctx: ToolContext): Promise<ToolCallResult>;
@@ -91,6 +100,7 @@ export function defineTool<TIn extends z.ZodObject, TOut, const D extends string
     name: def.name,
     description: def.description,
     inputSchema: def.inputSchema,
+    ...(def.outputSchema !== undefined ? { outputSchema: def.outputSchema } : {}),
     annotations: def.annotations,
     handler: def.handler,
     async invoke(rawArgs, ctx) {
@@ -106,6 +116,19 @@ export function defineTool<TIn extends z.ZodObject, TOut, const D extends string
           return { content: [{ type: "text", text: error.message }], isError: true };
         }
         throw error;
+      }
+      if (def.outputSchema !== undefined) {
+        // The text must mirror the structured result exactly, so it is never truncated; a result over the cap is
+        // refused instead of being sent whole next to a cut-off mirror.
+        const json = JSON.stringify(result);
+        const bytes = Buffer.byteLength(json, "utf8");
+        if (bytes > DEFAULT_MAX_OUTPUT_BYTES) {
+          return {
+            content: [{ type: "text", text: `The result is ${bytes} bytes, over the ${DEFAULT_MAX_OUTPUT_BYTES}-byte limit; ask for fewer records.` }],
+            isError: true,
+          };
+        }
+        return { content: [{ type: "text", text: json }], structuredContent: result as Record<string, unknown> };
       }
       const text = truncate(toTextContent(result), DEFAULT_MAX_OUTPUT_BYTES);
       return { content: [{ type: "text", text }] };

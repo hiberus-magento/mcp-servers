@@ -15,7 +15,9 @@
 //     the base URL is configured.
 import { defineTool, type RegisteredTool, type ToolAnnotations } from "@hiberus-magento/mcp-core";
 import type { z } from "zod";
-import type { MagentoRestClient } from "../client/index.js";
+import type { MagentoRestClient, RestAnswer } from "../client/index.js";
+import { withoutCustomerData } from "./customer-data.js";
+import { readOutputSchema, type Provenance } from "./output-schema.js";
 import { project, type Shape } from "./project.js";
 import { BASE_SHAPES, type ShapeSet } from "./shapes.js";
 import { LIVE_VERIFIED_TOOLS, UNVERIFIED_DETAIL, UNVERIFIED_MARKER } from "./verification.js";
@@ -99,13 +101,41 @@ export interface ToolFactoryOptions {
   readonly liveVerified?: ReadonlySet<string>;
   /** The allowlists tools project through; defaults to the shipped `BASE_SHAPES`. */
   readonly shapes?: ShapeSet;
+  /**
+   * Drop customer personal fields from every tool's allowlist, including the ones a tool writes inline
+   * (`customer-data.ts`). The server sets it unless `MAGENTO_REST_CUSTOMER_DATA=true`; it defaults to false here so a
+   * tool's own tests see its full list.
+   */
+  readonly withoutCustomerData?: boolean;
+}
+
+/** Where the data came from: the first request names it, every request is listed when there were several. */
+function provenanceOf(answers: readonly RestAnswer[]): Provenance {
+  const first = answers[0];
+  const last = answers.at(-1);
+  if (first === undefined || last === undefined) {
+    // Provenance says where and when Magento answered; with no answer there is nothing true to say, so the call fails.
+    throw new Error("The read produced no Magento answer to cite, so its result cannot carry provenance.");
+  }
+  const endpoints = [...new Set(answers.map((answer) => answer.endpoint))];
+  return {
+    endpoint: first.endpoint,
+    ...(endpoints.length > 1 ? { endpoints } : {}),
+    api_version: "V1",
+    read_at: last.readAt,
+    ...(first.storeView !== undefined ? { store_view: first.storeView } : {}),
+  };
 }
 
 export function createToolFactory(getClient: () => MagentoRestClient, options: ToolFactoryOptions = {}): ToolFactory {
   const liveVerified = options.liveVerified ?? LIVE_VERIFIED_TOOLS;
   const shapes = options.shapes ?? BASE_SHAPES;
 
-  function build<S extends z.ZodObject>(spec: ToolSpecBase<S>, annotations: ToolAnnotations, access: Access): MagentoRestTool {
+  function build<S extends z.ZodObject>(given: ToolSpecBase<S>, annotations: ToolAnnotations, access: Access): MagentoRestTool {
+    const spec = options.withoutCustomerData === true ? { ...given, shape: withoutCustomerData(given.shape) } : given;
+    // A read answers with `{ result, provenance }` against a declared output schema (Kora contract R-2, R-3); a write
+    // keeps its text answer.
+    const structured = access === "read";
     // A tool not run against a real instance says so in the text an agent
     // reads when deciding whether to call it (see `verification.ts`).
     const description = liveVerified.has(spec.name) ? spec.description : `${spec.description} ${UNVERIFIED_MARKER} — ${UNVERIFIED_DETAIL}`;
@@ -113,17 +143,23 @@ export function createToolFactory(getClient: () => MagentoRestClient, options: T
       name: spec.name,
       description,
       inputSchema: spec.input,
+      ...(structured ? { outputSchema: readOutputSchema(spec.shape) } : {}),
       annotations,
       handler: async (args, ctx) => {
         // Bound to the MCP request's signal: when the client cancels the call, its in-flight request is aborted.
         const client = getClient();
-        const raw = await spec.run(args, ctx.signal !== undefined ? client.with({ signal: ctx.signal }) : client);
+        const answers: RestAnswer[] = [];
+        const requestOptions = { ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}), ...(structured ? { onAnswered: (answer: RestAnswer) => answers.push(answer) } : {}) };
+        const raw = await spec.run(args, Object.keys(requestOptions).length > 0 ? client.with(requestOptions) : client);
         const projected = project(raw, spec.shape);
+        let result: unknown;
         if (hasContent(raw) && isEmptyShell(projected)) {
-          return NOTHING_REPORTED_NOTICE;
+          result = NOTHING_REPORTED_NOTICE;
+        } else {
+          // An empty body (a write that answers 200 with nothing) has no JSON form; `null` is its honest rendering.
+          result = projected === undefined ? null : projected;
         }
-        // An empty body (a write that answers 200 with nothing) has no JSON form; `null` is its honest rendering.
-        return projected === undefined ? null : projected;
+        return structured ? { result, provenance: provenanceOf(answers) } : result;
       },
     });
     // The generic arguments differ per tool; the array type every module

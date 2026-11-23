@@ -66,12 +66,17 @@ off.
 
 ## 3. Read-only by default, and what "write mode" means
 
-With `MAGENTO_REST_ALLOW_WRITES` unset — or set to anything but the exact string
-`true` (`1`, `yes` and `TRUE` do **not** count) — the server registers **read
-tools only**. A write tool is then not "refused when called"; it is **absent
-from `tools/list`**, so an agent cannot be talked into calling something it was
-never shown. The choice is made once, when the server starts, and logged to
-stderr when write mode is on.
+Two variables can switch write mode on. `MCP_WRITES_ENABLED` is the one an MCP
+host sets itself: when it is present it decides alone, and
+`MAGENTO_REST_ALLOW_WRITES` is ignored. When it is absent,
+`MAGENTO_REST_ALLOW_WRITES` decides, which is the switch for standalone use.
+Either way only the exact string `true` counts (`1`, `yes` and `TRUE` do
+**not**); anything else, or nothing, registers **read tools only**.
+
+In read-only mode a write tool is not "refused when called"; it is **absent from
+`tools/list`**, so an agent cannot be talked into calling something it was never
+shown. The choice is made once, when the server starts, and stderr names the
+variable that turned write mode on.
 
 Write tools are marked `destructiveHint: true` where they overwrite or remove
 data, so a client that prompts before destructive calls will prompt. Four kinds:
@@ -250,6 +255,12 @@ whole address books — with every module an instance installs, and returning th
 parsed body would send all of them to the model. A field that is not on the
 list for that tool cannot reach the agent; widening a list is a reviewed change
 to `packages/magento-rest/src/tools/shapes.ts`.
+
+A read answers with `structuredContent` `{ result, provenance }` against a
+declared `outputSchema`; `provenance` names the endpoint (no host, query or
+token) and when Magento answered. Customer personal data (names, email, an
+order's customer identity, a cart's customer, the city and postcode of a
+customer's addresses) is left out unless `MAGENTO_REST_CUSTOMER_DATA=true`.
 
 ### Showing more or fewer fields (`MAGENTO_REST_FIELDS_FILE`)
 

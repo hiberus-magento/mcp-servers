@@ -1,0 +1,53 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.hiberus-magento/magento-rest",
+  "title": "Magento 2 / Adobe Commerce (REST)",
+  "description": "Read and act on a Magento 2 / Adobe Commerce store through its REST API.",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/hiberus-magento/mcp-servers",
+    "source": "github",
+    "subfolder": "packages/magento-rest"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@hiberus-magento/magento-rest",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "MAGENTO_REST_BASE_URL",
+          "description": "The store's REST root, ending in /rest/V1 (or /rest/<store_code>/V1 for one store view). Must be https.",
+          "isRequired": true,
+          "format": "string",
+          "placeholder": "https://<host>/rest/V1"
+        },
+        {
+          "name": "MAGENTO_REST_TOKEN",
+          "description": "The Access Token of a Magento integration (System > Extensions > Integrations), sent as a Bearer. Magento 2.4.4+ also needs Stores > Configuration > Services > OAuth > Consumer Settings > Allow OAuth Access Tokens to be used as standalone Bearer tokens = Yes.",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "MAGENTO_REST_GROUPS",
+          "description": "Comma-separated tool groups to load, e.g. products,orders. Empty loads every REST group. Groups: products, store, categories, customers, orders, sales-documents, stock, carts, cms, attributes, media, promotions, tax, analytics.",
+          "isRequired": false,
+          "format": "string",
+          "placeholder": "products,orders"
+        },
+        {
+          "name": "MCP_WRITES_ENABLED",
+          "description": "When true, write tools are listed and callable; otherwise only read tools exist.",
+          "isRequired": false,
+          "format": "boolean",
+          "default": "false",
+          "choices": ["true", "false"]
+        }
+      ]
+    }
+  ]
+}

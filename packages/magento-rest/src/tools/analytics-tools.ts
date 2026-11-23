@@ -388,7 +388,7 @@ export function analyticsTools({ readTool }: ToolFactory): readonly MagentoRestT
     readTool({
       name: "magentorest_get_customer_ordered_products_by_email",
       description:
-        "Use this to list every order of one customer, found by exact email, with each order's lines (SKU, name, price, quantity). Returns the customer's id, name and email, never their addresses. For a product's own detail use magentorest_get_product_by_sku. Reads at most max_pages pages of 100 orders and says when the result is partial.",
+        "Use this to list every order of one customer, found by exact email, with each order's lines (SKU, name, price, quantity). Returns the customer's id, name and email only when the server runs with MAGENTO_REST_CUSTOMER_DATA=true, never their addresses. For a product's own detail use magentorest_get_product_by_sku. Reads at most max_pages pages of 100 orders and says when the result is partial.",
       input: z.object({ email: z.email().max(254).describe("The customer's email address (exact)."), max_pages: maxPages }).strict(),
       shape: [
         ["customer", ["id", "email", "firstname", "lastname"]],

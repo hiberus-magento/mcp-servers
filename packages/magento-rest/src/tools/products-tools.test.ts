@@ -34,7 +34,11 @@ function build(routes: RouteTable) {
     if (found === undefined) throw new Error(`no tool ${name}`);
     return found;
   };
-  const call = async (name: string, args: unknown) => JSON.parse((await tool(name).invoke(args, {})).content[0]?.text ?? "null") as unknown;
+  // A read answers `{ result, provenance }`; these tests are about the result.
+  const call = async (name: string, args: unknown) => {
+    const outcome = await tool(name).invoke(args, {});
+    return outcome.structuredContent !== undefined ? outcome.structuredContent["result"] : (JSON.parse(outcome.content[0]?.text ?? "null") as unknown);
+  };
   return { double, tools, tool, call };
 }
 

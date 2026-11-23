@@ -17,7 +17,7 @@ export interface ToolHarness {
   readonly tools: readonly MagentoRestTool[];
   /** The tool with this name; throws if the module does not define it. */
   tool(name: string): MagentoRestTool;
-  /** Invokes a tool and returns its result: parsed JSON, or the raw text when it is not JSON. Rejects as the tool does. */
+  /** Invokes a tool and returns its result (a read's structured `result`): parsed JSON, or the raw text when it is not JSON. Rejects as the tool does. */
   call(name: string, args: unknown): Promise<unknown>;
   /** The paths (with query) of every request sent, in order. */
   paths(): readonly string[];
@@ -50,7 +50,12 @@ export function buildToolHarness(makeTools: (factory: ToolFactory) => readonly M
     tools,
     tool,
     call: async (name, args) => {
-      const text = (await tool(name).invoke(args, {})).content[0]?.text ?? "null";
+      const outcome = await tool(name).invoke(args, {});
+      // A read answers `{ result, provenance }`; the tests here are about the result, provenance has its own tests.
+      if (outcome.structuredContent !== undefined) {
+        return outcome.structuredContent["result"];
+      }
+      const text = outcome.content[0]?.text ?? "null";
       try {
         return JSON.parse(text) as unknown;
       } catch {

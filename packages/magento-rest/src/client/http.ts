@@ -42,6 +42,18 @@ export interface RestRequest {
    * goes to `/rest/<scope>/V1` instead of the base URL's own scope. Absent, the base URL is used as configured.
    */
   readonly scope?: string;
+  /** Called once when Magento answers this request with a success, so a tool can say where and when its data came from. */
+  readonly onAnswered?: (answer: RestAnswer) => void;
+}
+
+/** Where a successful answer came from, for a result's provenance. */
+export interface RestAnswer {
+  /** Method and path from `/rest` on: no host, no query string (it can carry data), no token. */
+  readonly endpoint: string;
+  /** ISO 8601 UTC, when Magento answered. */
+  readonly readAt: string;
+  /** The store view the request addressed, when the URL names one. */
+  readonly storeView?: string;
 }
 
 export interface RestTransportDeps {
@@ -83,7 +95,7 @@ function normalizeBaseUrl(baseUrl: string): string {
 }
 
 /** `https://host/rest/V1` or `https://host/rest/<code>/V1` -> `https://host/rest`; anything else cannot be re-scoped. */
-const SCOPED_BASE = /^(.*\/rest)(?:\/[A-Za-z0-9_]+)?\/V1$/;
+const SCOPED_BASE = /^(.*\/rest)(?:\/([A-Za-z0-9_]+))?\/V1$/;
 const STORE_CODE = /^[A-Za-z][A-Za-z0-9_]{0,31}$/;
 
 function scopedBase(restRoot: string | undefined, scope: string): string {
@@ -116,7 +128,9 @@ function retryAfterMs(response: Response): number | undefined {
 
 export function createRestTransport(deps: RestTransportDeps): RestTransport {
   const baseUrl = normalizeBaseUrl(deps.baseUrl);
-  const restRoot = SCOPED_BASE.exec(baseUrl)?.[1];
+  const scopedMatch = SCOPED_BASE.exec(baseUrl);
+  const restRoot = scopedMatch?.[1];
+  const baseStoreView = scopedMatch?.[2];
   const random = deps.random ?? Math.random;
   const timeoutMs = deps.timeoutMs ?? DEFAULT_REST_TIMEOUT_MS;
   const rateLimiter = new TokenBucketRateLimiter(REST_PACE, { now: deps.now, sleep: deps.sleep });
@@ -175,6 +189,19 @@ export function createRestTransport(deps: RestTransportDeps): RestTransport {
     }
   }
 
+  function answerFor(request: RestRequest, root: string): RestAnswer {
+    const pathname = new URL(`${root}${request.path}`).pathname;
+    const fromRest = pathname.indexOf("/rest/");
+    // `all` is the global (admin) scope, not a store view.
+    const scope = request.scope ?? baseStoreView;
+    const storeView = scope === "all" ? undefined : scope;
+    return {
+      endpoint: `${request.method} ${fromRest >= 0 ? pathname.slice(fromRest) : pathname}`,
+      readAt: new Date(deps.now()).toISOString(),
+      ...(storeView !== undefined ? { storeView } : {}),
+    };
+  }
+
   return {
     async request(request: RestRequest): Promise<unknown> {
       assertPath(request.path);
@@ -187,6 +214,7 @@ export function createRestTransport(deps: RestTransportDeps): RestTransport {
         }
         const outcome = await attemptOnce(request, root);
         if ("value" in outcome) {
+          request.onAnswered?.(answerFor(request, root));
           return outcome.value;
         }
         const decision = decideRetry(

@@ -61,7 +61,7 @@ export function orderTools({ readTool, writeTool, shapes }: ToolFactory): readon
     readTool({
       name: "magentorest_get_order_by_id",
       description:
-        "Use this to read one order by entity ID: status, state, totals, currency, the customer as the order records it, and the order lines. Billing and shipping addresses and payment details are not returned.",
+        "Use this to read one order by entity ID: status, state, totals, currency and the order lines; who placed it (customer ID, name, email) only when the server runs with MAGENTO_REST_CUSTOMER_DATA=true. Billing and shipping addresses and payment details are not returned.",
       input: z.object({ order_id: orderId }).strict(),
       shape: shapes.order,
       run: ({ order_id }, client) => client.get(restPath`/orders/${order_id}`),

@@ -6,7 +6,7 @@
 // writes no output and never exits the process. `fetch`, `now`, `sleep` and
 // the base URL are injected, so every environment read lives in the adapter
 // layer (`tools/`).
-import { createRestTransport, type RestRequest, type RestTransport, type RestTransportDeps } from "./http.js";
+import { createRestTransport, type RestAnswer, type RestRequest, type RestTransport, type RestTransportDeps } from "./http.js";
 import { buildSearchCriteria, MAX_PAGE_SIZE, type SearchCriteriaInput } from "./search-criteria.js";
 
 export { restPath } from "./paths.js";
@@ -15,7 +15,7 @@ export { formatDay, formatMagentoTimestamp, isDateRangeExpression, parseDateRang
 export { MagentoRestError, type MagentoRestErrorKind } from "./errors.js";
 export { CONDITION_TYPES, DEFAULT_PAGE_SIZE, FIELD_NAME_PATTERN, MAX_PAGE_SIZE, buildSearchCriteria } from "./search-criteria.js";
 export type { ConditionType, SearchCriteriaInput, SearchFilter, SortDirection } from "./search-criteria.js";
-export type { RestTransportDeps } from "./http.js";
+export type { RestAnswer, RestTransportDeps } from "./http.js";
 
 /** Default and hard ceiling on pages one `getAllPages` call may fetch. 10 x 100 = 1,000 records by default. */
 export const DEFAULT_MAX_PAGES = 10;
@@ -35,6 +35,8 @@ export interface AllPagesResult extends SearchResult {
 export interface RequestOptions {
   readonly signal?: AbortSignal;
   readonly scope?: string;
+  /** See `RestRequest.onAnswered`. */
+  readonly onAnswered?: (answer: RestAnswer) => void;
 }
 
 export interface MagentoRestClient {
