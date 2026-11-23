@@ -168,3 +168,31 @@ Credential loading MUST resolve an environment variable over a config file value
 - GIVEN a token piped via stdin
 - WHEN the credential-setting command reads it
 - THEN it accepts and persists the token without it ever appearing in the process argument list
+
+### Requirement: Opt-in HTTP Endpoint
+
+A server MAY serve MCP over HTTP instead of stdio only when its `<PREFIX>_HTTP_PORT` variable is set; otherwise it MUST start in stdio unchanged. The HTTP bridge MUST NOT import `@modelcontextprotocol/sdk`. It MUST bind to `127.0.0.1` unless configured otherwise, MUST require a bearer token of at least 32 characters read from the environment only and compared in constant time, MUST refuse a `Host` outside its allow-list and any `Origin` not explicitly allowed, MUST serve only `POST` (answering any other method with 405 and `Allow: POST`), MUST cap the request body, and MUST NOT log or echo the token, headers or tool arguments.
+
+#### Scenario: No port, no network
+
+- GIVEN a server whose `<PREFIX>_HTTP_PORT` is unset or blank
+- WHEN it starts
+- THEN it speaks stdio exactly as before and opens no socket
+
+#### Scenario: Unauthenticated request never reaches MCP
+
+- GIVEN an HTTP-mode server
+- WHEN a request arrives without the bearer token, or with a wrong one
+- THEN it is answered 401 before the body is read, and the handler is not called
+
+#### Scenario: A standard client does not loop on GET
+
+- GIVEN an HTTP-mode server, which is stateless and offers no SSE stream
+- WHEN a client sends `GET /mcp`
+- THEN it is answered 405 with `Allow: POST`
+
+#### Scenario: Shutdown in a container
+
+- GIVEN an HTTP-mode server with a request in flight
+- WHEN it receives `SIGTERM`
+- THEN it stops accepting, lets the request finish within its grace period, and exits 0

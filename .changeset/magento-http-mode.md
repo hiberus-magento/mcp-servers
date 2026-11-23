@@ -1,0 +1,6 @@
+---
+"@hiberus-magento/magento-graphql": minor
+"@hiberus-magento/magento-rest": minor
+---
+
+Opt-in HTTP mode for callers that cannot launch a child process (a PHP middleware, a queue consumer). Set `<PREFIX>_HTTP_PORT` and `<PREFIX>_HTTP_TOKEN` (at least 32 characters, environment only) and the MCP server listens on `http://127.0.0.1:<port>/mcp` instead of stdio; unset, it speaks stdio exactly as before. Stateless: one `POST` per call with a JSON-RPC body and `Authorization: Bearer`, no `initialize` or session, JSON replies. Requests are refused with 401 (token), 403 (`Host`/`Origin` not allowed, DNS-rebinding protection), 404 (path), 405 (any method but `POST`, so a standard MCP client does not reconnect for a stream that does not exist) or 413 (body over 1 MiB). Each request writes one access-log line to stderr (method, status, tool name, duration; never arguments or the token), and `SIGTERM`/`SIGINT` give requests in flight 5 seconds and exit 0. `<PREFIX>_HTTP_HOST`, `<PREFIX>_HTTP_ALLOWED_HOSTS` and `<PREFIX>_HTTP_ALLOWED_ORIGINS` widen the defaults for containers. In `magento-graphql`, the tools the connected store does not offer stay out of `tools/list` for every request after the first call reads the schema. See `docs/http-mode.md`.

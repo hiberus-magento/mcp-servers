@@ -20,7 +20,7 @@ A pnpm/turbo monorepo publishing independent MCP (Model Context Protocol) server
   - Code outside a package's own `client/` directory may import another package's client surface only through `client/index.ts`.
   - Only `packages/mcp-core/src/exec/**` may call `execFile`; `exec`/`execSync`/`spawnSync` are banned repo-wide; prefix/regex command matching is banned under `src/exec/**`.
   - Every source file needs the Apache-2.0 license header comment at the top.
-- **stdout is the JSON-RPC transport for every server.** Never `console.log` or write to `process.stdout` directly in a server package — use the `mcp-core` logger, which writes to stderr. This is also enforced by lint, but understand why: a stray write corrupts the protocol stream.
+- **stdout is the JSON-RPC transport for every server.** Never `console.log` or write to `process.stdout` directly in a server package — use the `mcp-core` logger, which writes to stderr. This is also enforced by lint, but understand why: a stray write corrupts the protocol stream. The opt-in HTTP mode (`<PREFIX>_HTTP_PORT`, `magento-rest` and `magento-graphql` only) does not relax this: stdout stays silent and logs still go to stderr. Its network rules (token from the environment, loopback by default, POST only) live in `mcp-core`'s `startHttpEndpoint`; see `docs/http-mode.md` and `openspec/changes/2026-11-20-magento-http-mode/design.md`.
 - **Never a CLI credential argument.** `mcp-core`'s credential CLI parser has no `--token` flag at all — tokens are read from stdin or an environment variable only, never argv (shell history).
 
 ## Verifying Your Work

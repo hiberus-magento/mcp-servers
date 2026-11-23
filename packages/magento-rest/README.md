@@ -29,7 +29,7 @@ verification.
 
 | Binary | What it is |
 | --- | --- |
-| `hiberus-magento-rest-mcp` | The **stdio MCP server**. This is what you put in an MCP client's configuration. It speaks JSON-RPC on stdout and nothing else. |
+| `hiberus-magento-rest-mcp` | The **MCP server**. By default it speaks JSON-RPC over stdio: this is what you put in an MCP client's configuration. With `MAGENTO_REST_HTTP_PORT` set it serves HTTP instead (see [Running over HTTP](#running-over-http)). |
 | `hiberus-magento-rest` | The **operator CLI**, for a human at a terminal. It stores the token (`auth token set`, from stdin) and checks it (`auth status`). It has no command that reads or writes catalog data. |
 
 With two binaries declared, `npx` has to be told which one to run
@@ -156,6 +156,11 @@ executable to run`.
 - `MAGENTO_REST_DATABASE_CONNECTION` (optional) — Adds the `database` tool group (magentorest_db_*): direct, read-only access to the Magento database. A URL with NO password, e.g. `mysql://reader@127.0.0.1:3306/magento`; a password in it stops the server. A host that is not this machine uses verified TLS unless you write `?ssl=false`. Unset, there are no database tools. Use a database user with the narrowest grants you can: SELECT only unless you also enable writes. The URL is validated at startup (exit code 1 if it is invalid); the password is only needed when a tool is called.
 - `MAGENTO_REST_DATABASE_PASSWORD` (optional) — The password of the database user, used by the database tools. It may come from this variable OR from the credential file written by `hiberus-magento-rest auth db-password set` (read from stdin, mode 0600), so neither source is required on its own. Resolved on every connection, so a stored password applies without a restart.
 - `MAGENTO_REST_DATABASE_ALLOW_WRITES` (optional) — Set to exactly `true` to register magentorest_db_execute (one INSERT, UPDATE or DELETE per call, in a transaction, with a dry run and a cap on rows changed). A switch of its own: MAGENTO_REST_ALLOW_WRITES does not enable it. Unset, or any other value, and the tool is absent from tools/list. Without MAGENTO_REST_DATABASE_CONNECTION it stops the server with exit code 1. Read once at startup.
+- `MAGENTO_REST_HTTP_PORT` (optional) — Set to serve MCP over HTTP instead of stdio, for callers that cannot own a child process (for example a PHP middleware or a queue consumer). Opt-in: unset or blank and the server speaks stdio exactly as before. `0` picks a free port, which is logged to stderr as `magento-rest: listening on http://<host>:<port>/mcp`. Stateless: one POST per call, no session, JSON replies. Requires MAGENTO_REST_HTTP_TOKEN. Read once at startup. Headers, examples and status codes: docs/http-mode.md.
+- `MAGENTO_REST_HTTP_TOKEN` (optional) — Bearer token the HTTP caller must send as `Authorization: Bearer <token>`. Required when MAGENTO_REST_HTTP_PORT is set; at least 32 characters (generate one with `openssl rand -hex 32`), otherwise the server stops with exit code 1. Read from the environment only, never from argv, and never logged or echoed. Rotating it means restarting the server.
+- `MAGENTO_REST_HTTP_HOST` (optional) — Interface the HTTP endpoint binds to. Default `127.0.0.1` (loopback only). Set it to `0.0.0.0` or a container address only when the server must be reached from another host, and then list the names callers use in MAGENTO_REST_HTTP_ALLOWED_HOSTS.
+- `MAGENTO_REST_HTTP_ALLOWED_HOSTS` (optional) — Comma-separated extra `Host` header values the HTTP endpoint accepts, for example `magento-rest:3000`, beyond loopback with the bound port. A request with any other Host is refused with 403 (DNS rebinding protection).
+- `MAGENTO_REST_HTTP_ALLOWED_ORIGINS` (optional) — Comma-separated `Origin` values the HTTP endpoint accepts. Unset, any request that carries an Origin header is refused with 403: this server is for backends, not browsers.
 
 ## Configure in an MCP client
 
@@ -181,6 +186,32 @@ Pin the exact version; pass secrets as environment variable references, never li
 ```
 
 <!-- package:end -->
+
+## Running over HTTP
+
+For a caller that cannot launch a child process (a PHP middleware, a queue consumer), set a port and a
+token and the server listens on `http://127.0.0.1:<port>/mcp` instead of stdio:
+
+```sh
+export MAGENTO_REST_BASE_URL=https://demo-host.example-domain/rest/V1
+export MAGENTO_REST_HTTP_PORT=3200
+export MAGENTO_REST_HTTP_TOKEN="$(openssl rand -hex 32)"
+npx -y --package @hiberus-magento/magento-rest hiberus-magento-rest-mcp
+
+curl -s http://127.0.0.1:3200/mcp \
+  -H "Authorization: Bearer $MAGENTO_REST_HTTP_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"magentorest_get_store_configs","arguments":{}}}'
+```
+
+`MAGENTO_REST_HTTP_TOKEN` is the secret HTTP callers send; it is not the Magento token, which still comes
+from `MAGENTO_REST_TOKEN` or the stored file (see [Credentials](#credentials)). Each call is one `POST` with
+a JSON-RPC body: no `initialize`, no session. All three headers are required; without that `Accept` value
+the reply is `406`. A tool that fails answers HTTP `200` with `"isError": true`. The
+[HTTP mode guide](https://github.com/hiberus-magento/mcp-servers/blob/main/docs/http-mode.md) has the
+status codes, the setup for reaching it from another container, and its limits (one store per process, the
+integration's identity on every call).
 
 ## Credentials
 
@@ -430,10 +461,10 @@ See the [onboarding guide](https://github.com/hiberus-magento/mcp-servers/blob/m
 
 ## What this server deliberately does not do
 
-- **No database access.** The server this one replaces also exposed MySQL tools
-  (`db_query` and others). Those are not here; direct SQL needs its own design
-  (a read-only database user and session, a statement timeout) and is not part
-  of this package.
+- **No database access unless you configure it.** Without
+  `MAGENTO_REST_DATABASE_CONNECTION` the `database` group does not exist; with it,
+  reads run in a `READ ONLY` session and `db_execute` needs its own switch,
+  `MAGENTO_REST_DATABASE_ALLOW_WRITES`. See [Database access](#database-access).
 - **No chat proxy and no embedded model client.** It is an MCP server, nothing
   else.
 - **No way to turn TLS verification off.** There is no option and no honoured
@@ -473,6 +504,7 @@ See the [onboarding guide](https://github.com/hiberus-magento/mcp-servers/blob/m
 
 - [Repository](https://github.com/hiberus-magento/mcp-servers) — source, issues, and the other servers in this family.
 - [Magento REST onboarding](https://github.com/hiberus-magento/mcp-servers/blob/main/docs/magento-rest-onboarding.md) — creating a least-privilege integration, the base URL, the write switch, and what the failures mean.
+- [HTTP mode](https://github.com/hiberus-magento/mcp-servers/blob/main/docs/http-mode.md) — running it as an HTTP service for a backend: the headers, curl examples, status codes, containers, and its limits.
 - [Team setup guide](https://github.com/hiberus-magento/mcp-servers/blob/main/docs/team-setup.md) — where MCP client configuration lives, and which file must never hold a secret.
 
 ## License
