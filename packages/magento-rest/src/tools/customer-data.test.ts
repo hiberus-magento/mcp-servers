@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { createMagentoRestClient } from "../client/index.js";
 import { createFetchDouble, json } from "../testing/fetch-double.js";
 import { withoutCustomerData } from "./customer-data.js";
+import { BASE_SHAPES, type ResourceName } from "./shapes.js";
 import { createMagentoRestTools, type CreateToolsOptions } from "./index.js";
 
 const [SKU] = SYNTHETIC_MAGENTO_SKUS;
@@ -37,6 +38,9 @@ function tools(options: Partial<CreateToolsOptions> = {}) {
     "GET /rest/V1/carts/9": json(200, CART),
     "GET /rest/V1/customers/3": json(200, CUSTOMER),
     "GET /rest/V1/inventory/sources": json(200, SOURCES),
+    "GET /rest/V1/customers/search": json(200, { items: [CUSTOMER], total_count: 1 }),
+    "GET /rest/V1/carts/search": json(200, { items: [{ ...CART, updated_at: "2026-01-01 00:00:00", grand_total: 10 }], total_count: 1 }),
+    "GET /rest/V1/orders": json(200, { items: [ORDER], total_count: 1 }),
   });
   const remedy = { domain: "magento-rest", cliCommand: "x", envVar: "MAGENTO_REST_TOKEN", configPath: "/x", reason: "t" };
   const client = createMagentoRestClient({
@@ -88,6 +92,37 @@ describe("customer data, off by default", () => {
     const order = (await tools({ fieldConfig: { order: { add: ["customer_dob"] } } })("magentorest_get_order_by_id", { order_id: 5 })) as Record<string, unknown>;
     expect(order).not.toHaveProperty("customer_email");
     expect(order).not.toHaveProperty("customer_dob");
+  });
+});
+
+describe("customer data off, in the tools that are about customers", () => {
+  it("a customer search returns no name or email", async () => {
+    const found = await tools()("magentorest_search_customers", { group_id: 1 });
+    expect(JSON.stringify(found)).not.toMatch(/Demo|Shopper|demo-host/);
+    expect(found).toMatchObject({ items: [{ id: 3 }], total_count: 1 });
+  });
+
+  it("an abandoned cart does not name its owner, though the tool builds that label itself", async () => {
+    const found = await tools()("magentorest_get_abandoned_carts", { days_old: 1 });
+    // "Demo tent" is the product; the person is "Demo Shopper".
+    expect(JSON.stringify(found)).not.toMatch(/Shopper|demo-host|Guest|customer_/);
+    expect(found).toMatchObject({ items: [{ cart_id: 9, items_count: 1 }] });
+  });
+
+  it("the orders of one customer come without the customer's name or email", async () => {
+    const found = await tools()("magentorest_get_customer_ordered_products_by_email", { email: EMAIL });
+    expect(found).not.toHaveProperty("customer");
+    expect(JSON.stringify(found)).not.toMatch(/Shopper|demo-host|customer_/);
+    expect(found).toMatchObject({ orders: [{ increment_id: SYNTHETIC_MAGENTO_ORDER_INCREMENT_ID }] });
+  });
+
+  it("a record that is not about a customer keeps every field of its shipped list", () => {
+    const customerRecords: readonly ResourceName[] = ["customer", "customer_summary", "customer_address", "order", "order_summary", "cart", "cart_summary", "abandoned_cart"];
+    for (const [resource, shape] of Object.entries(BASE_SHAPES) as [ResourceName, (typeof BASE_SHAPES)[ResourceName]][]) {
+      if (!customerRecords.includes(resource)) {
+        expect(withoutCustomerData(shape), resource).toEqual(shape);
+      }
+    }
   });
 });
 

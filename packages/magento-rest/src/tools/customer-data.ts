@@ -12,7 +12,13 @@
 // response, whatever the store returns. It runs after MAGENTO_REST_FIELDS_FILE, so a field file cannot add a
 // customer field back while customer data is off.
 //
-// City and postcode are only personal in a customer's address book (`customer_address`); a warehouse keeps its own.
+// The names are matched at any depth of any allowlist, so a field file that adds, say, `email` to a non-customer
+// record loses it too while customer data is off. None of the shipped non-customer lists carries such a name (a test
+// pins it). City and postcode are only personal in a customer's address book (`customer_address`), so a warehouse
+// keeps its own.
+//
+// This covers the REST tools. The `database` group (magentorest_db_*, only with MAGENTO_REST_DATABASE_CONNECTION)
+// runs the SQL it is given and is not filtered here: its grants are its boundary.
 import type { Shape } from "./project.js";
 import type { ShapeSet } from "./shapes.js";
 
