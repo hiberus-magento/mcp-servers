@@ -453,7 +453,13 @@
         {
           "name": "magentorest_search_orders",
           "readOnly": true,
-          "description": "Use this to find orders by status, customer email or ID, creation date range (YYYY-MM-DD, whole days) and grand-total range. Filters are combined with AND. Newest first unless you sort otherwise. Returns a bounded page of summaries and the total count."
+          "description": "Use this to find orders by status, customer email or ID, creation date range (YYYY-MM-DD, whole days), grand-total range and the generic filters. Filters are combined with AND. Newest first unless you sort otherwise. Returns a bounded page of summaries and the total count."
+        },
+        {
+          "name": "magentorest_list_orders",
+          "readOnly": true,
+          "description": "Use this to list orders by status, creation date range (YYYY-MM-DD, whole days), grand-total range and the generic filters, without naming a customer. Filters are combined with AND. Newest first unless you sort otherwise. Returns a bounded page of summaries and the total count.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
         },
         {
           "name": "magentorest_get_order_items",
@@ -573,7 +579,13 @@
         {
           "name": "magentorest_search_carts",
           "readOnly": true,
-          "description": "Use this to find carts by customer email or ID, active status and creation date range (YYYY-MM-DD, whole days). Filters are combined with AND. Returns a bounded page of summaries and the total count."
+          "description": "Use this to find carts by customer email or ID, active status, creation date range (YYYY-MM-DD, whole days) and the generic filters. Filters are combined with AND. Returns a bounded page of summaries and the total count."
+        },
+        {
+          "name": "magentorest_list_carts",
+          "readOnly": true,
+          "description": "Use this to list carts by active status, creation date range (YYYY-MM-DD, whole days) and the generic filters, without naming a customer. Filters are combined with AND. Returns a bounded page of summaries and the total count.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
         },
         {
           "name": "magentorest_get_cart_items",

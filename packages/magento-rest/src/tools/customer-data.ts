@@ -56,6 +56,11 @@ const PERSONAL_FIELDS: ReadonlySet<string> = new Set([
   "customer_note",
 ]);
 
+/** Whether a field or column name identifies or locates a person: what no list tool's filter or sort may name. */
+export function isPersonalField(name: string): boolean {
+  return PERSONAL_FIELDS.has(name);
+}
+
 /** Address fields that locate a person when the address is a customer's own. */
 const CUSTOMER_ADDRESS_FIELDS: ReadonlySet<string> = new Set(["city", "postcode"]);
 

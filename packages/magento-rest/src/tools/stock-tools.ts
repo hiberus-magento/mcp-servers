@@ -21,6 +21,7 @@ import { z } from "zod";
 import { restPath } from "../client/index.js";
 import { currentPage, pageSize, sku } from "./inputs.js";
 import type { MagentoRestTool, ToolFactory } from "./rest-tool.js";
+import { LIST_FIELDS, listCriteria, listInputs } from "./list-filters.js";
 import { listOf } from "./shapes.js";
 
 const LIST_PAGE_SIZE = 50;
@@ -64,10 +65,10 @@ export function stockTools({ readTool, writeTool, shapes }: ToolFactory): readon
     readTool({
       name: "magentorest_get_inventory_sources",
       description: "Use this to list the inventory sources (warehouses) of multi-source inventory: code, name, whether enabled, country, region, city, postcode and priority. Street, phone, email and contact person are not returned.",
-      input: z.object({ page_size: pageSize, current_page: currentPage }).strict(),
+      input: z.object({ page_size: pageSize, current_page: currentPage, ...listInputs(LIST_FIELDS.inventory_source) }).strict(),
       shape: listOf(shapes.inventory_source),
-      run: async ({ page_size, current_page }, client) => {
-        const result = await client.search("/inventory/sources", { pageSize: page_size ?? LIST_PAGE_SIZE, currentPage: current_page ?? 1 });
+      run: async ({ page_size, current_page, ...narrow }, client) => {
+        const result = await client.search("/inventory/sources", { ...listCriteria(narrow), pageSize: page_size ?? LIST_PAGE_SIZE, currentPage: current_page ?? 1 });
         return { items: result.items, total_count: result.totalCount };
       },
     }),
@@ -75,10 +76,10 @@ export function stockTools({ readTool, writeTool, shapes }: ToolFactory): readon
     readTool({
       name: "magentorest_get_inventory_stocks",
       description: "Use this to list the inventory stocks of multi-source inventory with the sales channels (websites) each one serves.",
-      input: z.object({}).strict(),
+      input: z.object(listInputs(LIST_FIELDS.inventory_stock)).strict(),
       shape: listOf(shapes.inventory_stock),
-      run: async (_args, client) => {
-        const result = await client.search("/inventory/stocks", { pageSize: FIXED_PAGE_SIZE });
+      run: async (args, client) => {
+        const result = await client.search("/inventory/stocks", { ...listCriteria(args), pageSize: FIXED_PAGE_SIZE });
         return { items: result.items, total_count: result.totalCount };
       },
     }),
@@ -86,10 +87,10 @@ export function stockTools({ readTool, writeTool, shapes }: ToolFactory): readon
     readTool({
       name: "magentorest_get_source_items",
       description: "Use this to read a product's quantity and status in each inventory source, by SKU.",
-      input: z.object({ sku }).strict(),
+      input: z.object({ sku, ...listInputs(LIST_FIELDS.source_item) }).strict(),
       shape: listOf(shapes.source_item),
-      run: async ({ sku }, client) => {
-        const result = await client.search("/inventory/source-items", { filterGroups: [[{ field: "sku", value: sku }]], pageSize: FIXED_PAGE_SIZE });
+      run: async ({ sku, ...narrow }, client) => {
+        const result = await client.search("/inventory/source-items", { ...listCriteria(narrow, { filterGroups: [[{ field: "sku", value: sku }]] }), pageSize: FIXED_PAGE_SIZE });
         return { items: result.items, total_count: result.totalCount };
       },
     }),

@@ -14,6 +14,7 @@ import { restPath, type SearchFilter } from "../client/index.js";
 import { currentPage, entityId, pageSize } from "./inputs.js";
 import type { MagentoRestTool, ToolFactory } from "./rest-tool.js";
 import { listOf } from "./shapes.js";
+import { LIST_FIELDS, listCriteria, listInputs } from "./list-filters.js";
 
 const LIST_PAGE_SIZE = 50;
 
@@ -44,6 +45,7 @@ export function attributeTools({ readTool, writeTool, shapes }: ToolFactory): re
           is_filterable: z.boolean().optional().describe("Filter by the filterable flag."),
           page_size: pageSize,
           current_page: currentPage,
+          ...listInputs(LIST_FIELDS.product_attribute),
         })
         .strict(),
       shape: listOf(shapes.product_attribute_summary),
@@ -55,7 +57,7 @@ export function attributeTools({ readTool, writeTool, shapes }: ToolFactory): re
         if (args.is_searchable !== undefined) filters.push({ field: "is_searchable", value: args.is_searchable ? 1 : 0 });
         if (args.is_filterable !== undefined) filters.push({ field: "is_filterable", value: args.is_filterable ? 1 : 0 });
         const result = await client.search("/products/attributes", {
-          filterGroups: filters.map((filter) => [filter]),
+          ...listCriteria(args, { filterGroups: filters.map((filter) => [filter]) }),
           pageSize: args.page_size ?? LIST_PAGE_SIZE,
           currentPage: args.current_page ?? 1,
         });
@@ -77,10 +79,10 @@ export function attributeTools({ readTool, writeTool, shapes }: ToolFactory): re
     readTool({
       name: "magentorest_get_attribute_sets",
       description: "Use this to list the product attribute sets with their ID, name and sort order. Returns a bounded page and the total count.",
-      input: z.object({ page_size: pageSize, current_page: currentPage }).strict(),
+      input: z.object({ page_size: pageSize, current_page: currentPage, ...listInputs(LIST_FIELDS.attribute_set) }).strict(),
       shape: listOf(shapes.attribute_set),
-      run: async ({ page_size, current_page }, client) => {
-        const result = await client.search("/products/attribute-sets/sets/list", { pageSize: page_size ?? LIST_PAGE_SIZE, currentPage: current_page ?? 1 });
+      run: async ({ page_size, current_page, ...narrow }, client) => {
+        const result = await client.search("/products/attribute-sets/sets/list", { ...listCriteria(narrow), pageSize: page_size ?? LIST_PAGE_SIZE, currentPage: current_page ?? 1 });
         return { items: result.items, total_count: result.totalCount };
       },
     }),

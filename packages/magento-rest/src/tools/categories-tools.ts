@@ -16,6 +16,7 @@ import { restPath, type SearchFilter } from "../client/index.js";
 import { currentPage, entityId, inStore, pageSize, storeCode } from "./inputs.js";
 import type { MagentoRestTool, ToolFactory } from "./rest-tool.js";
 import { listOf, pagedListOf } from "./shapes.js";
+import { LIST_FIELDS, listCriteria, listInputs } from "./list-filters.js";
 
 const LIST_PAGE_SIZE = 20;
 const MAX_TREE_NODES = 500;
@@ -77,10 +78,11 @@ export function categoryTools({ readTool, writeTool, shapes }: ToolFactory): rea
           is_active: z.boolean().optional().describe("Filter by active status."),
           page_size: pageSize,
           current_page: currentPage,
+          ...listInputs(LIST_FIELDS.category),
         })
         .strict(),
       shape: listOf(shapes.category),
-      run: async ({ parent_id, name, is_active, page_size, current_page }, client) => {
+      run: async ({ parent_id, name, is_active, page_size, current_page, ...narrow }, client) => {
         // One filter per group: groups are AND'd, which is what these three mean.
         const groups: SearchFilter[][] = [];
         if (parent_id !== undefined) {
@@ -92,7 +94,7 @@ export function categoryTools({ readTool, writeTool, shapes }: ToolFactory): rea
         if (is_active !== undefined) {
           groups.push([{ field: "is_active", value: is_active ? 1 : 0 }]);
         }
-        const result = await client.search("/categories/list", { filterGroups: groups, pageSize: page_size ?? LIST_PAGE_SIZE, currentPage: current_page ?? 1 });
+        const result = await client.search("/categories/list", { ...listCriteria(narrow, { filterGroups: groups }), pageSize: page_size ?? LIST_PAGE_SIZE, currentPage: current_page ?? 1 });
         return { items: result.items, total_count: result.totalCount };
       },
     }),
@@ -100,11 +102,11 @@ export function categoryTools({ readTool, writeTool, shapes }: ToolFactory): rea
     readTool({
       name: "magentorest_get_products_in_category",
       description: "Use this to list the products assigned to one category. Returns a bounded page of product summaries (id, sku, name, price, status, type) and the total count.",
-      input: z.object({ category_id: entityId("category"), page_size: pageSize, current_page: currentPage }).strict(),
+      input: z.object({ category_id: entityId("category"), page_size: pageSize, current_page: currentPage, ...listInputs(LIST_FIELDS.product) }).strict(),
       shape: listOf(shapes.product_summary),
-      run: async ({ category_id, page_size, current_page }, client) => {
+      run: async ({ category_id, page_size, current_page, ...narrow }, client) => {
         const result = await client.search("/products", {
-          filterGroups: [[{ field: "category_id", value: category_id }]],
+          ...listCriteria(narrow, { filterGroups: [[{ field: "category_id", value: category_id }]] }),
           pageSize: page_size ?? LIST_PAGE_SIZE,
           currentPage: current_page ?? 1,
         });

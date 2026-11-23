@@ -32,9 +32,9 @@ const RAW_CART = {
 };
 
 describe("cartTools surface", () => {
-  it("exposes four reads and no write", () => {
+  it("exposes five reads and no write", () => {
     const { tools } = build({});
-    expect(tools.map((t) => t.name).sort()).toEqual(["magentorest_get_abandoned_carts", "magentorest_get_cart_by_id", "magentorest_get_cart_items", "magentorest_search_carts"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["magentorest_get_abandoned_carts", "magentorest_get_cart_by_id", "magentorest_get_cart_items", "magentorest_list_carts", "magentorest_search_carts"]);
     expect(tools.every((t) => t.access === "read")).toBe(true);
   });
 
@@ -156,5 +156,25 @@ describe("magentorest_get_abandoned_carts", () => {
     const { double, tool } = build({});
     await expect(tool("magentorest_get_abandoned_carts").invoke({ days_old: days }, {})).rejects.toBeInstanceOf(ZodError);
     expect(double.calls).toHaveLength(0);
+  });
+});
+
+describe("magentorest_list_carts", () => {
+  it("takes no customer input: an email or customer ID is refused, not ignored", async () => {
+    const { double, tool } = build({});
+    await expect(tool("magentorest_list_carts").invoke({ customer_email: "shopper@demo-host.example" }, {})).rejects.toBeInstanceOf(ZodError);
+    await expect(tool("magentorest_list_carts").invoke({ customer_id: 9 }, {})).rejects.toBeInstanceOf(ZodError);
+    expect(double.calls).toHaveLength(0);
+  });
+
+  it("filters on active status and whole creation days, ANDed", async () => {
+    const { double, call } = build({ "GET /rest/V1/carts/search": json(200, { items: [], total_count: 0 }) });
+    await call("magentorest_list_carts", { is_active: true, created_at_from: "2026-03-01", created_at_to: "2026-03-31" });
+    const q = new URL(double.calls[0]?.url ?? "").searchParams;
+    const f = (group: number, key: string): string | null => q.get(`searchCriteria[filter_groups][${group}][filters][0][${key}]`);
+    expect([f(0, "field"), f(0, "value")]).toEqual(["is_active", "1"]);
+    expect([f(1, "field"), f(1, "value"), f(1, "condition_type")]).toEqual(["created_at", "2026-03-01 00:00:00", "gteq"]);
+    expect([f(2, "field"), f(2, "value"), f(2, "condition_type")]).toEqual(["created_at", "2026-03-31 23:59:59", "lteq"]);
+    expect(f(3, "field")).toBeNull();
   });
 });

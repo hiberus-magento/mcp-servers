@@ -36,6 +36,10 @@ describe("errorBodyFor", () => {
     expect(errorBodyFor(classifyFailure(503, ""))).toMatchObject({ code: "unavailable", http_status: 503 });
   });
 
+  it("a redirect is invalid_argument on MAGENTO_REST_BASE_URL: the base URL is what has to change", () => {
+    expect(errorBodyFor(new MagentoRestError({ kind: "redirected", message: "redirected", status: 301 }))).toMatchObject({ code: "invalid_argument", argument: "MAGENTO_REST_BASE_URL", http_status: 301 });
+  });
+
   it("any other Magento failure is upstream_error with its HTTP status", () => {
     expect(errorBodyFor(classifyFailure(400, JSON.stringify({ message: "Invalid value" })))).toMatchObject({ code: "upstream_error", http_status: 400 });
     expect(errorBodyFor(classifyFailure(404, JSON.stringify({ message: "No such entity." })))).toMatchObject({ code: "upstream_error", http_status: 404 });

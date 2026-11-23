@@ -20,6 +20,7 @@ import { z } from "zod";
 import { restPath, type MagentoRestClient } from "../client/index.js";
 import { conditionType, currentPage, entityId, fieldName, pageSize, sku, sortDirection, storeCode, inStore, DEFAULT_SEARCH_PAGE_SIZE } from "./inputs.js";
 import type { MagentoRestTool, ToolFactory } from "./rest-tool.js";
+import { assertOneSort, LIST_FIELDS, listCriteria, listInputs } from "./list-filters.js";
 import { listOf } from "./shapes.js";
 
 const IDENTITY_ATTRIBUTES: ReadonlySet<string> = new Set(["sku", "id", "entity_id", "type_id"]);
@@ -67,11 +68,11 @@ export function productTools({ readTool, writeTool, shapes }: ToolFactory): read
     readTool({
       name: "magentorest_search_products",
       description: "Use this to find products whose name contains a phrase. Returns a bounded page of summaries (id, sku, name, price, status, type) and the total count.",
-      input: z.object({ query: z.string().min(1).max(200).describe("Text the product name must contain."), page_size: pageSize, current_page: currentPage }).strict(),
+      input: z.object({ query: z.string().min(1).max(200).describe("Text the product name must contain."), page_size: pageSize, current_page: currentPage, ...listInputs(LIST_FIELDS.product) }).strict(),
       shape: listOf(shapes.product_summary),
-      run: async ({ query, page_size, current_page }, client) => {
+      run: async ({ query, page_size, current_page, ...narrow }, client) => {
         const result = await client.search("/products", {
-          filterGroups: [[{ field: "name", value: `%${query}%`, conditionType: "like" }]],
+          ...listCriteria(narrow, { filterGroups: [[{ field: "name", value: `%${query}%`, conditionType: "like" }]] }),
           pageSize: page_size ?? DEFAULT_SEARCH_PAGE_SIZE,
           currentPage: current_page ?? 1,
         });
@@ -90,17 +91,21 @@ export function productTools({ readTool, writeTool, shapes }: ToolFactory): read
           condition_type: conditionType,
           page_size: pageSize,
           current_page: currentPage,
-          sort_field: fieldName("Field to sort by (default entity_id).").optional(),
+          sort_field: fieldName("Field to sort by (default entity_id). Or use sort: pass one or the other.").optional(),
           sort_direction: sortDirection,
+          ...listInputs(LIST_FIELDS.product),
         })
         .strict(),
       shape: listOf(shapes.product_summary),
       run: async (args, client) => {
+        assertOneSort(args);
         const result = await client.search("/products", {
-          filterGroups: [[{ field: args.field, value: args.value, conditionType: args.condition_type ?? "eq" }]],
+          ...listCriteria(
+            { filters: args.filters, sort: args.sort ?? { field: args.sort_field ?? "entity_id", direction: args.sort_direction ?? "DESC" } },
+            { filterGroups: [[{ field: args.field, value: args.value, conditionType: args.condition_type ?? "eq" }]] },
+          ),
           pageSize: args.page_size ?? DEFAULT_SEARCH_PAGE_SIZE,
           currentPage: args.current_page ?? 1,
-          sort: { field: args.sort_field ?? "entity_id", direction: args.sort_direction ?? "DESC" },
         });
         return { items: result.items, total_count: result.totalCount };
       },

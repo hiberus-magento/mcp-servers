@@ -324,3 +324,25 @@ describe("createRestTransport — what answered (provenance)", () => {
     expect(answers).toEqual([]);
   });
 });
+
+describe("createRestTransport — a redirect", () => {
+  // A store with "Add Store Code to Urls" answers /rest/... with a 301 to /<code>/rest/.... The redirect is not
+  // followed (it would re-send the token somewhere the operator never configured), but the failure names the base
+  // URL to use instead.
+  it("is not followed, and says which base URL the store redirects to", async () => {
+    const target = `${SYNTHETIC_MAGENTO_BASE_URL.replace("/rest/V1", "/es/rest/V1")}/store/storeViews`;
+    const { double, transport } = build({ "GET /rest/V1/store/storeViews": { status: 301, headers: { location: target } } });
+    const failure = await transport.request({ method: "GET", path: "/store/storeViews" }).catch((error: unknown) => error);
+    expect(double.calls).toHaveLength(1);
+    expect(failure).toMatchObject({ kind: "redirected", status: 301, suggestedBaseUrl: SYNTHETIC_MAGENTO_BASE_URL.replace("/rest/V1", "/es/rest/V1") });
+    expect((failure as Error).message).toContain(SYNTHETIC_MAGENTO_BASE_URL.replace("/rest/V1", "/es/rest/V1"));
+  });
+
+  it("names no base URL when the target does not end in the same request path", async () => {
+    const { transport } = build({ "GET /rest/V1/store/storeViews": { status: 302, headers: { location: "https://login.example-domain/sso?next=x" } } });
+    const failure = await transport.request({ method: "GET", path: "/store/storeViews" }).catch((error: unknown) => error);
+    expect(failure).toMatchObject({ kind: "redirected", status: 302 });
+    expect((failure as { suggestedBaseUrl?: string }).suggestedBaseUrl).toBeUndefined();
+    expect((failure as Error).message).not.toContain("next=x");
+  });
+});

@@ -15,6 +15,7 @@ import { restPath, type SearchFilter } from "../client/index.js";
 import { currentPage, entityId, pageSize } from "./inputs.js";
 import type { MagentoRestTool, ToolFactory } from "./rest-tool.js";
 import { listOf } from "./shapes.js";
+import { LIST_FIELDS, listCriteria, listInputs } from "./list-filters.js";
 
 const LIST_PAGE_SIZE = 50;
 
@@ -23,10 +24,10 @@ export function promotionTools({ readTool, writeTool, shapes }: ToolFactory): re
     readTool({
       name: "magentorest_get_sales_rules",
       description: "Use this to list the cart price rules (promotions): name, dates, whether active, discount type and amount, coupon type, usage limits, websites and customer groups. Returns a bounded page and the total count.",
-      input: z.object({ page_size: pageSize, current_page: currentPage }).strict(),
+      input: z.object({ page_size: pageSize, current_page: currentPage, ...listInputs(LIST_FIELDS.sales_rule) }).strict(),
       shape: listOf(shapes.sales_rule),
-      run: async ({ page_size, current_page }, client) => {
-        const result = await client.search("/salesRules/search", { pageSize: page_size ?? LIST_PAGE_SIZE, currentPage: current_page ?? 1 });
+      run: async ({ page_size, current_page, ...narrow }, client) => {
+        const result = await client.search("/salesRules/search", { ...listCriteria(narrow), pageSize: page_size ?? LIST_PAGE_SIZE, currentPage: current_page ?? 1 });
         return { items: result.items, total_count: result.totalCount };
       },
     }),
@@ -48,16 +49,17 @@ export function promotionTools({ readTool, writeTool, shapes }: ToolFactory): re
           rule_id: entityId("sales rule to filter by").optional(),
           page_size: pageSize,
           current_page: currentPage,
+          ...listInputs(LIST_FIELDS.coupon),
         })
         .strict(),
       shape: listOf(shapes.coupon),
-      run: async ({ code, rule_id, page_size, current_page }, client) => {
+      run: async ({ code, rule_id, page_size, current_page, ...narrow }, client) => {
         // One filter per group: groups are AND'd, which is what these mean.
         const filters: SearchFilter[] = [];
         if (code !== undefined) filters.push({ field: "code", value: `%${code}%`, conditionType: "like" });
         if (rule_id !== undefined) filters.push({ field: "rule_id", value: rule_id });
         const result = await client.search("/coupons/search", {
-          filterGroups: filters.map((filter) => [filter]),
+          ...listCriteria(narrow, { filterGroups: filters.map((filter) => [filter]) }),
           pageSize: page_size ?? LIST_PAGE_SIZE,
           currentPage: current_page ?? 1,
         });

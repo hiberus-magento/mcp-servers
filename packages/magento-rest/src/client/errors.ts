@@ -16,7 +16,8 @@ export type MagentoRestErrorKind =
   | "rate-limited"
   | "server"
   | "transport"
-  | "unparseable";
+  | "unparseable"
+  | "redirected";
 
 const MAX_MESSAGE_CHARS = 240;
 const RETRYABLE_STATUSES: ReadonlySet<number> = new Set([429, 502, 503, 504]);
@@ -34,6 +35,8 @@ export interface MagentoRestErrorInit {
   readonly retryAfterMs?: number;
   /** A transport failure that was the per-attempt time limit running out. */
   readonly timedOut?: boolean;
+  /** For a redirect: the base URL the store points to instead, when it can be read from the Location header. */
+  readonly suggestedBaseUrl?: string;
   /** Where and when Magento gave this (failed) answer, for a tool that reports a 404 as a result. */
   readonly answer?: { readonly endpoint: string; readonly readAt: string; readonly storeView?: string };
 }
@@ -47,6 +50,7 @@ export class MagentoRestError extends Error {
   readonly retryAfterMs: number | undefined;
   readonly timedOut: boolean | undefined;
   readonly answer: MagentoRestErrorInit["answer"];
+  readonly suggestedBaseUrl: string | undefined;
 
   constructor(init: MagentoRestErrorInit) {
     super(init.message, init.cause !== undefined ? { cause: init.cause } : undefined);
@@ -59,6 +63,7 @@ export class MagentoRestError extends Error {
     this.retryAfterMs = init.retryAfterMs;
     this.timedOut = init.timedOut;
     this.answer = init.answer;
+    this.suggestedBaseUrl = init.suggestedBaseUrl;
   }
 
   /** The same error, carrying where and when Magento gave it. */
@@ -73,6 +78,7 @@ export class MagentoRestError extends Error {
       ...(this.retryAfterMs !== undefined ? { retryAfterMs: this.retryAfterMs } : {}),
       ...(this.timedOut !== undefined ? { timedOut: this.timedOut } : {}),
       ...(this.cause !== undefined ? { cause: this.cause } : {}),
+      ...(this.suggestedBaseUrl !== undefined ? { suggestedBaseUrl: this.suggestedBaseUrl } : {}),
       answer,
     });
   }

@@ -34,6 +34,7 @@ import { restPath, type SearchFilter } from "../client/index.js";
 import { currentPage, entityId, pageSize } from "./inputs.js";
 import type { MagentoRestTool, ToolFactory } from "./rest-tool.js";
 import { listOf, type ResourceName } from "./shapes.js";
+import { type FieldList, LIST_FIELDS, listCriteria, listInputs } from "./list-filters.js";
 
 const LIST_PAGE_SIZE = 20;
 const PAGE_LAYOUTS = ["1column", "2columns-left", "2columns-right", "3columns", "empty"] as const;
@@ -70,10 +71,12 @@ interface Kind {
   readonly idKey: "block_id" | "page_id";
   readonly shape: ResourceName;
   readonly summary: ResourceName;
+  /** The columns its search filters and sorts on. */
+  readonly fields: FieldList;
 }
 
-const BLOCK: Kind = { name: "block", resource: "cmsBlock", idKey: "block_id", shape: "cms_block", summary: "cms_block_summary" };
-const PAGE: Kind = { name: "page", resource: "cmsPage", idKey: "page_id", shape: "cms_page", summary: "cms_page_summary" };
+const BLOCK: Kind = { name: "block", resource: "cmsBlock", idKey: "block_id", shape: "cms_block", summary: "cms_block_summary", fields: LIST_FIELDS.cms_block };
+const PAGE: Kind = { name: "page", resource: "cmsPage", idKey: "page_id", shape: "cms_page", summary: "cms_page_summary", fields: LIST_FIELDS.cms_page };
 
 export function cmsTools({ readTool, writeTool, shapes }: ToolFactory): readonly MagentoRestTool[] {
   const idInput = (kind: Kind) => z.object({ [kind.idKey]: entityId(`CMS ${kind.name}`) }).strict();
@@ -99,6 +102,7 @@ export function cmsTools({ readTool, writeTool, shapes }: ToolFactory): readonly
           is_active: isActive.optional(),
           page_size: pageSize,
           current_page: currentPage,
+          ...listInputs(kind.fields),
         })
         .strict(),
       shape: listOf(shapes[kind.summary]),
@@ -109,7 +113,7 @@ export function cmsTools({ readTool, writeTool, shapes }: ToolFactory): readonly
         if (args.title !== undefined) filters.push({ field: "title", value: `%${args.title}%`, conditionType: "like" });
         if (args.is_active !== undefined) filters.push({ field: "is_active", value: args.is_active ? 1 : 0 });
         const result = await client.search(`/${kind.resource}/search`, {
-          filterGroups: filters.map((filter) => [filter]),
+          ...listCriteria(args, { filterGroups: filters.map((filter) => [filter]) }),
           pageSize: args.page_size ?? LIST_PAGE_SIZE,
           currentPage: args.current_page ?? 1,
         });

@@ -20,6 +20,7 @@ import { restPath, type SearchFilter } from "../client/index.js";
 import { currentPage, entityId, isoDate, pageSize } from "./inputs.js";
 import type { MagentoRestTool, ToolFactory } from "./rest-tool.js";
 import { listOf } from "./shapes.js";
+import { LIST_FIELDS, listCriteria, listInputs } from "./list-filters.js";
 
 const LIST_PAGE_SIZE = 20;
 const GROUPS_PAGE_SIZE = 100;
@@ -92,10 +93,10 @@ export function customerTools({ readTool, writeTool, shapes }: ToolFactory): rea
     readTool({
       name: "magentorest_get_customer_groups",
       description: "Use this to list the customer groups with their code and tax class.",
-      input: z.object({}).strict(),
+      input: z.object(listInputs(LIST_FIELDS.customer_group)).strict(),
       shape: listOf(shapes.customer_group),
-      run: async (_args, client) => {
-        const result = await client.search("/customerGroups/search", { pageSize: GROUPS_PAGE_SIZE });
+      run: async (args, client) => {
+        const result = await client.search("/customerGroups/search", { ...listCriteria(args), pageSize: GROUPS_PAGE_SIZE });
         return { items: result.items, total_count: result.totalCount };
       },
     }),

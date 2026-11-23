@@ -1,6 +1,6 @@
 // Copyright 2026 Hiberus. Licensed under the Apache License, Version 2.0.
 //
-// Order tools: five reads and four writes, ported from the original
+// Order tools: six reads and four writes, ported from the original
 // `src/tools/orders.js`. Beyond the usual encoded paths, validated criteria and
 // bounded pages, the differences are about what an order holds:
 //
@@ -22,8 +22,9 @@
 // customer when `is_customer_notified` is true — outward-facing, so its
 // description says so — and defaults to silent.
 import { z } from "zod";
-import { MagentoRestError, restPath, type SearchFilter } from "../client/index.js";
-import { currentPage, entityId, fieldName, isoDate, pageSize, sortDirection } from "./inputs.js";
+import { MagentoRestError, restPath, type MagentoRestClient, type SearchFilter } from "../client/index.js";
+import { currentPage, entityId, isoDate, pageSize, sortDirection } from "./inputs.js";
+import { assertOneSort, LIST_FIELDS, listCriteria, listInputs } from "./list-filters.js";
 import type { MagentoRestTool, ToolFactory } from "./rest-tool.js";
 import { listOf } from "./shapes.js";
 
@@ -56,6 +57,40 @@ function arrayField(record: unknown, key: string): unknown[] {
   return [];
 }
 
+/** The inputs every order list shares. None names a customer, so a list built on them alone is customer-free. */
+const orderListInputs = {
+  status: statusCode("Order status code, e.g. pending, processing, complete, canceled, holded.").optional(),
+  date_from: isoDate("Created on or after this day (YYYY-MM-DD).").optional(),
+  date_to: isoDate("Created on or before this day (YYYY-MM-DD).").optional(),
+  grand_total_min: z.number().min(0).optional().describe("Minimum grand total."),
+  grand_total_max: z.number().min(0).optional().describe("Maximum grand total."),
+  page_size: pageSize,
+  current_page: currentPage,
+  ...listInputs(LIST_FIELDS.order),
+};
+
+type OrderListArgs = z.infer<z.ZodObject<typeof orderListInputs>>;
+
+/**
+ * One filter per group: groups are AND'd, which is what these mean. Newest first by default. The customer filters go
+ * right after the status, where search_orders has always sent them, so its wire order is unchanged.
+ */
+async function listOrders(client: MagentoRestClient, args: OrderListArgs, customerFilters: readonly SearchFilter[]): Promise<unknown> {
+  const filters: SearchFilter[] = [];
+  if (args.status !== undefined) filters.push({ field: "status", value: args.status });
+  filters.push(...customerFilters);
+  if (args.date_from !== undefined) filters.push({ field: "created_at", value: `${args.date_from} 00:00:00`, conditionType: "gteq" });
+  if (args.date_to !== undefined) filters.push({ field: "created_at", value: `${args.date_to} 23:59:59`, conditionType: "lteq" });
+  if (args.grand_total_min !== undefined) filters.push({ field: "grand_total", value: args.grand_total_min, conditionType: "gteq" });
+  if (args.grand_total_max !== undefined) filters.push({ field: "grand_total", value: args.grand_total_max, conditionType: "lteq" });
+  const result = await client.search("/orders", {
+    ...listCriteria(args, { filterGroups: filters.map((filter) => [filter]), sort: { field: "created_at", direction: "DESC" } }),
+    pageSize: args.page_size ?? LIST_PAGE_SIZE,
+    currentPage: args.current_page ?? 1,
+  });
+  return { items: result.items, total_count: result.totalCount };
+}
+
 export function orderTools({ readTool, writeTool, shapes }: ToolFactory): readonly MagentoRestTool[] {
   return [
     readTool({
@@ -85,41 +120,34 @@ export function orderTools({ readTool, writeTool, shapes }: ToolFactory): readon
     readTool({
       name: "magentorest_search_orders",
       description:
-        "Use this to find orders by status, customer email or ID, creation date range (YYYY-MM-DD, whole days) and grand-total range. Filters are combined with AND. Newest first unless you sort otherwise. Returns a bounded page of summaries and the total count.",
+        "Use this to find orders by status, customer email or ID, creation date range (YYYY-MM-DD, whole days), grand-total range and the generic filters. Filters are combined with AND. Newest first unless you sort otherwise. Returns a bounded page of summaries and the total count.",
       input: z
         .object({
-          status: statusCode("Order status code, e.g. pending, processing, complete, canceled, holded.").optional(),
+          ...orderListInputs,
           customer_email: z.string().min(1).max(254).optional().describe("Exact customer email."),
           customer_id: entityId("customer to filter by").optional(),
-          date_from: isoDate("Created on or after this day (YYYY-MM-DD).").optional(),
-          date_to: isoDate("Created on or before this day (YYYY-MM-DD).").optional(),
-          grand_total_min: z.number().min(0).optional().describe("Minimum grand total."),
-          grand_total_max: z.number().min(0).optional().describe("Maximum grand total."),
-          page_size: pageSize,
-          current_page: currentPage,
-          sort_field: fieldName("Field to sort by (default created_at).").optional(),
+          sort_field: z.enum(LIST_FIELDS.order).optional().describe("Column to sort by (default created_at). The same as sort.field: pass one or the other."),
           sort_direction: sortDirection,
         })
         .strict(),
       shape: listOf(shapes.order_summary),
       run: async (args, client) => {
-        // One filter per group: groups are AND'd, which is what these mean.
-        const filters: SearchFilter[] = [];
-        if (args.status !== undefined) filters.push({ field: "status", value: args.status });
-        if (args.customer_email !== undefined) filters.push({ field: "customer_email", value: args.customer_email });
-        if (args.customer_id !== undefined) filters.push({ field: "customer_id", value: args.customer_id });
-        if (args.date_from !== undefined) filters.push({ field: "created_at", value: `${args.date_from} 00:00:00`, conditionType: "gteq" });
-        if (args.date_to !== undefined) filters.push({ field: "created_at", value: `${args.date_to} 23:59:59`, conditionType: "lteq" });
-        if (args.grand_total_min !== undefined) filters.push({ field: "grand_total", value: args.grand_total_min, conditionType: "gteq" });
-        if (args.grand_total_max !== undefined) filters.push({ field: "grand_total", value: args.grand_total_max, conditionType: "lteq" });
-        const result = await client.search("/orders", {
-          filterGroups: filters.map((filter) => [filter]),
-          pageSize: args.page_size ?? LIST_PAGE_SIZE,
-          currentPage: args.current_page ?? 1,
-          sort: { field: args.sort_field ?? "created_at", direction: args.sort_direction ?? "DESC" },
-        });
-        return { items: result.items, total_count: result.totalCount };
+        assertOneSort(args);
+        const customer: SearchFilter[] = [];
+        if (args.customer_email !== undefined) customer.push({ field: "customer_email", value: args.customer_email });
+        if (args.customer_id !== undefined) customer.push({ field: "customer_id", value: args.customer_id });
+        const sort = args.sort ?? { field: args.sort_field ?? "created_at", direction: args.sort_direction ?? "DESC" };
+        return listOrders(client, { ...args, sort }, customer);
       },
+    }),
+
+    readTool({
+      name: "magentorest_list_orders",
+      description:
+        "Use this to list orders by status, creation date range (YYYY-MM-DD, whole days), grand-total range and the generic filters, without naming a customer. Filters are combined with AND. Newest first unless you sort otherwise. Returns a bounded page of summaries and the total count.",
+      input: z.object(orderListInputs).strict(),
+      shape: listOf(shapes.order_summary),
+      run: (args, client) => listOrders(client, args, []),
     }),
 
     readTool({
