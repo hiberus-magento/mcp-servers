@@ -168,6 +168,7 @@ export function createRestTransport(deps: RestTransportDeps): RestTransport {
           kind: "transport",
           message: timedOut ? `Magento REST request timed out after ${Math.round(timeoutMs / 1000)} s without a response.` : "Magento REST request failed before a response was received.",
           retryable: true,
+          ...(timedOut ? { timedOut: true } : {}),
           cause,
         }),
       };
@@ -175,7 +176,7 @@ export function createRestTransport(deps: RestTransportDeps): RestTransport {
 
     if (!response.ok) {
       const after = retryAfterMs(response);
-      return { failure: classifyFailure(response.status, text), ...(after !== undefined ? { retryAfterMs: after } : {}) };
+      return { failure: classifyFailure(response.status, text, after), ...(after !== undefined ? { retryAfterMs: after } : {}) };
     }
     if (text === "") {
       return { value: undefined };

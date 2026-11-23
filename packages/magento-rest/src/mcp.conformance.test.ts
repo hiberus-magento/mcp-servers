@@ -139,6 +139,11 @@ describe(`magento-rest tool surface on the built bundle: ${serverPath}`, () => {
     beforeAll(async () => {
       magento = createServer((request, response) => {
         response.setHeader("Content-Type", "application/json");
+        if (request.url === "/rest/V1/orders/401") {
+          response.statusCode = 401;
+          response.end(JSON.stringify({ message: "The consumer isn't authorized to access %resources.", parameters: { resources: "Magento_Sales::actions_view" } }));
+          return;
+        }
         if (request.url?.startsWith("/rest/V1/orders/") === true) {
           response.end(JSON.stringify({ entity_id: 5, increment_id: "DEMO000000001", status: "processing", customer_id: 3, customer_email: "shopper@demo-host.example", customer_firstname: "Demo", customer_lastname: "Shopper" }));
           return;
@@ -167,6 +172,12 @@ describe(`magento-rest tool surface on the built bundle: ${serverPath}`, () => {
         client.close();
       }
     }
+
+    it("answers a failure with a typed error a host can act on", async () => {
+      const result = (await callTool({}, "magentorest_get_order_by_id", { order_id: 401 })) as { readonly isError?: boolean; readonly structuredContent?: { readonly error?: Record<string, unknown> } };
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent?.error).toMatchObject({ code: "permission_missing", resource: "Magento_Sales::actions_view", http_status: 401 });
+    });
 
     it("leaves who placed an order out of the answer by default", async () => {
       const result = await callTool({}, "magentorest_get_order_by_id", { order_id: 5 });

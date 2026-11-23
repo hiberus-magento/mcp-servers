@@ -81,6 +81,7 @@ describe("defineTool().invoke", () => {
     const result = await tool.invoke({}, {});
 
     expect(result.isError).toBe(true);
+    expect(result.errorKind).toBe("credential");
     expect(result.content[0]?.text).toContain(REMEDY.cliCommand);
     expect(result.content[0]?.text).toContain(REMEDY.envVar);
     expect(result.content[0]?.text).toContain(REMEDY.configPath);
@@ -138,6 +139,7 @@ describe("defineTool() with an output schema — results over the output cap", (
     const result = await tool.invoke({}, {});
 
     expect(result.isError).toBe(true);
+    expect(result.errorKind).toBe("too_large");
     expect(result.structuredContent).toBeUndefined();
     expect(result.content[0]?.text).toMatch(/over the 100000-byte limit/);
   });

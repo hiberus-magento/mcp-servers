@@ -28,6 +28,12 @@ export interface MagentoRestErrorInit {
   readonly retryable?: boolean;
   readonly remedy?: string;
   readonly cause?: unknown;
+  /** The ACL resource(s) a 401/403 named, as Magento wrote them (`Magento_Sales::actions_view`). */
+  readonly resources?: string;
+  /** A 429's Retry-After, in milliseconds. */
+  readonly retryAfterMs?: number;
+  /** A transport failure that was the per-attempt time limit running out. */
+  readonly timedOut?: boolean;
 }
 
 export class MagentoRestError extends Error {
@@ -35,6 +41,9 @@ export class MagentoRestError extends Error {
   readonly status: number | undefined;
   readonly retryable: boolean;
   readonly remedy: string | undefined;
+  readonly resources: string | undefined;
+  readonly retryAfterMs: number | undefined;
+  readonly timedOut: boolean | undefined;
 
   constructor(init: MagentoRestErrorInit) {
     super(init.message, init.cause !== undefined ? { cause: init.cause } : undefined);
@@ -43,6 +52,9 @@ export class MagentoRestError extends Error {
     this.status = init.status;
     this.retryable = init.retryable ?? false;
     this.remedy = init.remedy;
+    this.resources = init.resources;
+    this.retryAfterMs = init.retryAfterMs;
+    this.timedOut = init.timedOut;
   }
 }
 
@@ -123,7 +135,7 @@ function extractAclResources(status: number, bodyText: string): string | undefin
   return undefined;
 }
 
-export function classifyFailure(status: number, bodyText: string): MagentoRestError {
+export function classifyFailure(status: number, bodyText: string, retryAfterMs?: number): MagentoRestError {
   const kind = kindForStatus(status);
   const template = extractTemplate(bodyText);
   const resources = extractAclResources(status, bodyText);
@@ -138,5 +150,7 @@ export function classifyFailure(status: number, bodyText: string): MagentoRestEr
     status,
     retryable: RETRYABLE_STATUSES.has(status),
     ...(remedy !== undefined ? { remedy } : {}),
+    ...(resources !== undefined ? { resources } : {}),
+    ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
   });
 }

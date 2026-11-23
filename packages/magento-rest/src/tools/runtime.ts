@@ -20,6 +20,7 @@ import { createMagentoTokenProvider } from "../credential-provider.js";
 import { parseGroups } from "./index.js";
 import { FieldConfigError, applyFieldConfig, parseFieldConfig, type FieldConfig } from "./field-config.js";
 import { BASE_SHAPES } from "./shapes.js";
+import { errorBodyFor, ToolArgumentError, type ToolErrorBody } from "./tool-error.js";
 
 export const BASE_URL_ENV_VAR = "MAGENTO_REST_BASE_URL";
 export const ALLOW_WRITES_ENV_VAR = "MAGENTO_REST_ALLOW_WRITES";
@@ -128,25 +129,27 @@ export function readDatabaseSettingsFromEnv(): DatabaseSettings | undefined {
 export interface ErrorResult {
   readonly isError: true;
   readonly content: readonly { readonly type: "text"; readonly text: string }[];
+  /** The typed error (Kora contract R-8); `message` repeats the text. */
+  readonly structuredContent: { readonly error: ToolErrorBody };
 }
 
-function errorResult(text: string): ErrorResult {
-  return { isError: true, content: [{ type: "text", text }] };
+function errorResult(text: string, error: unknown): ErrorResult {
+  return { isError: true, content: [{ type: "text", text }], structuredContent: { error: errorBodyFor(error, text) } };
 }
 
 /** Renders a thrown error as an MCP error result. `defineTool.invoke` has already handled the credential errors. */
 export function toErrorResult(error: unknown): ErrorResult {
   if (error instanceof MagentoRestError) {
-    return errorResult(error.remedy !== undefined ? `${error.message}\nRemedy: ${error.remedy}` : error.message);
+    return errorResult(error.remedy !== undefined ? `${error.message}\nRemedy: ${error.remedy}` : error.message, error);
   }
-  if (error instanceof SqlGuardError || error instanceof DatabaseError || error instanceof DatabaseConfigError) {
-    return errorResult(redact(error.message));
+  if (error instanceof ToolArgumentError || error instanceof SqlGuardError || error instanceof DatabaseError || error instanceof DatabaseConfigError) {
+    return errorResult(redact(error.message), error);
   }
   if (error instanceof ZodError) {
     const issues = error.issues.map((issue) => `${issue.path.length > 0 ? issue.path.join(".") : "(root)"}: ${issue.message}`);
-    return errorResult(`Invalid arguments: ${issues.join("; ")}`);
+    return errorResult(`Invalid arguments: ${issues.join("; ")}`, error);
   }
-  return errorResult(`Unexpected error: ${error instanceof Error ? redact(error.message) : "unknown failure"}`);
+  return errorResult(`Unexpected error: ${error instanceof Error ? redact(error.message) : "unknown failure"}`, error);
 }
 
 const MAX_FIELDS_FILE_BYTES = 64 * 1024;

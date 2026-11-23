@@ -57,6 +57,11 @@ export interface ToolCallResult {
   /** Present when the tool declares an `outputSchema`: the result itself, which `content` mirrors as text. */
   readonly structuredContent?: Record<string, unknown>;
   readonly isError?: boolean;
+  /**
+   * Why `invoke` itself answered with an error, so a server can type it for its host: `credential` when no usable
+   * credential was found, `too_large` when a structured result was over the output cap. Absent otherwise.
+   */
+  readonly errorKind?: "credential" | "too_large";
 }
 
 export interface ToolDefinition<TIn extends z.ZodObject, TOut, D extends string> {
@@ -113,7 +118,7 @@ export function defineTool<TIn extends z.ZodObject, TOut, const D extends string
           // An immediate, actionable failure — never a hang waiting for
           // input an MCP server has no TTY to provide (design.md,
           // Decision 5).
-          return { content: [{ type: "text", text: error.message }], isError: true };
+          return { content: [{ type: "text", text: error.message }], isError: true, errorKind: "credential" };
         }
         throw error;
       }
@@ -126,6 +131,7 @@ export function defineTool<TIn extends z.ZodObject, TOut, const D extends string
           return {
             content: [{ type: "text", text: `The result is ${bytes} bytes, over the ${DEFAULT_MAX_OUTPUT_BYTES}-byte limit; ask for fewer records.` }],
             isError: true,
+            errorKind: "too_large",
           };
         }
         return { content: [{ type: "text", text: json }], structuredContent: result as Record<string, unknown> };
