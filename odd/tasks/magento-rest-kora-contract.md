@@ -17,12 +17,13 @@ Out of scope (later version, agreed with Kora): R-8 typed errors, R-10 credentia
 
 - T1 [S3] mcp-core: optional outputSchema + structuredContent in the tool layer; magento-rest mcp.ts passes them to the SDK; check the Ajv stub with an output schema — inline — done (RED 1 → GREEN 16; SDK validates output with zod, not Ajv) — f80e35e
 - T2 [S3,S4] magento-rest read tools: outputSchema per tool and structuredContent with provenance — inline — done (RED 2 transport + 3 factory → GREEN; rest 1049 + conformance 29 incl. end-to-end call on the built bundle) — f80e35e
-- T3 [S5] customer fields out of default projections, re-enable flag — inline
-- T4 [S2] MCP_WRITES_ENABLED with the alias — inline
-- T5 [S1] server.json, mcpName, files, version sync, docs, changeset — inline
+- T3 [S5] customer fields out of default projections, re-enable flag — inline — done (RED 5 → GREEN; review follow-up tests for search, abandoned carts, by-email; MAGENTO_REST_CUSTOMER_DATA) — 044b2ec, fe64a8f
+- T4 [S2] MCP_WRITES_ENABLED with the alias — inline — done (RED 6 → GREEN; end-to-end on the bundle) — 09ced1d
+- T5 [S1] server.json, mcpName, files, version sync, docs, changeset — inline — done (RED mcpName/files and sync → GREEN; vendored schema, ajv validation; npm pack shows server.json)
 
 ## Log
 
 - L1 (2026-11-23, kora-ba, relayed peer session on the owner's behalf): "Kora needs @hiberus-magento/magento-rest to meet Kora's MCP server contract before Kora can install it; 0.1.0 is refused today." Three install blockers: R-19 server.json, R-19 mcpName, R-6 MCP_WRITES_ENABLED. Later: "the three install blockers [...] plus the R-5 provenance block on read tools are what Kora needs first" (provenance is R-3). Then: "please include R-7 (no customer fields in outputs by default)."
 - L2 (2026-11-23, user): "si, adelante" — approves the first version: S1-S5, as 0.2.0.
 - L3 (2026-11-23): gap map (explorer): mcp-core `defineTool` returns text only (define-tool.ts:110, spot-checked); annotations already per effect (R-5 met); write tools filtered before registration (index.ts:129); PII in default allowlists in tools/shapes.ts (customer, order, cart, address); bundle stubs Ajv (mcp.ts:42-54).
+- L4 (2026-11-23): reviews — f80e35e approved (lineage review-b2103ba9be0941e4); findings fixed in d8de825 (exact mirror, no-answer error, distinct endpoints, no `all` store view). d8de825+044b2ec approved (review-36ebae47ecd88045); findings fixed in fe64a8f (customer tools tested off, wording scoped to REST). Accepted, documented: a structured result over 100 KB is refused (was truncated text); name-based PII filter applies at any depth.

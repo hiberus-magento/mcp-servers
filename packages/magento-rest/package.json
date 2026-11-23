@@ -2,6 +2,7 @@
   "name": "@hiberus-magento/magento-rest",
   "version": "0.1.0",
   "description": "MCP server and CLI for the Magento 2 REST API — catalog, orders, customers, stock and content reads, with opt-in write tools.",
+  "mcpName": "io.github.hiberus-magento/magento-rest",
   "keywords": [
     "mcp",
     "mcp-server",
@@ -40,7 +41,8 @@
     "!dist/metafile-*.json",
     "LICENSE",
     "README.md",
-    "THIRD-PARTY-NOTICES.txt"
+    "THIRD-PARTY-NOTICES.txt",
+    "server.json"
   ],
   "scripts": {
     "build": "tsup",

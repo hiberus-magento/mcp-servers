@@ -21,7 +21,8 @@
 //
 // WHAT IT DELIBERATELY DOES NOT SEE:
 //
-//   - Names outside the server's own domain prefix (`PATH`, `HOME`, …).
+//   - Names outside the server's own domain prefix (`PATH`, `HOME`, …), except
+//     the few an MCP host sets for every server (`HOST_STANDARD_ENV_NAMES`).
 //     Those are ambient process environment, not part of a server's
 //     published configuration contract, and `requires.env` has never
 //     declared them. The prefix is derived from the manifest's own `domain`
@@ -58,6 +59,12 @@ function listSourceFiles(dir) {
   }
   return out;
 }
+
+/**
+ * Names an MCP host sets itself, the same for every server, so they cannot carry a server's prefix
+ * (`MCP_WRITES_ENABLED`: the host's write switch). They are checked exactly like a prefixed name.
+ */
+const HOST_STANDARD_ENV_NAMES = new Set(["MCP_WRITES_ENABLED"]);
 
 const ENV_VAR_CONST_PATTERN = /\bconst\s+([A-Za-z_$][\w$]*_ENV_VAR)\s*(?::[^=]+)?=\s*["']([^"']+)["']/g;
 const ANY_STRING_CONST_PATTERN = /\bconst\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*["']([^"']+)["']/g;
@@ -134,12 +141,13 @@ export function requiredEnvNames(server) {
  */
 export function diffServerEnv(server, packagesDir = PACKAGES_DIR) {
   const prefix = envPrefixForDomain(server.domain);
+  const owned = (name) => name.startsWith(prefix) || HOST_STANDARD_ENV_NAMES.has(name);
   const declared = declaredEnvNames(server);
-  const read = new Set([...collectSourceEnvNames(join(packagesDir, server.id, "src"))].filter((name) => name.startsWith(prefix)));
+  const read = new Set([...collectSourceEnvNames(join(packagesDir, server.id, "src"))].filter(owned));
 
-  const offPrefix = [...declared].filter((name) => !name.startsWith(prefix));
+  const offPrefix = [...declared].filter((name) => !owned(name));
   return {
-    declaredButUnread: [...declared].filter((name) => name.startsWith(prefix) && !read.has(name)).sort(),
+    declaredButUnread: [...declared].filter((name) => owned(name) && !read.has(name)).sort(),
     readButUndeclared: [...read].filter((name) => !declared.has(name)).sort(),
     // A declared name outside the server's own prefix cannot be checked by
     // this scanner, so it is surfaced rather than quietly treated as fine.

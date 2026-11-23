@@ -6,7 +6,7 @@
 // never replayed, and a plaintext base URL is refused (a Bearer over http is
 // a Bearer on the wire).
 import { StaticTokenProvider } from "@hiberus-magento/mcp-core";
-import { SYNTHETIC_MAGENTO_BASE_URL, SYNTHETIC_MAGENTO_TOKEN } from "@hiberus-magento/mcp-testing";
+import { SYNTHETIC_MAGENTO_BASE_URL, SYNTHETIC_MAGENTO_CUSTOMER_EMAIL, SYNTHETIC_MAGENTO_TOKEN } from "@hiberus-magento/mcp-testing";
 import { describe, expect, it } from "vitest";
 import { createFetchDouble, json } from "../testing/fetch-double.js";
 import { MagentoRestError } from "./errors.js";
@@ -287,7 +287,7 @@ describe("createRestTransport — what answered (provenance)", () => {
   it("reports the method and the path from /rest on, without host or query, with the time Magento answered", async () => {
     const { transport } = build({ "GET /rest/V1/orders": json(200, { items: [] }) });
     const answers: unknown[] = [];
-    await transport.request({ method: "GET", path: "/orders", query: "searchCriteria[filter_groups][0][filters][0][value]=demo%40example.com", onAnswered: (answer) => answers.push(answer) });
+    await transport.request({ method: "GET", path: "/orders", query: `searchCriteria[filter_groups][0][filters][0][value]=${encodeURIComponent(SYNTHETIC_MAGENTO_CUSTOMER_EMAIL)}`, onAnswered: (answer) => answers.push(answer) });
     expect(answers).toEqual([{ endpoint: "GET /rest/V1/orders", readAt: "1970-01-01T00:00:00.000Z" }]);
   });
 

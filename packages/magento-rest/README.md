@@ -202,8 +202,10 @@ effect without a restart.
 
 ## Read-only by default
 
-With `MAGENTO_REST_ALLOW_WRITES` unset, or set to anything but the exact string
-`true`, the server registers **read tools only**: a write tool is absent from
+With `MCP_WRITES_ENABLED` and `MAGENTO_REST_ALLOW_WRITES` unset, or set to anything
+but the exact string `true`, the server registers **read tools only**. An MCP host
+sets `MCP_WRITES_ENABLED` itself; when it is present it decides alone, and
+`MAGENTO_REST_ALLOW_WRITES` (the switch for standalone use) is ignored. A write tool is then absent from
 `tools/list`, not merely refused when called. The choice is made once at
 startup. Reads that hit a `429` or `5xx` are retried with backoff; a write is
 sent exactly once, because replaying an invoice or a refund after an ambiguous
@@ -253,6 +255,52 @@ SKUs contain `/` and the store runs behind Apache, set
 the product works: `magentorest_advanced_product_search` with `field: sku`
 returns its summary, because the SKU then travels in the query string. Not
 checked against a live Apache.
+
+## What a read returns
+
+Every read tool declares an `outputSchema` and answers with `structuredContent`,
+mirrored exactly as JSON text:
+
+```json
+{
+  "result": { "increment_id": "000000042", "status": "processing", "grand_total": 59.9 },
+  "provenance": {
+    "endpoint": "GET /rest/V1/orders/42",
+    "api_version": "V1",
+    "read_at": "2026-11-23T10:00:00.000Z",
+    "store_view": "default"
+  }
+}
+```
+
+`result` is the projected answer (its fields are the tool's allowlist, so the
+schema is derived from it). `provenance` says where and when the data was read:
+`endpoint` is the method and path from `/rest` on, with no host, query string or
+token; `endpoints` lists each distinct one when a tool used several; `read_at` is
+when Magento answered; `store_view` appears when the URL named one. A result whose
+JSON is over 100,000 bytes is refused with an error: ask for fewer records. Write
+tools answer with text, as before.
+
+## Customer data is off by default
+
+Results carry **no customer personal data** unless the server runs with
+`MAGENTO_REST_CUSTOMER_DATA=true`: no names, email, phone, street, date of birth,
+tax number, gender or IP, no `customer_*` identity on an order, no `customer` on a
+cart, and no city or postcode on a customer's addresses. An order still has its
+number, status, totals and lines. A `MAGENTO_REST_FIELDS_FILE` cannot add these
+fields back while the switch is off. The database tools are not filtered: they
+return what their SQL selects.
+
+## Using it from an MCP host (`server.json`)
+
+The package ships a `server.json` (the MCP registry's server manifest, schema
+`2025-12-11`) in its root, and `package.json` carries the matching `mcpName`
+(`io.github.hiberus-magento/magento-rest`). A host that builds its configuration
+form from it sees four variables: `MAGENTO_REST_BASE_URL` and `MAGENTO_REST_TOKEN`
+(required, the token secret), `MAGENTO_REST_GROUPS`, and `MCP_WRITES_ENABLED`
+(boolean, default `false`). The standalone write switch, customer data, the field
+file and the database are deliberately not declared, so a host's form cannot turn
+them on.
 
 ## Tool groups
 

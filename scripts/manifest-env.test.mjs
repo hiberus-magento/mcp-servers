@@ -92,6 +92,17 @@ describe("diffServerEnv", () => {
     const packagesDir = writePackage({ "demo/src/a.ts": "const x = 1;\n" });
     expect(diffServerEnv(offPrefix, packagesDir).declaredOutsidePrefix).toEqual(["UNRELATED_TOKEN"]);
   });
+
+  // MCP_WRITES_ENABLED is a name MCP hosts set themselves, the same for every server, so it cannot carry the
+  // server's prefix. It is checked like a prefixed name: declared must mean read, and read must mean declared.
+  it("checks the host-standard MCP_WRITES_ENABLED against the sources like a prefixed name", () => {
+    const declares = { id: "demo", domain: "demo", requires: { env: [{ name: "MCP_WRITES_ENABLED", required: false }] } };
+    const reads = writePackage({ "demo/src/a.ts": 'const w = process.env["MCP_WRITES_ENABLED"];\n' });
+    expect(diffServerEnv(declares, reads)).toEqual({ declaredButUnread: [], readButUndeclared: [], declaredOutsidePrefix: [] });
+    const silent = writePackage({ "demo/src/a.ts": "const x = 1;\n" });
+    expect(diffServerEnv(declares, silent).declaredButUnread).toEqual(["MCP_WRITES_ENABLED"]);
+    expect(diffServerEnv({ ...declares, requires: { env: [] } }, reads).readButUndeclared).toEqual(["MCP_WRITES_ENABLED"]);
+  });
 });
 
 describe("servers.json agrees with the packages it describes", () => {

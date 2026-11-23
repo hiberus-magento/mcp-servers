@@ -68,7 +68,9 @@ off.
 
 With `MAGENTO_REST_ALLOW_WRITES` unset — or set to anything but the exact string
 `true` (`1`, `yes` and `TRUE` do **not** count) — the server registers **read
-tools only**. A write tool is then not "refused when called"; it is **absent
+tools only**. An MCP host sets `MCP_WRITES_ENABLED` instead: when that variable
+is present it decides alone, with the same exact-`true` rule, and
+`MAGENTO_REST_ALLOW_WRITES` is ignored. A write tool is then not "refused when called"; it is **absent
 from `tools/list`**, so an agent cannot be talked into calling something it was
 never shown. The choice is made once, when the server starts, and logged to
 stderr when write mode is on.
@@ -250,6 +252,12 @@ whole address books — with every module an instance installs, and returning th
 parsed body would send all of them to the model. A field that is not on the
 list for that tool cannot reach the agent; widening a list is a reviewed change
 to `packages/magento-rest/src/tools/shapes.ts`.
+
+A read answers with `structuredContent` `{ result, provenance }` against a
+declared `outputSchema`; `provenance` names the endpoint (no host, query or
+token) and when Magento answered. Customer personal data (names, email, an
+order's customer identity, a cart's customer, the city and postcode of a
+customer's addresses) is left out unless `MAGENTO_REST_CUSTOMER_DATA=true`.
 
 ### Showing more or fewer fields (`MAGENTO_REST_FIELDS_FILE`)
 

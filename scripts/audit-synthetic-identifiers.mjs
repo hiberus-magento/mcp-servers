@@ -64,6 +64,8 @@ const SAFE_DOMAINS = new Set([
   "npmjs.com",
   "registry.npmjs.org",
   "modelcontextprotocol.io",
+  // Where the MCP registry publishes its server.json schema; a server.json's `$schema` must name it.
+  "static.modelcontextprotocol.io",
   "json-schema.org",
   "apache.org",
   "opensource.org",
@@ -168,7 +170,9 @@ const TEXT_EXTENSIONS = /\.(md|ts|tsx|js|mjs|cjs|json|ya?ml|txt|csv|html|sh)$/i;
 // This audit's own test file is excluded for the same reason the eslint
 // fixtures are: it contains deliberate violations, and flagging them would
 // mean the check can never pass.
-const EXCLUDED_PATHS = /node_modules|\/dist\/|\.turbo|\.git\/|pnpm-lock\.yaml|CHANGELOG\.md|audit-synthetic-identifiers\.test\.mjs/;
+// `schema/mcp-server.*.schema.json` is the MCP registry's published server.json schema, vendored verbatim so tests
+// validate offline; its examples name third-party registries, and editing them would make it no longer that schema.
+const EXCLUDED_PATHS = /node_modules|\/dist\/|\.turbo|\.git\/|pnpm-lock\.yaml|CHANGELOG\.md|audit-synthetic-identifiers\.test\.mjs|\/schema\/mcp-server\.[^/]+\.schema\.json$/;
 
 export function listCandidateFiles() {
   // Originally this scanned only fixture directories and `*.example.*` files
