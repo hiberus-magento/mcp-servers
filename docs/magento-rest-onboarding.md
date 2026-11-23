@@ -51,6 +51,19 @@ run in the `all` (global) scope instead, or in the store view an agent names
 with `store_code`: through the default store view they would change only that
 store view's values. See "Store scope of writes" in the package README.
 
+A store with **Stores > Configuration > General > Web > Url Options > Add Store
+Code to Urls** turned on answers `/rest/...` with a redirect to
+`/<store code>/rest/...`. The server does not follow redirects (it would send the
+token somewhere you did not configure); it fails with `invalid_argument` on
+`MAGENTO_REST_BASE_URL` and names the base URL to use, for example
+`https://demo-host.example-domain/es/rest/all/V1`. Set that one. A store behind a
+CDN that only lets `/rest/all/V*` through needs the `all` form.
+
+A machine behind a TLS-inspecting corporate proxy sees the proxy's certificate,
+and Node refuses it (`SELF_SIGNED_CERT_IN_CHAIN`, reported as `unavailable`).
+Start Node with `--use-system-ca` (see `node --help`) so it trusts the CA the operating
+system already trusts, or point `NODE_EXTRA_CA_CERTS` at the proxy's CA.
+
 It must be **https**. Plain `http` is accepted only for `localhost`, because a
 Bearer sent over plain http is a Bearer on the wire. A URL with credentials
 embedded in it (`https://user:pass@…`) is refused: the token travels in a

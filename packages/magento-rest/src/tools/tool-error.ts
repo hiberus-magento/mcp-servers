@@ -8,7 +8,7 @@
 //   rate_limited         429                                                         retry_after_ms
 //   timeout              Magento did not answer within the per-attempt limit
 //   unavailable          network, DNS, 5xx, maintenance                              http_status when there was one
-//   invalid_argument     an argument this server rejects                             argument
+//   invalid_argument     an argument this server rejects (MAGENTO_REST_BASE_URL on a redirect)  argument
 //   not_found            a record a write needs does not exist (R-24)                argument
 //   upstream_error       any other Magento failure                                   http_status
 //
@@ -59,6 +59,9 @@ function forMagento(error: MagentoRestError): ToolErrorBody {
       return error.timedOut === true ? { code: "timeout" } : { code: "unavailable" };
     case "server":
       return { code: "unavailable", ...status };
+    case "redirected":
+      // The store answers at another address: the base URL is the argument to change.
+      return { code: "invalid_argument", argument: "MAGENTO_REST_BASE_URL", ...status };
     default:
       return { code: "upstream_error", ...status };
   }

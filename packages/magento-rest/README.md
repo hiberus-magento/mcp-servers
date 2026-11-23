@@ -215,6 +215,14 @@ the reply is `406`. A tool that fails answers HTTP `200` with `"isError": true`.
 status codes, the setup for reaching it from another container, and its limits (one store per process, the
 integration's identity on every call).
 
+### A store that adds the store code to its URLs
+
+With *Add Store Code to Urls* on, Magento answers `/rest/...` with a redirect to
+`/<store code>/rest/...`. Redirects are never followed (that would re-send the
+token somewhere you did not configure): the call fails with `invalid_argument` on
+`MAGENTO_REST_BASE_URL`, and its message names the base URL to use instead, for
+example `https://<host>/es/rest/all/V1`.
+
 ## Credentials
 
 A Magento **integration Access Token** (or an admin token), sent as a Bearer. It

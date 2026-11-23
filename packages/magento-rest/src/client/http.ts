@@ -118,6 +118,38 @@ function cancelled(cause?: unknown): MagentoRestError {
   return new MagentoRestError({ kind: "transport", message: "Magento REST request was cancelled by the client.", retryable: false, ...(cause !== undefined ? { cause } : {}) });
 }
 
+/**
+ * A redirect is not followed: it would re-send the request, token included, somewhere the operator never configured.
+ * A store with "Add Store Code to Urls" on redirects `/rest/...` to `/<store code>/rest/...`; when the target ends in
+ * the same request path, what comes before it is the base URL to use, and the failure says so. Nothing of the
+ * target's query string is repeated.
+ */
+function redirectFailure(response: Response, requested: string, path: string): MagentoRestError {
+  let suggestedBaseUrl: string | undefined;
+  const location = response.headers.get("location");
+  if (location !== null) {
+    try {
+      const target = new URL(location, requested);
+      if (target.pathname.endsWith(path) && target.pathname.length > path.length) {
+        suggestedBaseUrl = `${target.origin}${target.pathname.slice(0, -path.length)}`;
+      }
+    } catch {
+      // An unreadable Location suggests nothing.
+    }
+  }
+  const advice =
+    suggestedBaseUrl !== undefined
+      ? `Set MAGENTO_REST_BASE_URL to ${suggestedBaseUrl}.`
+      : 'Check MAGENTO_REST_BASE_URL: a store with "Add Store Code to Urls" on redirects /rest/ to /<store code>/rest/.';
+  return new MagentoRestError({
+    kind: "redirected",
+    message: `Magento answered HTTP ${response.status} with a redirect instead of the data; redirects are not followed. ${advice}`,
+    status: response.status,
+    retryable: false,
+    ...(suggestedBaseUrl !== undefined ? { suggestedBaseUrl } : {}),
+  });
+}
+
 function retryAfterMs(response: Response): number | undefined {
   const header = response.headers.get("retry-after");
   if (header === null || !/^\d+$/.test(header.trim())) {
@@ -174,6 +206,9 @@ export function createRestTransport(deps: RestTransportDeps): RestTransport {
       };
     }
 
+    if (response.status >= 300 && response.status < 400) {
+      return { failure: redirectFailure(response, `${root}${request.path}`, request.path) };
+    }
     if (!response.ok) {
       const after = retryAfterMs(response);
       return { failure: classifyFailure(response.status, text, after), ...(after !== undefined ? { retryAfterMs: after } : {}) };
