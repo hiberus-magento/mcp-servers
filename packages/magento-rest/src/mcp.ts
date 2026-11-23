@@ -114,12 +114,18 @@ function assembleTools(): readonly MagentoRestTool[] {
 for (const tool of assembleTools()) {
   server.registerTool(
     tool.name,
-    { description: tool.description, inputSchema: tool.inputSchema.shape, annotations: tool.annotations },
+    {
+      description: tool.description,
+      inputSchema: tool.inputSchema.shape,
+      // A read tool declares the shape of its `structuredContent` (Kora contract R-2); the SDK lists it and checks every answer against it.
+      ...(tool.outputSchema !== undefined ? { outputSchema: tool.outputSchema.shape } : {}),
+      annotations: tool.annotations,
+    },
     async (args: unknown, extra) => {
       try {
         // The SDK aborts `extra.signal` when the client sends notifications/cancelled for this call.
         const result = await tool.invoke(args, { signal: extra.signal });
-        return { content: [...result.content], isError: result.isError };
+        return { content: [...result.content], ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {}), isError: result.isError };
       } catch (error) {
         // `defineTool.invoke` already answers the credential errors; anything
         // else (a classified Magento failure, an invalid argument, a

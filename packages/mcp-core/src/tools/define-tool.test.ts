@@ -86,3 +86,40 @@ describe("defineTool().invoke", () => {
     expect(result.content[0]?.text).toContain(REMEDY.configPath);
   });
 });
+
+describe("defineTool() with an output schema", () => {
+  const outputSchema = z.object({ greeting: z.string() });
+
+  it("carries the output schema and returns the handler result as structuredContent, mirrored as text", async () => {
+    const tool = defineTool({
+      name: "greet-structured",
+      description: "Greets a name, structured.",
+      inputSchema: z.object({ name: z.string() }),
+      outputSchema,
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+      handler: async (args) => ({ greeting: `hello ${args.name}` }),
+    });
+
+    const result = await tool.invoke({ name: "Ada" }, {});
+
+    expect(tool.outputSchema).toBe(outputSchema);
+    expect(result.structuredContent).toEqual({ greeting: "hello Ada" });
+    expect(result.content).toEqual([{ type: "text", text: JSON.stringify({ greeting: "hello Ada" }) }]);
+    expect(result.isError).toBeUndefined();
+  });
+
+  it("returns no structuredContent when the tool declares no output schema", async () => {
+    const tool = defineTool({
+      name: "greet-plain",
+      description: "Greets a name.",
+      inputSchema: z.object({ name: z.string() }),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+      handler: async (args) => ({ greeting: `hello ${args.name}` }),
+    });
+
+    const result = await tool.invoke({ name: "Ada" }, {});
+
+    expect(tool.outputSchema).toBeUndefined();
+    expect(result.structuredContent).toBeUndefined();
+  });
+});

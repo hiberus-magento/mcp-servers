@@ -54,6 +54,8 @@ export interface ToolCallContent {
 
 export interface ToolCallResult {
   readonly content: readonly ToolCallContent[];
+  /** Present when the tool declares an `outputSchema`: the result itself, which `content` mirrors as text. */
+  readonly structuredContent?: Record<string, unknown>;
   readonly isError?: boolean;
 }
 
@@ -61,6 +63,11 @@ export interface ToolDefinition<TIn extends z.ZodObject, TOut, D extends string>
   readonly name: string;
   readonly description: NonEmpty<D>;
   readonly inputSchema: TIn;
+  /**
+   * The shape of a successful result. When present, the handler's result is returned as `structuredContent` (an MCP
+   * client validates it against this schema) and mirrored as JSON text in `content`, so the handler must return an object.
+   */
+  readonly outputSchema?: z.ZodObject;
   readonly annotations: ToolAnnotations;
   readonly handler: (args: z.infer<TIn>, ctx: ToolContext) => Promise<TOut>;
 }
@@ -69,6 +76,7 @@ export interface RegisteredTool<TIn extends z.ZodObject, TOut> {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: TIn;
+  readonly outputSchema?: z.ZodObject;
   readonly annotations: ToolAnnotations;
   readonly handler: (args: z.infer<TIn>, ctx: ToolContext) => Promise<TOut>;
   invoke(rawArgs: unknown, ctx: ToolContext): Promise<ToolCallResult>;
@@ -91,6 +99,7 @@ export function defineTool<TIn extends z.ZodObject, TOut, const D extends string
     name: def.name,
     description: def.description,
     inputSchema: def.inputSchema,
+    ...(def.outputSchema !== undefined ? { outputSchema: def.outputSchema } : {}),
     annotations: def.annotations,
     handler: def.handler,
     async invoke(rawArgs, ctx) {
@@ -108,6 +117,9 @@ export function defineTool<TIn extends z.ZodObject, TOut, const D extends string
         throw error;
       }
       const text = truncate(toTextContent(result), DEFAULT_MAX_OUTPUT_BYTES);
+      if (def.outputSchema !== undefined) {
+        return { content: [{ type: "text", text }], structuredContent: result as Record<string, unknown> };
+      }
       return { content: [{ type: "text", text }] };
     },
   };

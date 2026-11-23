@@ -13,6 +13,7 @@
 //   - with `MAGENTO_REST_ALLOW_WRITES=true`, it carries the write tools too,
 //     and every read tool is present in both modes.
 import { spawn } from "node:child_process";
+import { createServer, type Server } from "node:http";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -40,6 +41,7 @@ describeConformance({
 interface ListedTool {
   readonly name: string;
   readonly annotations?: { readonly readOnlyHint?: boolean };
+  readonly outputSchema?: { readonly type?: string; readonly properties?: Record<string, unknown>; readonly required?: readonly string[] };
 }
 
 async function listTools(env: NodeJS.ProcessEnv): Promise<{ tools: readonly ListedTool[]; close: () => void }> {
@@ -87,6 +89,69 @@ describe(`magento-rest tool surface on the built bundle: ${serverPath}`, () => {
 
     it("serves the read tools and the write tools", () => {
       expect(listed.map((t) => t.name).sort()).toEqual([...reads, ...writes].sort());
+    });
+
+    it("every read tool declares an object output schema with result and provenance; no write tool declares one", () => {
+      for (const tool of listed) {
+        if (reads.includes(tool.name)) {
+          expect(tool.outputSchema?.type, tool.name).toBe("object");
+          expect(tool.outputSchema?.required, tool.name).toEqual(["result", "provenance"]);
+        } else {
+          expect(tool.outputSchema, tool.name).toBeUndefined();
+        }
+      }
+    });
+
+    it("lists exactly the same tools, schemas included, on a second listing", async () => {
+      const again = await listTools({ MAGENTO_REST_ALLOW_WRITES: "true" });
+      try {
+        const byName = (tools: readonly ListedTool[]): string => JSON.stringify([...tools].sort((a, b) => a.name.localeCompare(b.name)));
+        expect(byName(again.tools)).toBe(byName(listed));
+      } finally {
+        again.close();
+      }
+    });
+  });
+
+  describe("a read call answered by a local Magento double", () => {
+    let magento: Server;
+    let baseUrl: string;
+    beforeAll(async () => {
+      magento = createServer((request, response) => {
+        response.setHeader("Content-Type", "application/json");
+        response.end(request.url?.startsWith("/rest/V1/products/") === true ? JSON.stringify({ id: 7, sku: "DEMO-TENT-001", name: "Demo tent", password_hash: "x" }) : "{}");
+      });
+      await new Promise<void>((resolve) => magento.listen(0, "127.0.0.1", resolve));
+      const address = magento.address();
+      baseUrl = `http://127.0.0.1:${typeof address === "object" && address !== null ? address.port : 0}/rest/V1`;
+    });
+    afterAll(() => {
+      magento.close();
+    });
+
+    it("answers with structuredContent that carries the projected record and where and when it was read", async () => {
+      const client = new JsonRpcClient({
+        command: process.execPath,
+        args: [serverPath],
+        env: { ...(process.env.PATH !== undefined ? { PATH: process.env.PATH } : {}), MAGENTO_REST_BASE_URL: baseUrl, MAGENTO_REST_TOKEN: "mr-demo-token" },
+      });
+      try {
+        await client.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "magento-rest-structured", version: "0.0.0" } });
+        client.notify("notifications/initialized");
+        const result = (await client.request("tools/call", { name: "magentorest_get_product_by_sku", arguments: { sku: "DEMO-TENT-001" } })) as {
+          readonly isError?: boolean;
+          readonly structuredContent?: { readonly result?: Record<string, unknown>; readonly provenance?: Record<string, unknown> };
+          readonly content: readonly { readonly text: string }[];
+        };
+        expect(result.isError).toBeFalsy();
+        expect(result.structuredContent?.result).toMatchObject({ id: 7, sku: "DEMO-TENT-001", name: "Demo tent" });
+        expect(result.structuredContent?.result).not.toHaveProperty("password_hash");
+        expect(result.structuredContent?.provenance).toMatchObject({ endpoint: "GET /rest/V1/products/DEMO-TENT-001", api_version: "V1" });
+        expect(String(result.structuredContent?.provenance?.["read_at"])).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+        expect(JSON.parse(result.content[0]?.text ?? "")).toEqual(result.structuredContent);
+      } finally {
+        client.close();
+      }
     });
   });
 
