@@ -88,7 +88,8 @@ const SIZE_ARGUMENTS = ["page_size", "max_pages", "max_rows"] as const;
 
 /**
  * The typed error for an error `invoke` answered itself: a missing or unusable credential is `unauthorized`; a result
- * over the output cap is `invalid_argument` on the tool's own size argument (or `arguments` when it has none).
+ * over the output cap is `invalid_argument` on the tool's own size argument (or `arguments` when it has none);
+ * anything else is `upstream_error`.
  */
 export function invokeErrorBody(result: { readonly content: readonly { readonly text: string }[]; readonly errorKind?: "credential" | "too_large" }, tool: { readonly inputSchema: { readonly shape: Record<string, unknown> } }): ToolErrorBody {
   const message = result.content[0]?.text;
@@ -97,5 +98,6 @@ export function invokeErrorBody(result: { readonly content: readonly { readonly 
     const argument = SIZE_ARGUMENTS.find((name) => Object.hasOwn(tool.inputSchema.shape, name)) ?? "arguments";
     return { code: "invalid_argument", argument, ...withMessage };
   }
-  return { code: "unauthorized", ...withMessage };
+  if (result.errorKind === "credential") return { code: "unauthorized", ...withMessage };
+  return { code: "upstream_error", ...withMessage };
 }

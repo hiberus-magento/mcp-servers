@@ -340,7 +340,8 @@ one it inherits, or `null` when there is none. An unknown SKU returns
 before anything is sent. It reads the product first, so an unknown SKU or image is
 a `not_found` error and no product is ever created; checks lengths (255 characters
 for the name, meta title, meta description and labels; 65,535 bytes for the
-descriptions), because Magento would silently truncate; sends only the values
+descriptions), because Magento would silently truncate, and refuses an empty value
+(clearing a store view's value is not supported) or the same image twice; sends only the values
 that differ from what it read (the full media entry for a changed label); and
 returns the content read back. Repeating the same call sends nothing.
 

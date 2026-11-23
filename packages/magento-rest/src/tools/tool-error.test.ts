@@ -70,6 +70,10 @@ describe("toErrorResult", () => {
 describe("invokeErrorBody", () => {
   const tool = (shape: Record<string, unknown>) => ({ inputSchema: { shape } });
 
+  it("an error result invoke gives without a known kind is upstream_error, never unauthorized", () => {
+    expect(invokeErrorBody({ content: [{ text: "something else" }] }, tool({}))).toEqual({ code: "upstream_error", message: "something else" });
+  });
+
   it("a missing credential is unauthorized, carrying the remedy text", () => {
     expect(invokeErrorBody({ content: [{ text: "Missing credential for domain magento-rest." }], errorKind: "credential" }, tool({}))).toEqual({ code: "unauthorized", message: "Missing credential for domain magento-rest." });
   });

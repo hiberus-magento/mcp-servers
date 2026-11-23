@@ -150,13 +150,19 @@ function checkedChange(content: { readonly [K in ContentField]?: string | undefi
     const value = content?.[field];
     if (value === undefined) continue;
     const argument = `content.${field}`;
-    if (field === "name" && value === "") throw new ToolArgumentError("invalid_argument", argument, "A product name cannot be empty.");
+    // Magento reads an empty value back as no value, so an empty write could never be confirmed by the read-back
+    // (and a repeat would write again); clearing a store view's value is not offered.
+    if (value === "") throw new ToolArgumentError("invalid_argument", argument, `${field} cannot be empty: clearing a value is not supported.`);
     const maxChars = MAX_CHARS[field];
     if (maxChars !== undefined && [...value].length > maxChars) throw new ToolArgumentError("invalid_argument", argument, `${field} is at most ${maxChars} characters.`);
     if (maxChars === undefined && Buffer.byteLength(value, "utf8") > MAX_TEXT_BYTES) throw new ToolArgumentError("invalid_argument", argument, `${field} is at most ${MAX_TEXT_BYTES} bytes.`);
   }
+  const seen = new Set<string>();
   const checkedImages = (images ?? []).map((image, index) => {
     if (!/^[1-9][0-9]{0,9}$/.test(image.id)) throw new ToolArgumentError("invalid_argument", `images[${index}].id`, "An image id is the media entry id as a decimal string, for example \"12\".");
+    // Two labels for one image would write twice and leave a repeat call with something to change.
+    if (seen.has(image.id)) throw new ToolArgumentError("invalid_argument", `images[${index}].id`, "Each image id may appear once.");
+    seen.add(image.id);
     if (image.label === "") throw new ToolArgumentError("invalid_argument", `images[${index}].label`, "A label cannot be empty: Magento stores an empty label as no label.");
     if ([...image.label].length > MAX_LABEL_CHARS) throw new ToolArgumentError("invalid_argument", `images[${index}].label`, `A label is at most ${MAX_LABEL_CHARS} characters.`);
     return { id: Number(image.id), label: image.label };
