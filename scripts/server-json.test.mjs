@@ -72,8 +72,8 @@ describe("server.json", () => {
       const documented = new Map(entry.requires.env.map((variable) => [variable.name, variable]));
       for (const variable of server.packages[0].environmentVariables) {
         expect(documented.has(variable.name), variable.name).toBe(true);
-        if (REQUIRED_FOR_A_HOST[dir]?.includes(variable.name) === true) continue;
-        expect(variable.isRequired === true, `${variable.name} isRequired`).toBe(documented.get(variable.name).required);
+        const required = REQUIRED_FOR_A_HOST[dir]?.includes(variable.name) === true ? true : documented.get(variable.name).required;
+        expect(variable.isRequired === true, `${variable.name} isRequired`).toBe(required);
       }
     });
   });
