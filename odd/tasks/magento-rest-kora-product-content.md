@@ -16,13 +16,16 @@ Out of scope (later): R-10 credential-file fallback, R-13 timeout budget, R-14 s
 
 ## Tasks
 
-- T0 [S1,S2,S4] Magento-source premise check: effective values on a store-view GET (attributes and media labels), what a partial store-view PUT writes (only sent attributes, or a copy of others into the store view), media label PUT per store view, error answers for unknown SKU/image/store and too-long values — delegated (researcher, read-only: named uncertainty)
-- T1 [S6] typed error structuredContent for every tool failure — inline
-- T2 [S1] magentorest_get_product_content — inline
-- T3 [S2,S3,S4,S5] magentorest_update_product_content — inline, after T0
-- T4 docs, servers.json, changeset — inline
+- T0 [S1,S2,S4] Magento-source premise check: effective values on a store-view GET (attributes and media labels), what a partial store-view PUT writes (only sent attributes, or a copy of others into the store view), media label PUT per store view, error answers for unknown SKU/image/store and too-long values — delegated (researcher, read-only: named uncertainty) — done (L3)
+- T1 [S6] typed error structuredContent for every tool failure — inline — done (RED 10+3 → GREEN; end-to-end 401 → permission_missing) — 973cc6e
+- T2 [S1] magentorest_get_product_content — inline — done (tests with the module; mutation-checked; end-to-end on the bundle)
+- T3 [S2,S3,S4,S5] magentorest_update_product_content — inline, after T0 — done (diff-only writes, idempotent repeat, length/store-view checks before any call; mutation-checked)
+- T4 docs, servers.json, changeset — inline — done
 
 ## Log
 
 - L1 (2026-11-23, kora-ba, peer session on the owner's behalf): "For the next version, Kora's priority would be R-20..R-24 (the product content read/write pair, which unlocks Kora's content-update action), then R-8 structured errors; I'll confirm once the live run tells us more."
 - L2 (2026-11-23, user): "arranca con la siguiente versión para Kora"
+- L3 (2026-11-23): Magento-source research (T0). GET in a store view returns effective values; labels IFNULL(store, default); absent attributes omitted. A store-view product PUT writes store-level gallery rows for every image (Gallery/CreateHandler::processNewAndExistingImages, spot-checked in 2.4.7); media PUT replaces the whole entry and needs media_type; 2.4.6 pins payload values equal to inherited; PUT on an unknown SKU creates a product; too-long varchar values are truncated silently; no attribute-only REST route. Options (a) core REST + mitigations, (b) module, (c) hold the write.
+- L4 (2026-11-23, kora-ba relaying the owner): "The owner chose option (a): content writes through standard Magento REST, no Magento module, with the image-inheritance side effect documented." Mandatory: "Read first: an unknown SKU or image id is not_found with argument, and a product is never created"; "Send only the fields whose value differs from the read"; "Validate lengths before any call and refuse with invalid_argument plus argument"; "When a label changes, send the full media entry"; "Refuse store_view all, admin, empty or absent without calling Magento (R-22)"; "content writes require Magento 2.4.7+ [...] If it cannot, say so in the description and the README"; idempotence; "The side effect must be stated in the write tool's description and in the README, in plain words: every image of the product gets store-view rows that stop inheriting future default changes"; annotations readOnlyHint false, destructiveHint true, idempotentHint true.
+- L5 (2026-11-23, kora-ba): "Keep the magentorest_ prefix"; "images[].id must be a JSON string, in both the output and the write input [...] emit it as its decimal string ("12") and accept that same string in update_product_content's images[].id."

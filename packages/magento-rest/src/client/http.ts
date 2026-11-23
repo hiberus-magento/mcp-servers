@@ -224,7 +224,8 @@ export function createRestTransport(deps: RestTransportDeps): RestTransport {
           random,
         );
         if (!decision.retry) {
-          throw outcome.failure;
+          // An HTTP answer (it has a status) says where and when it came from, like a success does.
+          throw outcome.failure.status !== undefined ? outcome.failure.withAnswer(answerFor(request, root)) : outcome.failure;
         }
         await deps.sleep(decision.delayMs);
       }

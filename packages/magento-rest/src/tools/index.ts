@@ -23,6 +23,7 @@ import { databaseTools } from "./database-tools.js";
 import { withoutCustomerDataShapes } from "./customer-data.js";
 import { applyFieldConfig, type FieldConfig } from "./field-config.js";
 import { createToolFactory, type MagentoRestTool, type ToolFactory } from "./rest-tool.js";
+import { productContentTools } from "./product-content-tools.js";
 import { productTools } from "./products-tools.js";
 import { promotionTools } from "./promotions-tools.js";
 import { mediaTools } from "./media-tools.js";
@@ -61,7 +62,7 @@ export interface CreateToolsOptions {
  * groups partition the surface and choosing all of them is the same as choosing none.
  */
 const GROUPS = {
-  products: productTools,
+  products: (factory: ToolFactory) => [...productTools(factory), ...productContentTools(factory)],
   store: storeTools,
   categories: categoryTools,
   customers: customerTools,

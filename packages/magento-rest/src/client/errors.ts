@@ -34,6 +34,8 @@ export interface MagentoRestErrorInit {
   readonly retryAfterMs?: number;
   /** A transport failure that was the per-attempt time limit running out. */
   readonly timedOut?: boolean;
+  /** Where and when Magento gave this (failed) answer, for a tool that reports a 404 as a result. */
+  readonly answer?: { readonly endpoint: string; readonly readAt: string; readonly storeView?: string };
 }
 
 export class MagentoRestError extends Error {
@@ -44,6 +46,7 @@ export class MagentoRestError extends Error {
   readonly resources: string | undefined;
   readonly retryAfterMs: number | undefined;
   readonly timedOut: boolean | undefined;
+  readonly answer: MagentoRestErrorInit["answer"];
 
   constructor(init: MagentoRestErrorInit) {
     super(init.message, init.cause !== undefined ? { cause: init.cause } : undefined);
@@ -55,6 +58,23 @@ export class MagentoRestError extends Error {
     this.resources = init.resources;
     this.retryAfterMs = init.retryAfterMs;
     this.timedOut = init.timedOut;
+    this.answer = init.answer;
+  }
+
+  /** The same error, carrying where and when Magento gave it. */
+  withAnswer(answer: NonNullable<MagentoRestErrorInit["answer"]>): MagentoRestError {
+    return new MagentoRestError({
+      kind: this.kind,
+      message: this.message,
+      retryable: this.retryable,
+      ...(this.status !== undefined ? { status: this.status } : {}),
+      ...(this.remedy !== undefined ? { remedy: this.remedy } : {}),
+      ...(this.resources !== undefined ? { resources: this.resources } : {}),
+      ...(this.retryAfterMs !== undefined ? { retryAfterMs: this.retryAfterMs } : {}),
+      ...(this.timedOut !== undefined ? { timedOut: this.timedOut } : {}),
+      ...(this.cause !== undefined ? { cause: this.cause } : {}),
+      answer,
+    });
   }
 }
 
