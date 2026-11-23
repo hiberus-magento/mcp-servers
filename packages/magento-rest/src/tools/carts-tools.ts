@@ -66,8 +66,8 @@ const cartListInputs = {
 type CartListArgs = z.infer<z.ZodObject<typeof cartListInputs>>;
 
 /** One filter per group: groups are AND'd, which is what these mean. */
-async function listCarts(client: MagentoRestClient, args: CartListArgs, leading: readonly SearchFilter[]): Promise<unknown> {
-  const filters: SearchFilter[] = [...leading];
+async function listCarts(client: MagentoRestClient, args: CartListArgs, customerFilters: readonly SearchFilter[]): Promise<unknown> {
+  const filters: SearchFilter[] = [...customerFilters];
   if (args.is_active !== undefined) filters.push({ field: "is_active", value: args.is_active ? 1 : 0 });
   if (args.created_at_from !== undefined) filters.push({ field: "created_at", value: `${args.created_at_from} 00:00:00`, conditionType: "gteq" });
   if (args.created_at_to !== undefined) filters.push({ field: "created_at", value: `${args.created_at_to} 23:59:59`, conditionType: "lteq" });

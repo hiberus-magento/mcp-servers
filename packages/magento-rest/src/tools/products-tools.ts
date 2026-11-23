@@ -20,9 +20,8 @@ import { z } from "zod";
 import { restPath, type MagentoRestClient } from "../client/index.js";
 import { conditionType, currentPage, entityId, fieldName, pageSize, sku, sortDirection, storeCode, inStore, DEFAULT_SEARCH_PAGE_SIZE } from "./inputs.js";
 import type { MagentoRestTool, ToolFactory } from "./rest-tool.js";
-import { LIST_FIELDS, listCriteria, listInputs } from "./list-filters.js";
+import { assertOneSort, LIST_FIELDS, listCriteria, listInputs } from "./list-filters.js";
 import { listOf } from "./shapes.js";
-import { ToolArgumentError } from "./tool-error.js";
 
 const IDENTITY_ATTRIBUTES: ReadonlySet<string> = new Set(["sku", "id", "entity_id", "type_id"]);
 
@@ -99,9 +98,7 @@ export function productTools({ readTool, writeTool, shapes }: ToolFactory): read
         .strict(),
       shape: listOf(shapes.product_summary),
       run: async (args, client) => {
-        if (args.sort !== undefined && (args.sort_field !== undefined || args.sort_direction !== undefined)) {
-          throw new ToolArgumentError("invalid_argument", "sort", "Pass sort, or sort_field and sort_direction, not both.");
-        }
+        assertOneSort(args);
         const result = await client.search("/products", {
           ...listCriteria(
             { filters: args.filters, sort: args.sort ?? { field: args.sort_field ?? "entity_id", direction: args.sort_direction ?? "DESC" } },

@@ -24,10 +24,9 @@
 import { z } from "zod";
 import { MagentoRestError, restPath, type MagentoRestClient, type SearchFilter } from "../client/index.js";
 import { currentPage, entityId, isoDate, pageSize, sortDirection } from "./inputs.js";
-import { LIST_FIELDS, listCriteria, listInputs } from "./list-filters.js";
+import { assertOneSort, LIST_FIELDS, listCriteria, listInputs } from "./list-filters.js";
 import type { MagentoRestTool, ToolFactory } from "./rest-tool.js";
 import { listOf } from "./shapes.js";
-import { ToolArgumentError } from "./tool-error.js";
 
 const LIST_PAGE_SIZE = 20;
 
@@ -72,11 +71,14 @@ const orderListInputs = {
 
 type OrderListArgs = z.infer<z.ZodObject<typeof orderListInputs>>;
 
-/** One filter per group: groups are AND'd, which is what these mean. Newest first by default. */
-async function listOrders(client: MagentoRestClient, args: OrderListArgs, leading: readonly SearchFilter[]): Promise<unknown> {
+/**
+ * One filter per group: groups are AND'd, which is what these mean. Newest first by default. The customer filters go
+ * right after the status, where search_orders has always sent them, so its wire order is unchanged.
+ */
+async function listOrders(client: MagentoRestClient, args: OrderListArgs, customerFilters: readonly SearchFilter[]): Promise<unknown> {
   const filters: SearchFilter[] = [];
   if (args.status !== undefined) filters.push({ field: "status", value: args.status });
-  filters.push(...leading);
+  filters.push(...customerFilters);
   if (args.date_from !== undefined) filters.push({ field: "created_at", value: `${args.date_from} 00:00:00`, conditionType: "gteq" });
   if (args.date_to !== undefined) filters.push({ field: "created_at", value: `${args.date_to} 23:59:59`, conditionType: "lteq" });
   if (args.grand_total_min !== undefined) filters.push({ field: "grand_total", value: args.grand_total_min, conditionType: "gteq" });
@@ -130,9 +132,7 @@ export function orderTools({ readTool, writeTool, shapes }: ToolFactory): readon
         .strict(),
       shape: listOf(shapes.order_summary),
       run: async (args, client) => {
-        if (args.sort !== undefined && (args.sort_field !== undefined || args.sort_direction !== undefined)) {
-          throw new ToolArgumentError("invalid_argument", "sort", "Pass sort, or sort_field and sort_direction, not both.");
-        }
+        assertOneSort(args);
         const customer: SearchFilter[] = [];
         if (args.customer_email !== undefined) customer.push({ field: "customer_email", value: args.customer_email });
         if (args.customer_id !== undefined) customer.push({ field: "customer_id", value: args.customer_id });

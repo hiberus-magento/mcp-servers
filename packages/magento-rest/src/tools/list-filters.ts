@@ -12,6 +12,7 @@
 // impossible pair answers an empty page, never one of the two silently.
 import { z } from "zod";
 import { CONDITION_TYPES, type SearchFilter, type SortDirection } from "../client/index.js";
+import { ToolArgumentError } from "./tool-error.js";
 
 /** How many generic filters one call may carry. */
 export const MAX_LIST_FILTERS = 10;
@@ -81,6 +82,13 @@ function wireValue(value: ListFilter["value"]): string | number {
 /** One filter group per filter: Magento ANDs groups. */
 export function genericFilterGroups(filters: readonly ListFilter[] | undefined): SearchFilter[][] {
   return (filters ?? []).map((filter) => [{ field: filter.field, value: wireValue(filter.value), conditionType: filter.condition ?? "eq" }]);
+}
+
+/** A tool that kept its older `sort_field` / `sort_direction` takes those or `sort`, never both: two orders cannot both win. */
+export function assertOneSort(args: { readonly sort?: unknown; readonly sort_field?: unknown; readonly sort_direction?: unknown }): void {
+  if (args.sort !== undefined && (args.sort_field !== undefined || args.sort_direction !== undefined)) {
+    throw new ToolArgumentError("invalid_argument", "sort", "Pass sort, or sort_field and sort_direction, not both.");
+  }
 }
 
 /** The caller's sort (descending unless told otherwise), or the tool's own order when there is none. */

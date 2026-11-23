@@ -168,6 +168,14 @@ describe("the list tools' field lists", () => {
     expect(leaks).toEqual([]);
   });
 
+  it("only advanced_product_search names a field in free text, and only on products, which hold no customer column", () => {
+    const freeText = tools.filter((tool) => {
+      const properties = (z.toJSONSchema(tool.inputSchema).properties ?? {}) as Record<string, { type?: string; enum?: unknown }>;
+      return ["field", "sort_field"].some((name) => properties[name]?.type === "string" && properties[name]?.enum === undefined);
+    });
+    expect(freeText.map((tool) => tool.name)).toEqual(["magentorest_advanced_product_search"]);
+  });
+
   it("the denylist the walk checks against does hold the customer columns", () => {
     for (const name of ["customer_email", "customer_id", "customer_firstname", "customer_lastname", "email", "telephone", "remote_ip"]) expect(isPersonalField(name), name).toBe(true);
     expect(isPersonalField("status")).toBe(false);
