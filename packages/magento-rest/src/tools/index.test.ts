@@ -6,6 +6,7 @@
 import { StaticTokenProvider } from "@hiberus-magento/mcp-core";
 import { SYNTHETIC_MAGENTO_BASE_URL, SYNTHETIC_MAGENTO_SKUS, SYNTHETIC_MAGENTO_TOKEN } from "@hiberus-magento/mcp-testing";
 import { describe, expect, it } from "vitest";
+import { ZodError } from "zod";
 import { createMagentoRestClient } from "../client/index.js";
 import { createFetchDouble, json } from "../testing/fetch-double.js";
 import { createDatabaseAccess, type DatabaseAccess } from "../db/access.js";
@@ -183,6 +184,15 @@ describe("tools that are deliberately not offered", () => {
 });
 
 describe("every tool", () => {
+  // The server lets arguments through the SDK unchecked (mcp.ts) so a refusal comes back typed: every tool must
+  // therefore refuse a bad argument itself, before it runs anything.
+  it("checks its own arguments before running: an unknown input and a non-object are refused with a ZodError", async () => {
+    for (const tool of allMagentoRestTools()) {
+      await expect(tool.invoke({ not_an_argument: 1 }, {}), tool.name).rejects.toBeInstanceOf(ZodError);
+      await expect(tool.invoke("not arguments", {}), tool.name).rejects.toBeInstanceOf(ZodError);
+    }
+  });
+
   const tools = allMagentoRestTools();
 
   it("is a non-empty set, so the per-tool checks below cannot pass by iterating nothing", () => {

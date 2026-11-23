@@ -119,11 +119,13 @@ const tools = assembleTools();
  * checked. The SDK is bundled at a pinned version; the conformance suite fails if this hook stops working.
  */
 function deferArgumentChecksToTools(server: McpServer): void {
-  const sdk = server as unknown as { validateToolInput?: unknown };
-  if (typeof sdk.validateToolInput !== "function") {
-    throw new Error("magento-rest: the MCP SDK no longer validates tool input through validateToolInput; typed argument errors need a new hook.");
-  }
-  sdk.validateToolInput = async (_tool: unknown, args: unknown): Promise<unknown> => args;
+  (server as unknown as { validateToolInput: unknown }).validateToolInput = async (_tool: unknown, args: unknown): Promise<unknown> => args;
+}
+
+// Checked once at startup, not per HTTP request: an SDK without the hook stops the server here.
+if (typeof (McpServer.prototype as unknown as { validateToolInput?: unknown }).validateToolInput !== "function") {
+  logger.error("magento-rest: refusing to start — the bundled MCP SDK no longer validates tool input through validateToolInput, so typed argument errors need a new hook.");
+  process.exit(1);
 }
 
 function buildServer(): McpServer {

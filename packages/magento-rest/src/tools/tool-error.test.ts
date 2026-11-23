@@ -56,6 +56,14 @@ describe("errorBodyFor", () => {
     expect(errorBodyFor(parsed.error)).toMatchObject({ code: "invalid_argument", argument: "sku" });
   });
 
+  it("an input the schema does not know is invalid_argument naming that input", () => {
+    const top = z.object({ status: z.string().optional() }).strict().safeParse({ customer_email: "x" });
+    const nested = z.object({ sort: z.object({ field: z.string() }).strict() }).strict().safeParse({ sort: { field: "a", path: "/x" } });
+    expect(top.success || nested.success).toBe(false);
+    if (!top.success) expect(errorBodyFor(top.error)).toMatchObject({ code: "invalid_argument", argument: "customer_email" });
+    if (!nested.success) expect(errorBodyFor(nested.error)).toMatchObject({ code: "invalid_argument", argument: "sort.path" });
+  });
+
   it("a refused SQL statement is invalid_argument on the sql argument", () => {
     expect(errorBodyFor(new SqlGuardError("Only SELECT is allowed."))).toMatchObject({ code: "invalid_argument", argument: "sql" });
   });

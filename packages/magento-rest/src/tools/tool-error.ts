@@ -73,7 +73,9 @@ function bodyWithoutMessage(error: unknown): ToolErrorBody {
   if (error instanceof MagentoRestError) return forMagento(error);
   if (error instanceof ZodError) {
     const first = error.issues[0];
-    return { code: "invalid_argument", argument: first !== undefined && first.path.length > 0 ? first.path.map(String).join(".") : "arguments" };
+    // An input the schema does not know is named by its key, not by the object that holds it.
+    const path = first === undefined ? [] : first.code === "unrecognized_keys" ? [...first.path, ...first.keys.slice(0, 1)] : first.path;
+    return { code: "invalid_argument", argument: path.length > 0 ? path.map(String).join(".") : "arguments" };
   }
   if (error instanceof SqlGuardError) return { code: "invalid_argument", argument: "sql" };
   if (error instanceof DatabaseConfigError) return { code: "unavailable" };
