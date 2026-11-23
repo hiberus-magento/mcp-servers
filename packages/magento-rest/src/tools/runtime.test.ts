@@ -10,9 +10,9 @@ import { FieldConfigError } from "./field-config.js";
 import { DATABASE_ALLOW_WRITES_ENV_VAR, DATABASE_CONNECTION_ENV_VAR, DatabaseConfigError } from "../db/connection.js";
 import { DatabaseError } from "../db/access.js";
 import { SqlGuardError } from "../db/sql-guard.js";
-import { ALLOW_WRITES_ENV_VAR, BASE_URL_ENV_VAR, FIELDS_FILE_ENV_VAR, GROUPS_ENV_VAR, createRuntimeResolver, readDatabaseSettingsFromEnv, readFieldConfigFromEnv, readGroupsFromEnv, toErrorResult, writesEnabled } from "./runtime.js";
+import { ALLOW_WRITES_ENV_VAR, BASE_URL_ENV_VAR, CUSTOMER_DATA_ENV_VAR, FIELDS_FILE_ENV_VAR, GROUPS_ENV_VAR, createRuntimeResolver, customerDataEnabled, readDatabaseSettingsFromEnv, readFieldConfigFromEnv, readGroupsFromEnv, toErrorResult, writesEnabled } from "./runtime.js";
 
-const NAMES = [BASE_URL_ENV_VAR, ALLOW_WRITES_ENV_VAR, FIELDS_FILE_ENV_VAR, GROUPS_ENV_VAR, DATABASE_CONNECTION_ENV_VAR, DATABASE_ALLOW_WRITES_ENV_VAR] as const;
+const NAMES = [BASE_URL_ENV_VAR, ALLOW_WRITES_ENV_VAR, CUSTOMER_DATA_ENV_VAR, FIELDS_FILE_ENV_VAR, GROUPS_ENV_VAR, DATABASE_CONNECTION_ENV_VAR, DATABASE_ALLOW_WRITES_ENV_VAR] as const;
 
 describe("runtime", () => {
   let saved: Record<string, string | undefined>;
@@ -116,6 +116,23 @@ describe("runtime", () => {
     it("is on for exactly true", () => {
       process.env[ALLOW_WRITES_ENV_VAR] = "true";
       expect(writesEnabled()).toBe(true);
+    });
+  });
+
+  describe("customerDataEnabled", () => {
+    it("is off by default, so results carry no customer personal data", () => {
+      expect(CUSTOMER_DATA_ENV_VAR).toBe("MAGENTO_REST_CUSTOMER_DATA");
+      expect(customerDataEnabled()).toBe(false);
+    });
+
+    it.each(["1", "yes", "TRUE", "on", ""])("is still off for %j — only the exact string true enables", (value) => {
+      process.env[CUSTOMER_DATA_ENV_VAR] = value;
+      expect(customerDataEnabled()).toBe(false);
+    });
+
+    it("is on for exactly true", () => {
+      process.env[CUSTOMER_DATA_ENV_VAR] = "true";
+      expect(customerDataEnabled()).toBe(true);
     });
   });
 

@@ -46,7 +46,7 @@ export function customerTools({ readTool, writeTool, shapes }: ToolFactory): rea
   return [
     readTool({
       name: "magentorest_get_customer_by_id",
-      description: "Use this to read one customer by numeric ID: name, email, group, website, store and the default address IDs. Date of birth, tax number and the address book are not returned.",
+      description: "Use this to read one customer by numeric ID: group, website, store and the default address IDs, plus name and email only when the server runs with MAGENTO_REST_CUSTOMER_DATA=true. Date of birth, tax number and the address book are not returned.",
       input: z.object({ customer_id: entityId("customer") }).strict(),
       shape: shapes.customer,
       run: ({ customer_id }, client) => client.get(restPath`/customers/${customer_id}`),
@@ -103,7 +103,7 @@ export function customerTools({ readTool, writeTool, shapes }: ToolFactory): rea
     readTool({
       name: "magentorest_get_customer_addresses",
       description:
-        "Use this to list a customer's addresses by location: country, region, city, postcode and which is the default billing or shipping address. Street, telephone and the addressee are not returned.",
+        "Use this to list a customer's addresses by location: country, region and which is the default billing or shipping address, plus city and postcode only when the server runs with MAGENTO_REST_CUSTOMER_DATA=true. Street, telephone and the addressee are not returned.",
       input: z.object({ customer_id: entityId("customer") }).strict(),
       shape: shapes.customer_address,
       run: async ({ customer_id }, client) => {

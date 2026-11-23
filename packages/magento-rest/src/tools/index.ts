@@ -20,6 +20,7 @@ import { categoryTools } from "./categories-tools.js";
 import { cmsTools } from "./cms-tools.js";
 import { customerTools } from "./customers-tools.js";
 import { databaseTools } from "./database-tools.js";
+import { withoutCustomerDataShapes } from "./customer-data.js";
 import { applyFieldConfig, type FieldConfig } from "./field-config.js";
 import { createToolFactory, type MagentoRestTool, type ToolFactory } from "./rest-tool.js";
 import { productTools } from "./products-tools.js";
@@ -41,6 +42,11 @@ export interface CreateToolsOptions {
   readonly writesEnabled: boolean;
   /** Fields the operator added to the shipped allowlists (`field-config.ts`); none by default. */
   readonly fieldConfig?: FieldConfig;
+  /**
+   * True only when `MAGENTO_REST_CUSTOMER_DATA=true`: results then carry the customer fields the shipped lists name.
+   * Off by default, every allowlist drops them (`customer-data.ts`).
+   */
+  readonly customerData?: boolean;
   /** Groups to load (`GROUP_NAMES`); none or empty loads every group. An unknown name throws. */
   readonly groups?: readonly string[];
   /**
@@ -112,8 +118,8 @@ export function assertUniqueNames(tools: readonly MagentoRestTool[]): void {
   }
 }
 
-function assemble(getRuntime: () => MagentoRestRuntime, shapes: ShapeSet, groups: readonly GroupName[] = REST_GROUP_NAMES): readonly MagentoRestTool[] {
-  const factory = createToolFactory(() => getRuntime().client, { shapes });
+function assemble(getRuntime: () => MagentoRestRuntime, shapes: ShapeSet, groups: readonly GroupName[] = REST_GROUP_NAMES, customerData = true): readonly MagentoRestTool[] {
+  const factory = createToolFactory(() => getRuntime().client, { shapes: customerData ? shapes : withoutCustomerDataShapes(shapes), withoutCustomerData: !customerData });
   const tools = groups.flatMap((group) => GROUPS[group](factory));
   assertUniqueNames(tools);
   return tools;
@@ -125,7 +131,7 @@ export function createMagentoRestTools(options: CreateToolsOptions): readonly Ma
     throw new Error("The database group needs a database: set MAGENTO_REST_DATABASE_CONNECTION (and its password), or leave `database` out of MAGENTO_REST_GROUPS.");
   }
   const restGroups = (chosen.length > 0 ? chosen : REST_GROUP_NAMES).filter(isGroupName);
-  const rest = assemble(options.getRuntime, applyFieldConfig(BASE_SHAPES, options.fieldConfig ?? {}), restGroups);
+  const rest = assemble(options.getRuntime, applyFieldConfig(BASE_SHAPES, options.fieldConfig ?? {}), restGroups, options.customerData === true);
   const restTools = options.writesEnabled ? rest : rest.filter((tool) => tool.access === "read");
 
   // The database tools follow their OWN write switch: letting the REST API change orders is not letting SQL change rows.

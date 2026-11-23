@@ -37,7 +37,7 @@ import type { FieldConfig } from "./tools/field-config.js";
 import { createDatabaseAccess, type DatabaseAccess } from "./db/access.js";
 import { resolveDatabasePassword } from "./db/connection.js";
 import { createMagentoRestTools, type MagentoRestTool } from "./tools/index.js";
-import { createRuntimeResolver, readDatabaseSettingsFromEnv, readFieldConfigFromEnv, readGroupsFromEnv, toErrorResult, writesEnabled } from "./tools/runtime.js";
+import { createRuntimeResolver, customerDataEnabled, readDatabaseSettingsFromEnv, readFieldConfigFromEnv, readGroupsFromEnv, toErrorResult, writesEnabled } from "./tools/runtime.js";
 
 // The SDK constructs a real `AjvJsonSchemaValidator` at server-construction
 // time unless an explicit `jsonSchemaValidator` is supplied. After the
@@ -100,10 +100,11 @@ const server = new McpServer(
 
 const getRuntime = createRuntimeResolver();
 const writes = writesEnabled();
+const customerData = customerDataEnabled();
 
 function assembleTools(): readonly MagentoRestTool[] {
   try {
-    return createMagentoRestTools({ getRuntime, writesEnabled: writes, fieldConfig, groups, ...(database !== undefined ? { database } : {}) });
+    return createMagentoRestTools({ getRuntime, writesEnabled: writes, customerData, fieldConfig, groups, ...(database !== undefined ? { database } : {}) });
   } catch (error) {
     // The one way assembly can fail is a group the configuration cannot satisfy (`database` without a connection).
     logger.error(`magento-rest: refusing to start — ${error instanceof Error ? error.message : "invalid tool configuration"}`);
@@ -149,6 +150,10 @@ if (groups.length > 0) {
 
 if (database !== undefined) {
   logger.warn(`magento-rest: database tools are enabled (MAGENTO_REST_DATABASE_CONNECTION); queries run in a read-only session${database.writesEnabled ? ", and db_execute is ENABLED (MAGENTO_REST_DATABASE_ALLOW_WRITES=true): this server can change database rows." : "."}`);
+}
+
+if (customerData) {
+  logger.warn("magento-rest: customer personal data is ON (MAGENTO_REST_CUSTOMER_DATA=true); results carry customer names, emails and order identities.");
 }
 
 if (writes) {

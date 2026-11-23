@@ -119,6 +119,10 @@ describe(`magento-rest tool surface on the built bundle: ${serverPath}`, () => {
     beforeAll(async () => {
       magento = createServer((request, response) => {
         response.setHeader("Content-Type", "application/json");
+        if (request.url?.startsWith("/rest/V1/orders/") === true) {
+          response.end(JSON.stringify({ entity_id: 5, increment_id: "DEMO000000001", status: "processing", customer_id: 3, customer_email: "shopper@demo-host.example", customer_firstname: "Demo", customer_lastname: "Shopper" }));
+          return;
+        }
         response.end(request.url?.startsWith("/rest/V1/products/") === true ? JSON.stringify({ id: 7, sku: "DEMO-TENT-001", name: "Demo tent", password_hash: "x" }) : "{}");
       });
       await new Promise<void>((resolve) => magento.listen(0, "127.0.0.1", resolve));
@@ -127,6 +131,31 @@ describe(`magento-rest tool surface on the built bundle: ${serverPath}`, () => {
     });
     afterAll(() => {
       magento.close();
+    });
+
+    async function callTool(env: NodeJS.ProcessEnv, name: string, args: Record<string, unknown>): Promise<{ readonly structuredContent?: { readonly result?: Record<string, unknown> } }> {
+      const client = new JsonRpcClient({
+        command: process.execPath,
+        args: [serverPath],
+        env: { ...(process.env.PATH !== undefined ? { PATH: process.env.PATH } : {}), MAGENTO_REST_BASE_URL: baseUrl, MAGENTO_REST_TOKEN: "mr-demo-token", ...env },
+      });
+      try {
+        await client.request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "magento-rest-call", version: "0.0.0" } });
+        client.notify("notifications/initialized");
+        return (await client.request("tools/call", { name, arguments: args })) as { readonly structuredContent?: { readonly result?: Record<string, unknown> } };
+      } finally {
+        client.close();
+      }
+    }
+
+    it("leaves who placed an order out of the answer by default", async () => {
+      const result = await callTool({}, "magentorest_get_order_by_id", { order_id: 5 });
+      expect(result.structuredContent?.result).toEqual({ entity_id: 5, increment_id: "DEMO000000001", status: "processing" });
+    });
+
+    it("includes it with MAGENTO_REST_CUSTOMER_DATA=true", async () => {
+      const result = await callTool({ MAGENTO_REST_CUSTOMER_DATA: "true" }, "magentorest_get_order_by_id", { order_id: 5 });
+      expect(result.structuredContent?.result).toMatchObject({ customer_id: 3, customer_email: "shopper@demo-host.example", customer_firstname: "Demo", customer_lastname: "Shopper" });
     });
 
     it("answers with structuredContent that carries the projected record and where and when it was read", async () => {

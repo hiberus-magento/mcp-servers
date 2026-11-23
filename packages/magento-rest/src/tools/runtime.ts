@@ -23,6 +23,7 @@ import { BASE_SHAPES } from "./shapes.js";
 
 export const BASE_URL_ENV_VAR = "MAGENTO_REST_BASE_URL";
 export const ALLOW_WRITES_ENV_VAR = "MAGENTO_REST_ALLOW_WRITES";
+export const CUSTOMER_DATA_ENV_VAR = "MAGENTO_REST_CUSTOMER_DATA";
 export const FIELDS_FILE_ENV_VAR = "MAGENTO_REST_FIELDS_FILE";
 export const GROUPS_ENV_VAR = "MAGENTO_REST_GROUPS";
 
@@ -62,6 +63,15 @@ export function createRuntimeResolver(): () => MagentoRestRuntime {
  */
 export function writesEnabled(): boolean {
   return process.env[ALLOW_WRITES_ENV_VAR] === "true";
+}
+
+/**
+ * Whether results carry customer personal data (names, email, an order's customer identity). Off unless the exact
+ * string `true`: a host that must keep personal data out of a model's context gets that without setting anything.
+ * Read once at startup.
+ */
+export function customerDataEnabled(): boolean {
+  return process.env[CUSTOMER_DATA_ENV_VAR] === "true";
 }
 
 /**

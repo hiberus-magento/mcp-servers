@@ -56,7 +56,7 @@ export function cartTools({ readTool, shapes }: ToolFactory): readonly MagentoRe
   return [
     readTool({
       name: "magentorest_get_cart_by_id",
-      description: "Use this to read one cart by ID: activity, item count and quantity, currency, the customer's identity (id, name, email, group) and the cart lines. Addresses are not returned.",
+      description: "Use this to read one cart by ID: activity, item count and quantity, currency and the cart lines; the customer's identity (id, name, email, group) only when the server runs with MAGENTO_REST_CUSTOMER_DATA=true. Addresses are not returned.",
       input: z.object({ cart_id: cartId }).strict(),
       shape: shapes.cart,
       run: ({ cart_id }, client) => client.get(restPath`/carts/${cart_id}`),
@@ -109,7 +109,7 @@ export function cartTools({ readTool, shapes }: ToolFactory): readonly MagentoRe
     readTool({
       name: "magentorest_get_abandoned_carts",
       description:
-        "Use this to find abandoned carts: active, non-empty carts not updated for at least a number of days, most recently updated first. Each entry names the owner (or Guest), the item count and the dates. Returns a bounded page, the total count and the cutoff used.",
+        "Use this to find abandoned carts: active, non-empty carts not updated for at least a number of days, most recently updated first. Each entry gives the item count and the dates, and names the owner (or Guest) only when the server runs with MAGENTO_REST_CUSTOMER_DATA=true. Returns a bounded page, the total count and the cutoff used.",
       input: z
         .object({
           days_old: z.number().int().min(0).max(3650).optional().describe("Minimum days since the cart was last updated (default 7)."),

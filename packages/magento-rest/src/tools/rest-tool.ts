@@ -16,6 +16,7 @@
 import { defineTool, type RegisteredTool, type ToolAnnotations } from "@hiberus-magento/mcp-core";
 import type { z } from "zod";
 import type { MagentoRestClient, RestAnswer } from "../client/index.js";
+import { withoutCustomerData } from "./customer-data.js";
 import { readOutputSchema, type Provenance } from "./output-schema.js";
 import { project, type Shape } from "./project.js";
 import { BASE_SHAPES, type ShapeSet } from "./shapes.js";
@@ -100,6 +101,12 @@ export interface ToolFactoryOptions {
   readonly liveVerified?: ReadonlySet<string>;
   /** The allowlists tools project through; defaults to the shipped `BASE_SHAPES`. */
   readonly shapes?: ShapeSet;
+  /**
+   * Drop customer personal fields from every tool's allowlist, including the ones a tool writes inline
+   * (`customer-data.ts`). The server sets it unless `MAGENTO_REST_CUSTOMER_DATA=true`; it defaults to false here so a
+   * tool's own tests see its full list.
+   */
+  readonly withoutCustomerData?: boolean;
 }
 
 /** Where the data came from: the first request names it, every request is listed when there were several. */
@@ -124,7 +131,8 @@ export function createToolFactory(getClient: () => MagentoRestClient, options: T
   const liveVerified = options.liveVerified ?? LIVE_VERIFIED_TOOLS;
   const shapes = options.shapes ?? BASE_SHAPES;
 
-  function build<S extends z.ZodObject>(spec: ToolSpecBase<S>, annotations: ToolAnnotations, access: Access): MagentoRestTool {
+  function build<S extends z.ZodObject>(given: ToolSpecBase<S>, annotations: ToolAnnotations, access: Access): MagentoRestTool {
+    const spec = options.withoutCustomerData === true ? { ...given, shape: withoutCustomerData(given.shape) } : given;
     // A read answers with `{ result, provenance }` against a declared output schema (Kora contract R-2, R-3); a write
     // keeps its text answer.
     const structured = access === "read";
