@@ -310,6 +310,13 @@ describe("createRestTransport — what answered (provenance)", () => {
     expect(answers).toEqual([{ endpoint: "GET /rest/all/V1/products/x", readAt: "1970-01-01T00:00:00.000Z" }]);
   });
 
+  it("names no store view when the base URL itself is the global /rest/all/V1", async () => {
+    const { transport } = build({ "GET /rest/all/V1/orders/5": json(200, {}) }, SYNTHETIC_MAGENTO_BASE_URL.replace("/rest/V1", "/rest/all/V1"));
+    const answers: unknown[] = [];
+    await transport.request({ method: "GET", path: "/orders/5", onAnswered: (answer) => answers.push(answer) });
+    expect(answers).toEqual([{ endpoint: "GET /rest/all/V1/orders/5", readAt: "1970-01-01T00:00:00.000Z" }]);
+  });
+
   it("reports nothing for a request that failed", async () => {
     const { transport } = build({ "GET /rest/V1/orders/9": json(404, { message: "No such entity." }) });
     const answers: unknown[] = [];

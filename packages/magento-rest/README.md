@@ -277,7 +277,9 @@ mirrored exactly as JSON text:
 schema is derived from it). `provenance` says where and when the data was read:
 `endpoint` is the method and path from `/rest` on, with no host, query string or
 token; `endpoints` lists each distinct one when a tool used several; `read_at` is
-when Magento answered; `store_view` appears when the URL named one. A result whose
+when Magento answered; `store_view` appears when the URL named one. `all` is the
+global scope, not a store view, so a base URL of `https://<host>/rest/all/V1`
+(useful where only `/rest/all/V*` bypasses a CDN) gives no `store_view`. A result whose
 JSON is over 100,000 bytes is refused with an error: ask for fewer records. Write
 tools answer with text, as before.
 
