@@ -215,6 +215,18 @@ describe(`magento-rest tool surface on the built bundle: ${serverPath}`, () => {
       expect(result.structuredContent?.error).toMatchObject({ code: "permission_missing", resource: "Magento_Sales::actions_view", http_status: 401 });
     });
 
+    it("answers an argument its schema refuses with a typed invalid_argument naming it, not the SDK's plain text", async () => {
+      type Answer = { readonly isError?: boolean; readonly structuredContent?: { readonly error?: Record<string, unknown> }; readonly content?: readonly { readonly text?: string }[] };
+      const badId = (await callTool({}, "magentorest_get_order_by_id", { order_id: 0 })) as Answer;
+      expect(badId.isError).toBe(true);
+      expect(badId.structuredContent?.error).toMatchObject({ code: "invalid_argument", argument: "order_id" });
+      expect(badId.content?.[0]?.text).not.toContain("-32602");
+      const customerFilter = (await callTool({}, "magentorest_list_orders", { filters: [{ field: "customer_email", value: "x" }] })) as Answer;
+      expect(customerFilter.structuredContent?.error).toMatchObject({ code: "invalid_argument", argument: "filters.0.field" });
+      const unknownKey = (await callTool({}, "magentorest_list_orders", { customer_email: "x" })) as Answer;
+      expect(unknownKey.structuredContent?.error).toMatchObject({ code: "invalid_argument" });
+    });
+
     it("leaves who placed an order out of the answer by default", async () => {
       const result = await callTool({}, "magentorest_get_order_by_id", { order_id: 5 });
       expect(result.structuredContent?.result).toEqual({ entity_id: 5, increment_id: "DEMO000000001", status: "processing" });
