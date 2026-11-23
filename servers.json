@@ -827,9 +827,14 @@
             "description": "Path to a JSON file that adjusts the fields a resource exposes, e.g. {\"product\":{\"add\":[\"cost\"],\"remove\":[\"weight\"]}}. A resource may carry only `add` and `remove`, so a file can widen or narrow the shipped list but never replace it — and credential and payment fields (passwords, hashes, tokens, secrets, card and payment data) can never be added. Read once at startup; a file that cannot be read or does not validate stops the server with exit code 1 rather than starting with a half-applied configuration."
           },
           {
+            "name": "MCP_WRITES_ENABLED",
+            "required": false,
+            "description": "The write switch an MCP host sets itself. Exactly `true` registers the write tools (create, update, delete, cancel, invoice, refund, ...); any other value, `false` included, registers read tools only, and then MAGENTO_REST_ALLOW_WRITES is ignored. Unset, MAGENTO_REST_ALLOW_WRITES decides. Read once at startup."
+          },
+          {
             "name": "MAGENTO_REST_ALLOW_WRITES",
             "required": false,
-            "description": "Set to exactly `true` to register the write tools (create, update, delete, cancel, invoice, refund, ...). Unset, or any other value, and the server registers read tools only — a write tool is then absent from tools/list, not merely refused. Read once at startup."
+            "description": "The write switch for standalone use, read only when MCP_WRITES_ENABLED is unset. Set to exactly `true` to register the write tools (create, update, delete, cancel, invoice, refund, ...). Unset, or any other value, and the server registers read tools only — a write tool is then absent from tools/list, not merely refused. Read once at startup."
           },
           {
             "name": "MAGENTO_REST_CUSTOMER_DATA",

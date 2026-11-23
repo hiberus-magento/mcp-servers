@@ -13,8 +13,9 @@
 // shared fd-1 conformance probe `await import()`s this exact built bundle
 // and relies on the connect having already run.
 //
-// Write tools are registered ONLY when MAGENTO_REST_ALLOW_WRITES=true, read
-// once, here, at startup (see `tools/index.ts`). That the server came up in
+// Write tools are registered ONLY when MCP_WRITES_ENABLED=true (the name an MCP
+// host sets) or, when that variable is absent, MAGENTO_REST_ALLOW_WRITES=true;
+// read once, here, at startup (see `tools/runtime.ts`). That the server came up in
 // write mode is logged to stderr so an operator can see it.
 //
 // MAGENTO_REST_DATABASE_CONNECTION (a URL with no password) adds the `database` tool group; its writes have a
@@ -157,7 +158,7 @@ if (customerData) {
 }
 
 if (writes) {
-  logger.warn("magento-rest: write tools are ENABLED (MAGENTO_REST_ALLOW_WRITES=true); this server can change Magento data.");
+  logger.warn("magento-rest: write tools are ENABLED (MCP_WRITES_ENABLED or MAGENTO_REST_ALLOW_WRITES is true); this server can change Magento data.");
 }
 
 // Install the stdout guard BEFORE connecting: it takes the real stdout handle

@@ -113,6 +113,26 @@ describe(`magento-rest tool surface on the built bundle: ${serverPath}`, () => {
     });
   });
 
+  describe("MCP_WRITES_ENABLED, the switch an MCP host sets", () => {
+    it("=true serves the write tools", async () => {
+      const { tools, close } = await listTools({ MCP_WRITES_ENABLED: "true" });
+      try {
+        expect(tools.map((t) => t.name).sort()).toEqual([...reads, ...writes].sort());
+      } finally {
+        close();
+      }
+    });
+
+    it("=false serves no write tool, even with MAGENTO_REST_ALLOW_WRITES=true", async () => {
+      const { tools, close } = await listTools({ MCP_WRITES_ENABLED: "false", MAGENTO_REST_ALLOW_WRITES: "true" });
+      try {
+        expect(tools.map((t) => t.name).sort()).toEqual(reads);
+      } finally {
+        close();
+      }
+    });
+  });
+
   describe("a read call answered by a local Magento double", () => {
     let magento: Server;
     let baseUrl: string;

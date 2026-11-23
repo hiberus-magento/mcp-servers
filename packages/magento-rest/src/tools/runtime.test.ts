@@ -10,9 +10,9 @@ import { FieldConfigError } from "./field-config.js";
 import { DATABASE_ALLOW_WRITES_ENV_VAR, DATABASE_CONNECTION_ENV_VAR, DatabaseConfigError } from "../db/connection.js";
 import { DatabaseError } from "../db/access.js";
 import { SqlGuardError } from "../db/sql-guard.js";
-import { ALLOW_WRITES_ENV_VAR, BASE_URL_ENV_VAR, CUSTOMER_DATA_ENV_VAR, FIELDS_FILE_ENV_VAR, GROUPS_ENV_VAR, createRuntimeResolver, customerDataEnabled, readDatabaseSettingsFromEnv, readFieldConfigFromEnv, readGroupsFromEnv, toErrorResult, writesEnabled } from "./runtime.js";
+import { ALLOW_WRITES_ENV_VAR, BASE_URL_ENV_VAR, CUSTOMER_DATA_ENV_VAR, MCP_WRITES_ENV_VAR, FIELDS_FILE_ENV_VAR, GROUPS_ENV_VAR, createRuntimeResolver, customerDataEnabled, readDatabaseSettingsFromEnv, readFieldConfigFromEnv, readGroupsFromEnv, toErrorResult, writesEnabled } from "./runtime.js";
 
-const NAMES = [BASE_URL_ENV_VAR, ALLOW_WRITES_ENV_VAR, CUSTOMER_DATA_ENV_VAR, FIELDS_FILE_ENV_VAR, GROUPS_ENV_VAR, DATABASE_CONNECTION_ENV_VAR, DATABASE_ALLOW_WRITES_ENV_VAR] as const;
+const NAMES = [BASE_URL_ENV_VAR, ALLOW_WRITES_ENV_VAR, MCP_WRITES_ENV_VAR, CUSTOMER_DATA_ENV_VAR, FIELDS_FILE_ENV_VAR, GROUPS_ENV_VAR, DATABASE_CONNECTION_ENV_VAR, DATABASE_ALLOW_WRITES_ENV_VAR] as const;
 
 describe("runtime", () => {
   let saved: Record<string, string | undefined>;
@@ -115,6 +115,27 @@ describe("runtime", () => {
 
     it("is on for exactly true", () => {
       process.env[ALLOW_WRITES_ENV_VAR] = "true";
+      expect(writesEnabled()).toBe(true);
+    });
+
+    // MCP_WRITES_ENABLED is the name an MCP host such as Kora sets itself; MAGENTO_REST_ALLOW_WRITES stays for
+    // standalone use. When the host's variable is present it decides alone, so a host that runs a read-only process
+    // cannot be overridden by an alias left in the environment.
+    it("is on for MCP_WRITES_ENABLED=true", () => {
+      expect(MCP_WRITES_ENV_VAR).toBe("MCP_WRITES_ENABLED");
+      process.env[MCP_WRITES_ENV_VAR] = "true";
+      expect(writesEnabled()).toBe(true);
+    });
+
+    it.each(["false", "1", "TRUE", ""])("MCP_WRITES_ENABLED=%j keeps writes off even with MAGENTO_REST_ALLOW_WRITES=true", (value) => {
+      process.env[MCP_WRITES_ENV_VAR] = value;
+      process.env[ALLOW_WRITES_ENV_VAR] = "true";
+      expect(writesEnabled()).toBe(false);
+    });
+
+    it("MCP_WRITES_ENABLED=true wins over MAGENTO_REST_ALLOW_WRITES=false", () => {
+      process.env[MCP_WRITES_ENV_VAR] = "true";
+      process.env[ALLOW_WRITES_ENV_VAR] = "false";
       expect(writesEnabled()).toBe(true);
     });
   });

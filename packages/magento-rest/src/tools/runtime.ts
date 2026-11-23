@@ -23,6 +23,7 @@ import { BASE_SHAPES } from "./shapes.js";
 
 export const BASE_URL_ENV_VAR = "MAGENTO_REST_BASE_URL";
 export const ALLOW_WRITES_ENV_VAR = "MAGENTO_REST_ALLOW_WRITES";
+export const MCP_WRITES_ENV_VAR = "MCP_WRITES_ENABLED";
 export const CUSTOMER_DATA_ENV_VAR = "MAGENTO_REST_CUSTOMER_DATA";
 export const FIELDS_FILE_ENV_VAR = "MAGENTO_REST_FIELDS_FILE";
 export const GROUPS_ENV_VAR = "MAGENTO_REST_GROUPS";
@@ -60,9 +61,14 @@ export function createRuntimeResolver(): () => MagentoRestRuntime {
  * enables them: `1`, `yes` and `TRUE` do not, so a half-remembered value
  * fails closed rather than open. Read once at startup — a server that is
  * read-only when it starts cannot be talked into writing by a later call.
+ *
+ * `MCP_WRITES_ENABLED` is the name an MCP host sets itself (Kora contract R-6); `MAGENTO_REST_ALLOW_WRITES` stays
+ * for standalone use. When `MCP_WRITES_ENABLED` is present at all it decides alone, so a host running a read-only
+ * process cannot be overridden by the other variable left in the environment.
  */
 export function writesEnabled(): boolean {
-  return process.env[ALLOW_WRITES_ENV_VAR] === "true";
+  const host = process.env[MCP_WRITES_ENV_VAR];
+  return (host !== undefined ? host : process.env[ALLOW_WRITES_ENV_VAR]) === "true";
 }
 
 /**
