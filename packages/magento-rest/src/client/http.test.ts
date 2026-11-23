@@ -143,7 +143,7 @@ describe("createRestTransport", () => {
 
     it("is aborted after the timeout and reported as a transport error that says it timed out", async () => {
       const { transport } = buildHanging();
-      await expect(transport.request({ method: "GET", path: "/x" })).rejects.toMatchObject({ kind: "transport", message: expect.stringMatching(/timed out after/) as unknown });
+      await expect(transport.request({ method: "GET", path: "/x" })).rejects.toMatchObject({ kind: "transport", timedOut: true, message: expect.stringMatching(/timed out after/) as unknown });
     });
 
     it("retries a read that timed out", async () => {

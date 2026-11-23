@@ -41,6 +41,7 @@ import type { FieldConfig } from "./tools/field-config.js";
 import { createDatabaseAccess, type DatabaseAccess } from "./db/access.js";
 import { resolveDatabasePassword } from "./db/connection.js";
 import { createMagentoRestTools, type MagentoRestTool } from "./tools/index.js";
+import { invokeErrorBody } from "./tools/tool-error.js";
 import { createRuntimeResolver, customerDataEnabled, readDatabaseSettingsFromEnv, readFieldConfigFromEnv, readGroupsFromEnv, toErrorResult, writesEnabled, writesSwitchName } from "./tools/runtime.js";
 
 // The SDK constructs a real `AjvJsonSchemaValidator` at server-construction
@@ -126,6 +127,10 @@ function buildServer(): McpServer {
         try {
           // The SDK aborts `extra.signal` when the client sends notifications/cancelled for this call.
           const result = await tool.invoke(args, { signal: extra.signal });
+          if (result.isError === true && result.structuredContent === undefined) {
+            // An error `invoke` answered itself (no credential, a result over the cap) gets its typed form here.
+            return { content: [...result.content], structuredContent: { error: invokeErrorBody(result, tool) }, isError: true };
+          }
           return { content: [...result.content], ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {}), isError: result.isError };
         } catch (error) {
           // `defineTool.invoke` already answers the credential errors; anything
@@ -133,7 +138,7 @@ function buildServer(): McpServer {
           // configuration error) is rendered here with credential-shaped
           // values redacted, so no failure path returns a raw upstream body.
           const rendered = toErrorResult(error);
-          return { content: [...rendered.content], isError: rendered.isError };
+          return { content: [...rendered.content], structuredContent: rendered.structuredContent, isError: rendered.isError };
         }
       },
     );

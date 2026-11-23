@@ -80,11 +80,33 @@ export interface WriteToolSpec<S extends z.ZodObject> extends ToolSpecBase<S> {
   readonly effect: WriteEffect;
 }
 
+/** A client whose successful answers are recorded, so a tool can say where and when its data came from. */
+export interface TrackedClient {
+  readonly client: MagentoRestClient;
+  readonly answers: readonly RestAnswer[];
+}
+
+/**
+ * A tool whose `structuredContent` has its own shape (`output`) rather than `{ result, provenance }`: the run builds
+ * the whole object, provenance included. `track()` hands it a fresh recording client per phase (a write's final
+ * read-back, for instance), so the provenance it reports is that phase's.
+ */
+export interface ShapedToolSpec<S extends z.ZodObject> {
+  readonly name: ToolName;
+  readonly description: string;
+  readonly input: S;
+  readonly output: z.ZodObject;
+  /** Absent for a read; a write's effect, which fixes its hints. */
+  readonly effect?: WriteEffect;
+  readonly run: (args: z.infer<S>, track: () => TrackedClient) => Promise<Record<string, unknown>>;
+}
+
 export interface ToolFactory {
   /** The allowlists in effect for this server — the shipped ones, plus any the operator added. */
   readonly shapes: ShapeSet;
   readTool<S extends z.ZodObject>(spec: ReadToolSpec<S>): MagentoRestTool;
   writeTool<S extends z.ZodObject>(spec: WriteToolSpec<S>): MagentoRestTool;
+  shapedTool<S extends z.ZodObject>(spec: ShapedToolSpec<S>): MagentoRestTool;
 }
 
 export const READ_ONLY_ANNOTATIONS: ToolAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true };
@@ -110,7 +132,7 @@ export interface ToolFactoryOptions {
 }
 
 /** Where the data came from: the first request names it, every request is listed when there were several. */
-function provenanceOf(answers: readonly RestAnswer[]): Provenance {
+export function provenanceOf(answers: readonly RestAnswer[]): Provenance {
   const first = answers[0];
   const last = answers.at(-1);
   if (first === undefined || last === undefined) {
@@ -167,8 +189,31 @@ export function createToolFactory(getClient: () => MagentoRestClient, options: T
     return { ...tool, access } as unknown as MagentoRestTool;
   }
 
+  function buildShaped<S extends z.ZodObject>(spec: ShapedToolSpec<S>): MagentoRestTool {
+    const description = liveVerified.has(spec.name) ? spec.description : `${spec.description} ${UNVERIFIED_MARKER} — ${UNVERIFIED_DETAIL}`;
+    const access: Access = spec.effect === undefined ? "read" : "write";
+    const tool = defineTool({
+      name: spec.name,
+      description,
+      inputSchema: spec.input,
+      outputSchema: spec.output,
+      annotations: spec.effect === undefined ? READ_ONLY_ANNOTATIONS : WRITE_ANNOTATIONS[spec.effect],
+      handler: async (args, ctx) => {
+        const base = getClient();
+        const bound = ctx.signal !== undefined ? base.with({ signal: ctx.signal }) : base;
+        const track = (): TrackedClient => {
+          const answers: RestAnswer[] = [];
+          return { client: bound.with({ onAnswered: (answer: RestAnswer) => answers.push(answer) }), answers };
+        };
+        return spec.run(args, track);
+      },
+    });
+    return { ...tool, access } as unknown as MagentoRestTool;
+  }
+
   return {
     shapes,
+    shapedTool: (spec) => buildShaped(spec),
     readTool: (spec) => build(spec, READ_ONLY_ANNOTATIONS, "read"),
     writeTool: (spec) => build(spec, WRITE_ANNOTATIONS[spec.effect], "write"),
   };

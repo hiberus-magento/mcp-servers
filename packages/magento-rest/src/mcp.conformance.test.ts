@@ -91,9 +91,15 @@ describe(`magento-rest tool surface on the built bundle: ${serverPath}`, () => {
       expect(listed.map((t) => t.name).sort()).toEqual([...reads, ...writes].sort());
     });
 
-    it("every read tool declares an object output schema with result and provenance; no write tool declares one", () => {
+    // The product content pair has R-20's own shape ({ found, sku, store_view, content, images, provenance }); every
+    // other read answers { result, provenance }, and every other write answers text.
+    const SHAPED = new Set(["magentorest_get_product_content", "magentorest_update_product_content"]);
+
+    it("every read tool declares an object output schema with provenance; only the content write declares one among the writes", () => {
       for (const tool of listed) {
-        if (reads.includes(tool.name)) {
+        if (SHAPED.has(tool.name)) {
+          expect(tool.outputSchema?.required, tool.name).toEqual(["found", "sku", "store_view", "provenance"]);
+        } else if (reads.includes(tool.name)) {
           expect(tool.outputSchema?.type, tool.name).toBe("object");
           expect(tool.outputSchema?.required, tool.name).toEqual(["result", "provenance"]);
         } else {
@@ -139,6 +145,19 @@ describe(`magento-rest tool surface on the built bundle: ${serverPath}`, () => {
     beforeAll(async () => {
       magento = createServer((request, response) => {
         response.setHeader("Content-Type", "application/json");
+        if (request.url === "/rest/default/V1/products/DEMO-TENT-001") {
+          response.end(
+            request.method === "PUT"
+              ? "{}"
+              : JSON.stringify({ sku: "DEMO-TENT-001", name: "Demo tent", custom_attributes: [{ attribute_code: "meta_title", value: "Demo tent" }], media_gallery_entries: [{ id: 12, media_type: "image", file: "/d/e/demo.jpg", label: "Front", position: 1, disabled: false, types: [] }] }),
+          );
+          return;
+        }
+        if (request.url === "/rest/V1/orders/401") {
+          response.statusCode = 401;
+          response.end(JSON.stringify({ message: "The consumer isn't authorized to access %resources.", parameters: { resources: "Magento_Sales::actions_view" } }));
+          return;
+        }
         if (request.url?.startsWith("/rest/V1/orders/") === true) {
           response.end(JSON.stringify({ entity_id: 5, increment_id: "DEMO000000001", status: "processing", customer_id: 3, customer_email: "shopper@demo-host.example", customer_firstname: "Demo", customer_lastname: "Shopper" }));
           return;
@@ -167,6 +186,34 @@ describe(`magento-rest tool surface on the built bundle: ${serverPath}`, () => {
         client.close();
       }
     }
+
+    it("reads a product's content as one store view shows it, image ids as strings", async () => {
+      const result = (await callTool({}, "magentorest_get_product_content", { sku: "DEMO-TENT-001", store_view: "default" })) as { readonly isError?: boolean; readonly structuredContent?: Record<string, unknown> };
+      expect(result.isError).toBeFalsy();
+      expect(result.structuredContent).toMatchObject({
+        found: true,
+        sku: "DEMO-TENT-001",
+        store_view: "default",
+        content: { name: "Demo tent", description: null, short_description: null, meta_title: "Demo tent", meta_description: null },
+        images: [{ id: "12", file: "/d/e/demo.jpg", label: "Front" }],
+        provenance: { endpoint: "GET /rest/default/V1/products/DEMO-TENT-001", store_view: "default" },
+      });
+    });
+
+    it("writes content in one store view, and refuses the global scope with a typed error before any request", async () => {
+      const written = (await callTool({ MCP_WRITES_ENABLED: "true" }, "magentorest_update_product_content", { sku: "DEMO-TENT-001", store_view: "default", content: { meta_title: "Demo tent, two people" } })) as { readonly isError?: boolean; readonly structuredContent?: Record<string, unknown> };
+      expect(written.isError).toBeFalsy();
+      expect(written.structuredContent).toMatchObject({ found: true, sku: "DEMO-TENT-001", store_view: "default" });
+      const refused = (await callTool({ MCP_WRITES_ENABLED: "true" }, "magentorest_update_product_content", { sku: "DEMO-TENT-001", store_view: "all", content: { meta_title: "x" } })) as { readonly isError?: boolean; readonly structuredContent?: { readonly error?: Record<string, unknown> } };
+      expect(refused.isError).toBe(true);
+      expect(refused.structuredContent?.error).toMatchObject({ code: "invalid_argument", argument: "store_view" });
+    });
+
+    it("answers a failure with a typed error a host can act on", async () => {
+      const result = (await callTool({}, "magentorest_get_order_by_id", { order_id: 401 })) as { readonly isError?: boolean; readonly structuredContent?: { readonly error?: Record<string, unknown> } };
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent?.error).toMatchObject({ code: "permission_missing", resource: "Magento_Sales::actions_view", http_status: 401 });
+    });
 
     it("leaves who placed an order out of the answer by default", async () => {
       const result = await callTool({}, "magentorest_get_order_by_id", { order_id: 5 });

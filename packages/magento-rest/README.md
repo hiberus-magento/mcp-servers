@@ -46,6 +46,8 @@ executable to run`.
 - `magentorest_advanced_product_search` (read-only) — Use this to filter products on one field with a chosen comparison (eq, like, gt, gteq, lt, lteq, in, ...) and sort the result. Returns a bounded page of summaries and the total count.
 - `magentorest_create_product` — Use this to create a new product. Adds a catalog record; the SKU must be unique. Does not touch stock or categories. Without website_ids it goes to the default website only: the website of store_code's store view, or the store's only website; with several websites and no store_code it refuses and asks for website_ids (magentorest_get_websites lists them).
 - `magentorest_update_product` — Use this to change fields of an existing product. Only the fields you pass are sent; at least one is required. Overwrites the current values.
+- `magentorest_get_product_content` (read-only) — Use this to read a product's content as one store view shows it: name, description, short description, meta title and meta description, and each image's id, file and label. Each value is the store view's own or the one it inherits, null when there is none. An unknown SKU returns found: false. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
+- `magentorest_update_product_content` — Use this to change a product's content in ONE store view: any of name, description, short description, meta title and meta description, and image labels by id. Only the values that differ from the current ones are sent; the result is the content read back. A store view is required (all and admin are refused). Requires Magento 2.4.7 or later. Side effect: Magento then writes a store-view value for every image of the product, so those images stop inheriting later changes made to the default values in this store view. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_update_product_attribute` — Use this to set ONE attribute of a product by code (name, price, status, description, a custom attribute, ...). Overwrites the current value. The identity attributes sku, id, entity_id and type_id are refused.
 - `magentorest_delete_product` — Use this to permanently delete a product by SKU. Irreversible: the product, its images and its URL rewrites are removed.
 - `magentorest_assign_product_to_category` — Use this to add a product to a category at a position. Adds a link; it does not move the product out of other categories.
@@ -324,6 +326,36 @@ number, status, totals and lines. A `MAGENTO_REST_FIELDS_FILE` cannot add these
 fields back while the switch is off. The database tools are not filtered: they
 return what their SQL selects.
 
+## Product content per store view
+
+`magentorest_get_product_content` reads a product's name, description, short
+description, meta title and meta description, and each image's `id` (a decimal
+string), `file` and `label`, as one store view shows them: its own value, or the
+one it inherits, or `null` when there is none. An unknown SKU returns
+`found: false`; an unknown store view is an `invalid_argument` error on
+`store_view`.
+
+`magentorest_update_product_content` (a write tool) changes any of those values in
+**one** store view: `all`, `admin`, an empty or a missing `store_view` are refused
+before anything is sent. It reads the product first, so an unknown SKU or image is
+a `not_found` error and no product is ever created; checks lengths (255 characters
+for the name, meta title, meta description and labels; 65,535 bytes for the
+descriptions), because Magento would silently truncate, and refuses an empty value
+(clearing a store view's value is not supported) or the same image twice; sends only the values
+that differ from what it read (the full media entry for a changed label); and
+returns the content read back. Repeating the same call sends nothing.
+
+**Requires Magento 2.4.7 or later.** Magento 2.4.6 pins at store-view level a sent
+value equal to the inherited one, and the patch version cannot be read over REST,
+so this is not checked.
+
+**Known side effect.** Magento's REST API has no way to update only some
+attributes. Whenever a product is saved in a store view, Magento writes a
+store-view value (label, position, hidden) for **every image of the product**,
+copied from its current values. What the store shows does not change, but those
+images stop inheriting later changes made to the default values in that store
+view.
+
 ## Using it from an MCP host (`server.json`)
 
 The package ships a `server.json` (the MCP registry's server manifest, schema
@@ -359,7 +391,7 @@ server, because the tools it names cannot exist.
 
 | Group | Covers | Tools (`*` = write) |
 |---|---|---|
-| `products` | Catalog products: read, search, create, update, delete, category assignment | get_product_by_sku, search_products, advanced_product_search, create_product*, update_product*, update_product_attribute*, delete_product*, assign_product_to_category*, remove_product_from_category* |
+| `products` | Catalog products: read, search, create, update, delete, category assignment, content per store view | get_product_by_sku, search_products, advanced_product_search, get_product_content, create_product*, update_product*, update_product_content*, update_product_attribute*, delete_product*, assign_product_to_category*, remove_product_from_category* |
 | `store` | Store configuration: store views, websites, store groups, countries, currency | get_store_configs, get_store_views, get_websites, get_store_groups, get_countries, get_currency_info |
 | `categories` | Category tree and the products in a category | get_category_tree, get_category_by_id, list_categories, get_products_in_category, create_category*, update_category*, delete_category*, move_category* |
 | `customers` | Customers, their groups and addresses | get_customer_by_id, search_customers, get_customer_groups, get_customer_addresses, create_customer*, update_customer*, delete_customer* |

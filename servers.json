@@ -304,6 +304,18 @@
           "description": "Use this to change fields of an existing product. Only the fields you pass are sent; at least one is required. Overwrites the current values."
         },
         {
+          "name": "magentorest_get_product_content",
+          "readOnly": true,
+          "description": "Use this to read a product's content as one store view shows it: name, description, short description, meta title and meta description, and each image's id, file and label. Each value is the store view's own or the one it inherits, null when there is none. An unknown SKU returns found: false.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
+          "name": "magentorest_update_product_content",
+          "readOnly": false,
+          "description": "Use this to change a product's content in ONE store view: any of name, description, short description, meta title and meta description, and image labels by id. Only the values that differ from the current ones are sent; the result is the content read back. A store view is required (all and admin are refused). Requires Magento 2.4.7 or later. Side effect: Magento then writes a store-view value for every image of the product, so those images stop inheriting later changes made to the default values in this store view.",
+          "unverified": "this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite."
+        },
+        {
           "name": "magentorest_update_product_attribute",
           "readOnly": false,
           "description": "Use this to set ONE attribute of a product by code (name, price, status, description, a custom attribute, ...). Overwrites the current value. The identity attributes sku, id, entity_id and type_id are refused."

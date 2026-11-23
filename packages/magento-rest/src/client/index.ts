@@ -12,7 +12,7 @@ import { buildSearchCriteria, MAX_PAGE_SIZE, type SearchCriteriaInput } from "./
 export { restPath } from "./paths.js";
 export { normalizeCountry } from "./countries.js";
 export { formatDay, formatMagentoTimestamp, isDateRangeExpression, parseDateRange, type DateRange } from "./date-range.js";
-export { MagentoRestError, type MagentoRestErrorKind } from "./errors.js";
+export { MagentoRestError, classifyFailure, type MagentoRestErrorKind } from "./errors.js";
 export { CONDITION_TYPES, DEFAULT_PAGE_SIZE, FIELD_NAME_PATTERN, MAX_PAGE_SIZE, buildSearchCriteria } from "./search-criteria.js";
 export type { ConditionType, SearchCriteriaInput, SearchFilter, SortDirection } from "./search-criteria.js";
 export type { RestAnswer, RestTransportDeps } from "./http.js";
