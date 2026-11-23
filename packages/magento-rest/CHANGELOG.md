@@ -1,5 +1,16 @@
 # @hiberus-magento/magento-rest
 
+## 0.4.0
+
+### Minor Changes
+
+- a53ac5d: Every list tool that reads through Magento's searchCriteria (products, categories, customer groups, orders, invoices, shipments, credit memos, carts, CMS blocks and pages, product attributes and attribute sets, inventory sources, stocks and source items, sales rules, coupons, tax rates, rules and classes) now takes typed `filters` (`field`, `condition`, `value`; ANDed, at most 10) and a `sort`, on a closed list of each tool's columns that holds no customer-identifying column. A tool's own inputs are ANDed with them, also on the same column. `search_orders` now sorts only on its listed columns, and passing `sort` together with `sort_field` or `sort_direction` (there and in `advanced_product_search`) is refused as `invalid_argument` on `sort`. New `magentorest_list_orders` and `magentorest_list_carts` list orders and carts without any customer input.
+
+### Patch Changes
+
+- 28a17a0: README: the Magento ACL resources each tool group needs, for reads and for writes, checked against Magento 2.4.7/2.4.8 and MSI, so an operator can tick exactly what an integration needs.
+- 18e5dab: A redirect from Magento (a store with "Add Store Code to Urls" answers `/rest/...` with a 301 to `/<store code>/rest/...`) is still not followed, but it is now reported as `invalid_argument` on `MAGENTO_REST_BASE_URL`, and the message names the base URL to use instead when the redirect target shows it. The onboarding guide also covers a TLS-inspecting corporate proxy (`--use-system-ca`).
+
 ## 0.3.0
 
 ### Minor Changes
