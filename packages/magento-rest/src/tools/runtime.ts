@@ -67,8 +67,12 @@ export function createRuntimeResolver(): () => MagentoRestRuntime {
  * process cannot be overridden by the other variable left in the environment.
  */
 export function writesEnabled(): boolean {
-  const host = process.env[MCP_WRITES_ENV_VAR];
-  return (host !== undefined ? host : process.env[ALLOW_WRITES_ENV_VAR]) === "true";
+  return process.env[writesSwitchName()] === "true";
+}
+
+/** The variable that decides write mode: `MCP_WRITES_ENABLED` when present, otherwise `MAGENTO_REST_ALLOW_WRITES`. */
+export function writesSwitchName(): typeof MCP_WRITES_ENV_VAR | typeof ALLOW_WRITES_ENV_VAR {
+  return process.env[MCP_WRITES_ENV_VAR] !== undefined ? MCP_WRITES_ENV_VAR : ALLOW_WRITES_ENV_VAR;
 }
 
 /**

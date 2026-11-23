@@ -38,7 +38,7 @@ import type { FieldConfig } from "./tools/field-config.js";
 import { createDatabaseAccess, type DatabaseAccess } from "./db/access.js";
 import { resolveDatabasePassword } from "./db/connection.js";
 import { createMagentoRestTools, type MagentoRestTool } from "./tools/index.js";
-import { createRuntimeResolver, customerDataEnabled, readDatabaseSettingsFromEnv, readFieldConfigFromEnv, readGroupsFromEnv, toErrorResult, writesEnabled } from "./tools/runtime.js";
+import { createRuntimeResolver, customerDataEnabled, readDatabaseSettingsFromEnv, readFieldConfigFromEnv, readGroupsFromEnv, toErrorResult, writesEnabled, writesSwitchName } from "./tools/runtime.js";
 
 // The SDK constructs a real `AjvJsonSchemaValidator` at server-construction
 // time unless an explicit `jsonSchemaValidator` is supplied. After the
@@ -158,7 +158,7 @@ if (customerData) {
 }
 
 if (writes) {
-  logger.warn("magento-rest: write tools are ENABLED (MCP_WRITES_ENABLED or MAGENTO_REST_ALLOW_WRITES is true); this server can change Magento data.");
+  logger.warn(`magento-rest: write tools are ENABLED (${writesSwitchName()}=true); this server can change Magento data.`);
 }
 
 // Install the stdout guard BEFORE connecting: it takes the real stdout handle

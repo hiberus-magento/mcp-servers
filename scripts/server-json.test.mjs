@@ -19,6 +19,11 @@ const manifest = JSON.parse(readFileSync(join(ROOT, "servers.json"), "utf8"));
 // Names a host will not pass to a child process, or that would change how it runs.
 const RESERVED = /^(PATH|HOME|LOGNAME|SHELL|TERM|USER|NODE_.*|NPM_CONFIG_.*|LD_.*)$/;
 
+// Variables optional for a person (servers.json) but required in server.json. MAGENTO_REST_TOKEN may come from the
+// credential file `hiberus-magento-rest auth token set` writes, but a host runs the server with an empty HOME and
+// only the variables it declares, so for a host the variable is the only source.
+const REQUIRED_FOR_A_HOST = { "magento-rest": ["MAGENTO_REST_TOKEN"] };
+
 const packagesWithServerJson = readdirSync(join(ROOT, "packages")).filter((dir) => existsSync(join(ROOT, "packages", dir, "server.json")));
 
 const read = (dir, file) => JSON.parse(readFileSync(join(ROOT, "packages", dir, file), "utf8"));
@@ -63,10 +68,12 @@ describe("server.json", () => {
       }
     });
 
-    it("declares only variables the server reads (the ones servers.json documents)", () => {
-      const documented = new Set(entry.requires.env.map((variable) => variable.name));
+    it("declares only variables the server reads (the ones servers.json documents), required where servers.json says so", () => {
+      const documented = new Map(entry.requires.env.map((variable) => [variable.name, variable]));
       for (const variable of server.packages[0].environmentVariables) {
         expect(documented.has(variable.name), variable.name).toBe(true);
+        if (REQUIRED_FOR_A_HOST[dir]?.includes(variable.name) === true) continue;
+        expect(variable.isRequired === true, `${variable.name} isRequired`).toBe(documented.get(variable.name).required);
       }
     });
   });

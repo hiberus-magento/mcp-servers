@@ -844,7 +844,7 @@
           {
             "name": "MAGENTO_REST_GROUPS",
             "required": false,
-            "description": "Comma-separated tool groups to load, e.g. `products,customers`, so a project registers only the tools it needs instead of every one. Groups: `products`, `store`, `categories`, `customers`, `orders`, `sales-documents`, `stock`, `carts`, `cms`, `attributes`, `media`, `promotions`, `tax`, `analytics`, `database` (only with MAGENTO_REST_DATABASE_CONNECTION; naming it without one stops the server). Case-insensitive; blanks and repeats are ignored. Unset or empty loads every group (`database` too, when a connection is configured). A name that is not a group stops the server with exit code 1, listing the valid ones. MAGENTO_REST_ALLOW_WRITES still decides whether the write tools of a loaded group are registered. Read once at startup."
+            "description": "Comma-separated tool groups to load, e.g. `products,customers`, so a project registers only the tools it needs instead of every one. Groups: `products`, `store`, `categories`, `customers`, `orders`, `sales-documents`, `stock`, `carts`, `cms`, `attributes`, `media`, `promotions`, `tax`, `analytics`, `database` (only with MAGENTO_REST_DATABASE_CONNECTION; naming it without one stops the server). Case-insensitive; blanks and repeats are ignored. Unset or empty loads every group (`database` too, when a connection is configured). A name that is not a group stops the server with exit code 1, listing the valid ones. The write switch (MCP_WRITES_ENABLED, or MAGENTO_REST_ALLOW_WRITES when it is unset) still decides whether the write tools of a loaded group are registered. Read once at startup."
           },
           {
             "name": "MAGENTO_REST_DATABASE_CONNECTION",

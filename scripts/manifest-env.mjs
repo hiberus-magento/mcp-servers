@@ -145,12 +145,13 @@ export function diffServerEnv(server, packagesDir = PACKAGES_DIR) {
   const declared = declaredEnvNames(server);
   const read = new Set([...collectSourceEnvNames(join(packagesDir, server.id, "src"))].filter(owned));
 
-  const offPrefix = [...declared].filter((name) => !owned(name));
+  const unowned = [...declared].filter((name) => !owned(name));
   return {
     declaredButUnread: [...declared].filter((name) => owned(name) && !read.has(name)).sort(),
     readButUndeclared: [...read].filter((name) => !declared.has(name)).sort(),
-    // A declared name outside the server's own prefix cannot be checked by
-    // this scanner, so it is surfaced rather than quietly treated as fine.
-    declaredOutsidePrefix: offPrefix.sort(),
+    // A declared name the server does not own (outside its prefix and not a
+    // host-standard name) cannot be checked by this scanner, so it is surfaced
+    // rather than quietly treated as fine.
+    declaredOutsidePrefix: unowned.sort(),
   };
 }

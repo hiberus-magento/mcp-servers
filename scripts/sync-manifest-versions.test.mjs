@@ -59,10 +59,15 @@ describe("syncServerJsonVersion", () => {
     expect(changed).toBe(true);
   });
 
-  it("reports no change when both already match, and leaves its input alone", () => {
+  it("reports no change when both already match", () => {
     const input = serverJson("0.2.0");
     expect(syncServerJsonVersion(input, "0.2.0")).toEqual({ serverJson: input, changed: false });
-    syncServerJsonVersion(serverJson("0.1.0"), "0.2.0");
-    expect(input.version).toBe("0.2.0");
+  });
+
+  it("does not modify the server.json it was given", () => {
+    const input = serverJson("0.1.0");
+    syncServerJsonVersion(input, "0.2.0");
+    expect(input.version).toBe("0.1.0");
+    expect(input.packages[0].version).toBe("0.1.0");
   });
 });
