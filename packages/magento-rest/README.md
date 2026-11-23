@@ -407,6 +407,54 @@ server, because the tools it names cannot exist.
 | `analytics` | Revenue, order counts and sales figures computed from orders (read-only) | get_revenue, get_order_count, get_product_sales, get_revenue_by_country, get_customer_ordered_products_by_email |
 | `database` | Direct access to the Magento database; needs `MAGENTO_REST_DATABASE_CONNECTION` | db_status, db_list_tables, db_describe_table, db_query, db_magento_tables, db_product_by_sku, db_recent_orders, db_stats, db_execute* |
 
+## Magento permissions (ACL) per group
+
+The integration needs the ACL resources that the REST routes behind its tools
+declare in Magento's `webapi.xml`. Checked against Magento Open Source 2.4.7 and 2.4.8
+and MSI 1.2.7/1.2.8: every resource a route lists is required, and Magento stores
+an integration's grants per resource, so **tick each resource below itself** (a
+parent node such as Sales > Operations > Orders does not grant its children at run
+time). A missing one is answered `401` and reported as `permission_missing` with
+the resource. Paths are under *Magento Admin* in the integration's
+**API > Resource Access** tree.
+
+| Group | Reads need | Writes also need |
+|---|---|---|
+| `products` | `Magento_Catalog::products` (Catalog > Inventory > Products) | `Magento_Catalog::categories` (assign/remove category); `Magento_Backend::store` (Stores > Settings > All Stores; `create_product` without `website_ids`); `Magento_Catalog::catalog` (Catalog; `update_product_content` with `images`) |
+| `store` | `Magento_Backend::store`; countries and currency need nothing | — |
+| `categories` | `Magento_Catalog::categories` (Catalog > Inventory > Categories); `Magento_Catalog::products` for `get_products_in_category` | — |
+| `customers` | `Magento_Customer::customer` (Customers); `Magento_Customer::group` (Customers > Customer Groups) | `Magento_Customer::manage` (Customers > All Customers; update); `Magento_Customer::delete` (… > Actions > Delete); create needs nothing |
+| `orders` | `Magento_Sales::actions_view` (Sales > Operations > Orders > Actions > View) | `Magento_Sales::comment`, `::cancel`, `::hold`, `::unhold` (Orders > Actions) |
+| `sales-documents` | `Magento_Sales::sales_invoice`, `::shipment`, `::sales_creditmemo` (Sales > Operations > Invoices / Shipments / Credit Memos) | `Magento_Sales::invoice`, `::ship`, `::creditmemo` (Orders > Actions); tracking needs only `::shipment` |
+| `stock` | `Magento_Catalog::catalog_inventory` (Catalog > Inventory); `Magento_InventoryApi::source` and `::stock` (Stores > Inventory > Sources / Stocks) | — |
+| `carts` | `Magento_Cart::manage` (Carts > Manage carts) | — |
+| `cms` | `Magento_Cms::block`, `Magento_Cms::page` (Content > Elements > Blocks / Pages) | `Magento_Cms::save`, `Magento_Cms::page_delete` (Pages > Save Page / Delete Page) |
+| `attributes` | `Magento_Catalog::attributes_attributes` (Stores > Attributes > Product); `Magento_Catalog::sets` (… > Attribute Set) | — |
+| `media` | `Magento_Catalog::catalog` (Catalog; the list); `Magento_Catalog::attributes_attributes` (one entry) | — |
+| `promotions` | `Magento_SalesRule::quote` (Marketing > Promotions > Cart Price Rules) | — |
+| `tax` | `Magento_Tax::manage_tax` (Stores > Taxes) | — |
+| `analytics` | `Magento_Sales::actions_view`; `Magento_Customer::customer` for `get_customer_ordered_products_by_email` | — |
+
+`hiberus-magento-rest auth status` reads the websites list, so it needs
+`Magento_Backend::store`.
+
+Two things to know when choosing a token's reach:
+
+- **A read resource is not read-only.** Most resources above also authorize the
+  matching writes over Magento's REST API (products, categories, media, attributes,
+  stock, carts, CMS blocks, cart price rules). This server registers no write tool
+  without its write switch, but the token itself could write; only orders,
+  customers, CMS pages and creating sales documents have separate write resources.
+- **The content pair needs little.** `magentorest_get_product_content` needs only
+  `Magento_Catalog::products`; `magentorest_update_product_content` needs
+  `Magento_Catalog::products`, plus `Magento_Catalog::catalog` when it changes image
+  labels. Ticking *Catalog* in the admin tree also ticks everything under it: untick
+  what the token should not have.
+
+Note: `Magento_CatalogInventory::cataloginventory` is the inventory *configuration*
+section, not the stock API, and `Magento_UrlRewrite::urlrewrite` is used by no
+tool here.
+
 ## Database access
 
 The REST API cannot answer every question cheaply — a count, a join, a table's
