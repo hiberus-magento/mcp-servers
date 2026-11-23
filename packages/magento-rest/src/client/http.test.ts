@@ -303,6 +303,13 @@ describe("createRestTransport — what answered (provenance)", () => {
     ]);
   });
 
+  it("names no store view for the global scope, which is not a store view", async () => {
+    const { transport } = build({ "GET /rest/all/V1/products/x": json(200, {}) });
+    const answers: unknown[] = [];
+    await transport.request({ method: "GET", path: "/products/x", scope: "all", onAnswered: (answer) => answers.push(answer) });
+    expect(answers).toEqual([{ endpoint: "GET /rest/all/V1/products/x", readAt: "1970-01-01T00:00:00.000Z" }]);
+  });
+
   it("reports nothing for a request that failed", async () => {
     const { transport } = build({ "GET /rest/V1/orders/9": json(404, { message: "No such entity." }) });
     const answers: unknown[] = [];

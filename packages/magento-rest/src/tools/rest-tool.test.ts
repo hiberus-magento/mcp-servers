@@ -12,8 +12,20 @@ import { createToolFactory } from "./rest-tool.js";
 import { NOTHING_REPORTED_NOTICE } from "./rest-tool.js";
 import { UNVERIFIED_DETAIL, UNVERIFIED_MARKER } from "./verification.js";
 
-// `with` returns the same double, so a read tool binding its options (signal, provenance) still talks to it.
-const client = { get: vi.fn(async () => ({ id: 1, secret: "leak" })), with: () => client } as unknown as MagentoRestClient;
+// `with` returns the same double, so a read tool binding its options (signal, provenance) still talks to it, and
+// every `get` reports an answer the way the real transport does.
+let answered: ((answer: { endpoint: string; readAt: string }) => void) | undefined;
+const answer = (): void => answered?.({ endpoint: "GET /rest/V1/x", readAt: "2026-11-23T10:00:00.000Z" });
+const client = {
+  get: vi.fn(async () => {
+    answer();
+    return { id: 1, secret: "leak" };
+  }),
+  with: (options: { onAnswered?: typeof answered }) => {
+    answered = options.onAnswered;
+    return client;
+  },
+} as unknown as MagentoRestClient;
 const factory = () => createToolFactory(() => client);
 
 describe("createToolFactory", () => {
@@ -27,8 +39,17 @@ describe("createToolFactory", () => {
   });
 
   it("hands the tool a client bound to the MCP request's signal, so a cancelled call aborts its request", async () => {
-    const bound = { get: vi.fn(async () => ({ id: 2 })) } as unknown as MagentoRestClient;
-    const withOptions = vi.fn(() => bound);
+    let onAnswered: ((answer: { endpoint: string; readAt: string }) => void) | undefined;
+    const bound = {
+      get: vi.fn(async () => {
+        onAnswered?.({ endpoint: "GET /rest/V1/x", readAt: "2026-11-23T10:00:00.000Z" });
+        return { id: 2 };
+      }),
+    } as unknown as MagentoRestClient;
+    const withOptions = vi.fn((options: { onAnswered?: typeof onAnswered }) => {
+      onAnswered = options.onAnswered;
+      return bound;
+    });
     const base = { with: withOptions } as unknown as MagentoRestClient;
     const tool = createToolFactory(() => base).readTool({ name: "magentorest_c", description: "C.", input: z.object({}).strict(), shape: ["id"], run: (_a, c) => c.get("/x") });
     const controller = new AbortController();
@@ -129,13 +150,17 @@ describe("createToolFactory", () => {
     });
 
     it("applies to a read too: a record with no reported field is not silently shown as empty", async () => {
-      const tool = factory().readTool({ name: "magentorest_q2", description: "Q.", input: z.object({}).strict(), shape: ["id"], run: async () => ({ unknown_field: 1 }) });
+      const tool = factory().readTool({ name: "magentorest_q2", description: "Q.", input: z.object({}).strict(), shape: ["id"], run: (_a, c) => c.get("/x") });
+      vi.mocked(client.get).mockImplementationOnce(async () => {
+        answer();
+        return { unknown_field: 1 };
+      });
       expect((await tool.invoke({}, {})).structuredContent?.["result"]).toBe(NOTHING_REPORTED_NOTICE);
     });
   });
 
   it("passes parsed arguments and the lazily resolved client to run", async () => {
-    const run = vi.fn<(args: { sku: string }, client: MagentoRestClient) => Promise<unknown>>(async () => ({ id: 2 }));
+    const run = vi.fn<(args: { sku: string }, client: MagentoRestClient) => Promise<unknown>>(async (_args, c) => c.get("/x"));
     const tool = factory().readTool({ name: "magentorest_a", description: "A.", input: z.object({ sku: z.string() }).strict(), shape: ["id"], run });
     await tool.invoke({ sku: "DEMO-TENT-001" }, {});
     expect(run).toHaveBeenCalledWith({ sku: "DEMO-TENT-001" }, client);
@@ -198,6 +223,24 @@ describe("createToolFactory — structured output and provenance on read tools",
       const { structuredContent } = await tool.invoke({}, {});
       expect(tool.outputSchema?.safeParse(structuredContent).success).toBe(true);
     }
+  });
+
+  it("refuses to answer a read that produced no Magento answer, rather than inventing where the data came from", async () => {
+    const tool = createToolFactory(() => answeringClient({ id: 1 })).readTool({ ...readSpec, run: async () => ({ id: 1 }) });
+    await expect(tool.invoke({}, {})).rejects.toThrow(/no Magento answer/);
+  });
+
+  it("lists each distinct endpoint once, in order, when the same path was paged through", async () => {
+    const tool = createToolFactory(() => answeringClient({ id: 1 })).readTool({
+      ...readSpec,
+      run: async (_a, c) => {
+        await c.get("/orders");
+        await c.get("/orders");
+        return c.get("/orders/1/comments");
+      },
+    });
+    const { structuredContent } = await tool.invoke({}, {});
+    expect(structuredContent?.["provenance"]).toMatchObject({ endpoint: "GET /rest/V1/orders", endpoints: ["GET /rest/V1/orders", "GET /rest/V1/orders/1/comments"] });
   });
 
   it("produces the same output schema every time, as a JSON Schema object", () => {

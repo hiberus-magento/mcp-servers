@@ -107,13 +107,13 @@ function provenanceOf(answers: readonly RestAnswer[]): Provenance {
   const first = answers[0];
   const last = answers.at(-1);
   if (first === undefined || last === undefined) {
-    // Every read sends at least one request; this is only reachable with a client double that reports nothing.
-    return { endpoint: "", api_version: "V1", read_at: new Date().toISOString() };
+    // Provenance says where and when Magento answered; with no answer there is nothing true to say, so the call fails.
+    throw new Error("The read produced no Magento answer to cite, so its result cannot carry provenance.");
   }
-  const endpoints = answers.map((answer) => answer.endpoint);
+  const endpoints = [...new Set(answers.map((answer) => answer.endpoint))];
   return {
     endpoint: first.endpoint,
-    ...(new Set(endpoints).size > 1 ? { endpoints } : {}),
+    ...(endpoints.length > 1 ? { endpoints } : {}),
     api_version: "V1",
     read_at: last.readAt,
     ...(first.storeView !== undefined ? { store_view: first.storeView } : {}),
@@ -141,11 +141,16 @@ export function createToolFactory(getClient: () => MagentoRestClient, options: T
         // Bound to the MCP request's signal: when the client cancels the call, its in-flight request is aborted.
         const client = getClient();
         const answers: RestAnswer[] = [];
-        const options = { ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}), ...(structured ? { onAnswered: (answer: RestAnswer) => answers.push(answer) } : {}) };
-        const raw = await spec.run(args, Object.keys(options).length > 0 ? client.with(options) : client);
+        const requestOptions = { ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}), ...(structured ? { onAnswered: (answer: RestAnswer) => answers.push(answer) } : {}) };
+        const raw = await spec.run(args, Object.keys(requestOptions).length > 0 ? client.with(requestOptions) : client);
         const projected = project(raw, spec.shape);
-        // An empty body (a write that answers 200 with nothing) has no JSON form; `null` is its honest rendering.
-        const result = hasContent(raw) && isEmptyShell(projected) ? NOTHING_REPORTED_NOTICE : projected === undefined ? null : projected;
+        let result: unknown;
+        if (hasContent(raw) && isEmptyShell(projected)) {
+          result = NOTHING_REPORTED_NOTICE;
+        } else {
+          // An empty body (a write that answers 200 with nothing) has no JSON form; `null` is its honest rendering.
+          result = projected === undefined ? null : projected;
+        }
         return structured ? { result, provenance: provenanceOf(answers) } : result;
       },
     });

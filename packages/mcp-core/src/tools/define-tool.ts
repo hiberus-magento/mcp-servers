@@ -65,7 +65,8 @@ export interface ToolDefinition<TIn extends z.ZodObject, TOut, D extends string>
   readonly inputSchema: TIn;
   /**
    * The shape of a successful result. When present, the handler's result is returned as `structuredContent` (an MCP
-   * client validates it against this schema) and mirrored as JSON text in `content`, so the handler must return an object.
+   * client validates it against this schema) and mirrored exactly as JSON text in `content`, so the handler must return
+   * an object. A result whose JSON is over the output cap is refused with an error rather than truncated.
    */
   readonly outputSchema?: z.ZodObject;
   readonly annotations: ToolAnnotations;
@@ -116,10 +117,20 @@ export function defineTool<TIn extends z.ZodObject, TOut, const D extends string
         }
         throw error;
       }
-      const text = truncate(toTextContent(result), DEFAULT_MAX_OUTPUT_BYTES);
       if (def.outputSchema !== undefined) {
-        return { content: [{ type: "text", text }], structuredContent: result as Record<string, unknown> };
+        // The text must mirror the structured result exactly, so it is never truncated; a result over the cap is
+        // refused instead of being sent whole next to a cut-off mirror.
+        const json = JSON.stringify(result);
+        const bytes = Buffer.byteLength(json, "utf8");
+        if (bytes > DEFAULT_MAX_OUTPUT_BYTES) {
+          return {
+            content: [{ type: "text", text: `The result is ${bytes} bytes, over the ${DEFAULT_MAX_OUTPUT_BYTES}-byte limit; ask for fewer records.` }],
+            isError: true,
+          };
+        }
+        return { content: [{ type: "text", text: json }], structuredContent: result as Record<string, unknown> };
       }
+      const text = truncate(toTextContent(result), DEFAULT_MAX_OUTPUT_BYTES);
       return { content: [{ type: "text", text }] };
     },
   };

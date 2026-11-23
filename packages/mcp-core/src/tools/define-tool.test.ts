@@ -123,3 +123,22 @@ describe("defineTool() with an output schema", () => {
     expect(result.structuredContent).toBeUndefined();
   });
 });
+
+describe("defineTool() with an output schema — results over the output cap", () => {
+  it("refuses a structured result too large to return, instead of sending a truncated mirror next to an uncapped one", async () => {
+    const tool = defineTool({
+      name: "dump-structured",
+      description: "Returns a structured result far over the cap.",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ rows: z.array(z.string()) }),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+      handler: async () => ({ rows: Array.from({ length: 5000 }, (_, i) => `row-${i}-${"x".repeat(40)}`) }),
+    });
+
+    const result = await tool.invoke({}, {});
+
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    expect(result.content[0]?.text).toMatch(/over the 100000-byte limit/);
+  });
+});

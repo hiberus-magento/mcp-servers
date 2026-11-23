@@ -192,7 +192,9 @@ export function createRestTransport(deps: RestTransportDeps): RestTransport {
   function answerFor(request: RestRequest, root: string): RestAnswer {
     const pathname = new URL(`${root}${request.path}`).pathname;
     const fromRest = pathname.indexOf("/rest/");
-    const storeView = request.scope ?? baseStoreView;
+    // `all` is the global (admin) scope, not a store view.
+    const scope = request.scope ?? baseStoreView;
+    const storeView = scope === "all" ? undefined : scope;
     return {
       endpoint: `${request.method} ${fromRest >= 0 ? pathname.slice(fromRest) : pathname}`,
       readAt: new Date(deps.now()).toISOString(),

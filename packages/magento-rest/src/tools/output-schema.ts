@@ -37,7 +37,7 @@ function valueFor(shape: Shape): z.ZodType {
 export const provenanceSchema = z.object({
   /** The first request: method and path from `/rest` on, with no host, query string or token. */
   endpoint: z.string(),
-  /** Every request, in order, when the tool needed more than one. */
+  /** Each distinct endpoint, in the order first used, when the tool used more than one (a paged walk counts once). */
   endpoints: z.array(z.string()).optional(),
   api_version: z.literal("V1"),
   /** ISO 8601 UTC, when Magento answered the last request. */
