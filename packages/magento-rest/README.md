@@ -333,7 +333,9 @@ form from it sees four variables: `MAGENTO_REST_BASE_URL` and `MAGENTO_REST_TOKE
 (required, the token secret), `MAGENTO_REST_GROUPS`, and `MCP_WRITES_ENABLED`
 (boolean, default `false`). The standalone write switch, customer data, the field
 file and the database are deliberately not declared, so a host's form cannot turn
-them on.
+them on. A host launches the bin named after the unscoped package, `magento-rest`,
+which starts the MCP server (as `hiberus-magento-rest-mcp` does), so
+`npx -y @hiberus-magento/magento-rest` works without naming a bin.
 
 ## Tool groups
 

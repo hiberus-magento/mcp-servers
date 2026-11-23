@@ -52,6 +52,15 @@ describe("server.json", () => {
       expect(pkg.files).toContain("server.json");
     });
 
+    // A host (and the MCP registry's npx launch) runs the bin npx picks for the package: the one named after the
+    // unscoped package name, or the only one. That bin must start the MCP server, not the CLI.
+    it("has a bin named after the unscoped package that starts the MCP server", () => {
+      const unscoped = pkg.name.replace(/^@[^/]+\//, "");
+      const mcpTarget = pkg.bin[entry.bin];
+      expect(mcpTarget, `servers.json bin ${entry.bin}`).toBeDefined();
+      expect(pkg.bin[unscoped], `bin "${unscoped}"`).toBe(mcpTarget);
+    });
+
     it("configures the server through environment variables only, in a form a host can render", () => {
       const pack = server.packages[0];
       expect(pack.runtimeArguments).toBeUndefined();

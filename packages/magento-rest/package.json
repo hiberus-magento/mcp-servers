@@ -34,7 +34,8 @@
   },
   "bin": {
     "hiberus-magento-rest": "dist/cli.js",
-    "hiberus-magento-rest-mcp": "dist/mcp.js"
+    "hiberus-magento-rest-mcp": "dist/mcp.js",
+    "magento-rest": "dist/mcp.js"
   },
   "files": [
     "dist",
