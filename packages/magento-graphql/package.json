@@ -1,6 +1,6 @@
 {
   "name": "@hiberus-magento/magento-graphql",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server and CLI for the Magento 2 GraphQL API — storefront catalog, content and store reads, customer reads with an optional token, and opt-in cart mutations.",
   "keywords": [
     "mcp",
