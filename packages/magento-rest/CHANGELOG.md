@@ -1,5 +1,17 @@
 # @hiberus-magento/magento-rest
 
+## 0.2.0
+
+### Minor Changes
+
+- 0706670: Opt-in HTTP mode for callers that cannot launch a child process (a PHP middleware, a queue consumer). Set `<PREFIX>_HTTP_PORT` and `<PREFIX>_HTTP_TOKEN` (at least 32 characters, environment only) and the MCP server listens on `http://127.0.0.1:<port>/mcp` instead of stdio; unset, it speaks stdio exactly as before. Stateless: one `POST` per call with a JSON-RPC body and `Authorization: Bearer`, no `initialize` or session, JSON replies. Requests are refused with 401 (token), 403 (`Host`/`Origin` not allowed, DNS-rebinding protection), 404 (path), 405 (any method but `POST`, so a standard MCP client does not reconnect for a stream that does not exist) or 413 (body over 1 MiB). Each request writes one access-log line to stderr (method, status, tool name, duration; never arguments or the token), and `SIGTERM`/`SIGINT` give requests in flight 5 seconds and exit 0. `<PREFIX>_HTTP_HOST`, `<PREFIX>_HTTP_ALLOWED_HOSTS` and `<PREFIX>_HTTP_ALLOWED_ORIGINS` widen the defaults for containers. In `magento-graphql`, the tools the connected store does not offer stay out of `tools/list` for every request after the first call reads the schema. See `docs/http-mode.md`.
+- f6a387c: Usable from an MCP host such as Kora:
+
+  - **Structured reads.** Every read tool declares an `outputSchema` and answers with `structuredContent` `{ result, provenance }`, mirrored exactly as JSON text. `provenance` gives the endpoint (method and path from `/rest` on, no host, query or token), `api_version`, `read_at` (when Magento answered) and the store view. The text of a read changes accordingly: it is the JSON of that object, no longer the bare record. A result over 100,000 bytes is refused with an error instead of being truncated.
+  - **Customer data off by default.** Results no longer carry customer personal data (names, email, phone, an order's `customer_*` identity, a cart's `customer`, a customer's address city and postcode). Set `MAGENTO_REST_CUSTOMER_DATA=true` to get the previous fields back. A `MAGENTO_REST_FIELDS_FILE` cannot add them while it is off. The database tools are not filtered.
+  - **`MCP_WRITES_ENABLED`.** The write switch an MCP host sets. When present it decides alone; `MAGENTO_REST_ALLOW_WRITES` still works when it is unset.
+  - **`server.json`.** The package ships the MCP registry manifest (schema 2025-12-11) with `mcpName` `io.github.hiberus-magento/magento-rest`, declaring `MAGENTO_REST_BASE_URL`, `MAGENTO_REST_TOKEN` (secret), `MAGENTO_REST_GROUPS` and `MCP_WRITES_ENABLED`. The release keeps its version in step.
+
 ## 0.1.0
 
 ### Minor Changes

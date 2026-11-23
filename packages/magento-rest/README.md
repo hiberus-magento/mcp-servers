@@ -174,7 +174,7 @@ Pin the exact version; pass secrets as environment variable references, never li
       "args": [
         "-y",
         "--package",
-        "@hiberus-magento/magento-rest@0.1.0",
+        "@hiberus-magento/magento-rest@0.2.0",
         "hiberus-magento-rest-mcp"
       ],
       "env": {
