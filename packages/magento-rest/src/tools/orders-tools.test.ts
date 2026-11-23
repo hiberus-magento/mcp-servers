@@ -52,13 +52,14 @@ const RAW_ORDER = {
 };
 
 describe("orderTools surface", () => {
-  it("exposes the five reads and the four writes, all prefixed", () => {
+  it("exposes the six reads and the four writes, all prefixed", () => {
     const { tools } = build({});
     expect(tools.filter((t) => t.access === "read").map((t) => t.name).sort()).toEqual([
       "magentorest_get_order_by_id",
       "magentorest_get_order_by_increment_id",
       "magentorest_get_order_comments",
       "magentorest_get_order_items",
+      "magentorest_list_orders",
       "magentorest_search_orders",
     ]);
     expect(tools.filter((t) => t.access === "write").map((t) => t.name).sort()).toEqual([
@@ -164,6 +165,21 @@ describe("magentorest_search_orders", () => {
     expect(double.calls).toHaveLength(0);
   });
 
+  it("sorts only on its listed columns: a customer column is refused, where free text took it before", async () => {
+    const { double, tool } = build({});
+    await expect(tool("magentorest_search_orders").invoke({ sort_field: "customer_email" }, {})).rejects.toBeInstanceOf(ZodError);
+    await expect(tool("magentorest_search_orders").invoke({ sort: { field: "customer_lastname" } }, {})).rejects.toBeInstanceOf(ZodError);
+    expect(double.calls).toHaveLength(0);
+  });
+
+  it("takes sort as well, and refuses sort together with sort_field or sort_direction as invalid_argument on sort", async () => {
+    const { double, call, tool } = build({ "GET /rest/V1/orders": json(200, { items: [], total_count: 0 }) });
+    await call("magentorest_search_orders", { sort: { field: "grand_total", direction: "ASC" } });
+    expect(params(double.calls[0]?.url).get("searchCriteria[sortOrders][0][field]")).toBe("grand_total");
+    await expect(tool("magentorest_search_orders").invoke({ sort: { field: "grand_total" }, sort_direction: "ASC" }, {})).rejects.toMatchObject({ code: "invalid_argument", argument: "sort" });
+    expect(double.calls).toHaveLength(1);
+  });
+
   it.each(["Pending", "pending; DROP", "a&b", "", "x".repeat(33)])("refuses the status %j, which the original never constrained", async (bad) => {
     const { tool } = build({});
     await expect(tool("magentorest_search_orders").invoke({ status: bad }, {})).rejects.toBeInstanceOf(ZodError);
@@ -267,5 +283,29 @@ describe("order writes", () => {
     const { double, tool } = build({ "POST /rest/V1/orders/4/cancel": json(503, { message: "busy" }) });
     await expect(tool("magentorest_cancel_order").invoke({ order_id: 4 }, {})).rejects.toMatchObject({ kind: "server" });
     expect(double.calls).toHaveLength(1);
+  });
+});
+
+describe("magentorest_list_orders", () => {
+  it("takes no customer input: an email or customer ID is refused, not ignored", async () => {
+    const { double, tool } = build({});
+    await expect(tool("magentorest_list_orders").invoke({ customer_email: SYNTHETIC_MAGENTO_CUSTOMER_EMAIL }, {})).rejects.toBeInstanceOf(ZodError);
+    await expect(tool("magentorest_list_orders").invoke({ customer_id: 9 }, {})).rejects.toBeInstanceOf(ZodError);
+    await expect(tool("magentorest_list_orders").invoke({ sort_field: "created_at" }, {})).rejects.toBeInstanceOf(ZodError);
+    expect(double.calls).toHaveLength(0);
+  });
+
+  it("filters like search_orders, newest first, and answers the same summaries", async () => {
+    const { double, call } = build({ "GET /rest/V1/orders": json(200, { items: [RAW_ORDER], total_count: 1 }) });
+    const out = (await call("magentorest_list_orders", { status: "processing", date_from: "2026-01-01", grand_total_max: 500 })) as { items: Record<string, unknown>[]; total_count: number };
+    const q = params(double.calls[0]?.url);
+    const f = (group: number, key: string): string | null => q.get(`searchCriteria[filter_groups][${group}][filters][0][${key}]`);
+    expect([f(0, "field"), f(0, "value")]).toEqual(["status", "processing"]);
+    expect([f(1, "field"), f(1, "value"), f(1, "condition_type")]).toEqual(["created_at", "2026-01-01 00:00:00", "gteq"]);
+    expect([f(2, "field"), f(2, "value"), f(2, "condition_type")]).toEqual(["grand_total", "500", "lteq"]);
+    expect(f(3, "field")).toBeNull();
+    expect([q.get("searchCriteria[sortOrders][0][field]"), q.get("searchCriteria[sortOrders][0][direction]")]).toEqual(["created_at", "DESC"]);
+    expect(out.total_count).toBe(1);
+    expect(out.items[0]?.["increment_id"]).toBe(INCREMENT);
   });
 });

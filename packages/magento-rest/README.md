@@ -75,7 +75,8 @@ executable to run`.
 - `magentorest_delete_customer` — Use this to permanently delete a customer account by ID. Irreversible: the account and its address book are removed; past orders keep their own copy of the details.
 - `magentorest_get_order_by_id` (read-only) — Use this to read one order by entity ID: status, state, totals, currency and the order lines; who placed it (customer ID, name, email) only when the server runs with MAGENTO_REST_CUSTOMER_DATA=true. Billing and shipping addresses and payment details are not returned.
 - `magentorest_get_order_by_increment_id` (read-only) — Use this to read one order by its order number (increment ID), the one a customer quotes. Same fields as reading by entity ID. A number with no order is reported as not-found.
-- `magentorest_search_orders` (read-only) — Use this to find orders by status, customer email or ID, creation date range (YYYY-MM-DD, whole days) and grand-total range. Filters are combined with AND. Newest first unless you sort otherwise. Returns a bounded page of summaries and the total count.
+- `magentorest_search_orders` (read-only) — Use this to find orders by status, customer email or ID, creation date range (YYYY-MM-DD, whole days), grand-total range and the generic filters. Filters are combined with AND. Newest first unless you sort otherwise. Returns a bounded page of summaries and the total count.
+- `magentorest_list_orders` (read-only) — Use this to list orders by status, creation date range (YYYY-MM-DD, whole days), grand-total range and the generic filters, without naming a customer. Filters are combined with AND. Newest first unless you sort otherwise. Returns a bounded page of summaries and the total count. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_get_order_items` (read-only) — Use this to list the lines of one order: SKU, name, quantities ordered, shipped, invoiced and refunded, price and row total, tax and discount.
 - `magentorest_get_order_comments` (read-only) — Use this to read an order's status history: each entry's status, comment text, date and whether the customer was notified or can see it.
 - `magentorest_add_order_comment` — Use this to add a comment to an order's history, optionally moving it to another status. Silent and hidden from the customer unless you say otherwise: setting is_customer_notified to true makes Magento EMAIL the customer.
@@ -99,7 +100,8 @@ executable to run`.
 - `magentorest_get_source_items` (read-only) — Use this to read a product's quantity and status in each inventory source, by SKU.
 - `magentorest_update_product_stock` — Use this to set a product's stock quantity on the default stock. The in-stock flag follows the quantity (in stock when above zero) unless you set it. Overwrites the current quantity. With multi-source inventory enabled this changes the quantity of the default source (observed on a live store) and no other source; magentorest_get_source_items reads every source, and nothing here writes the others.
 - `magentorest_get_cart_by_id` (read-only) — Use this to read one cart by ID: activity, item count and quantity, currency and the cart lines; the customer's identity (id, name, email, group) only when the server runs with MAGENTO_REST_CUSTOMER_DATA=true. Addresses are not returned.
-- `magentorest_search_carts` (read-only) — Use this to find carts by customer email or ID, active status and creation date range (YYYY-MM-DD, whole days). Filters are combined with AND. Returns a bounded page of summaries and the total count.
+- `magentorest_search_carts` (read-only) — Use this to find carts by customer email or ID, active status, creation date range (YYYY-MM-DD, whole days) and the generic filters. Filters are combined with AND. Returns a bounded page of summaries and the total count.
+- `magentorest_list_carts` (read-only) — Use this to list carts by active status, creation date range (YYYY-MM-DD, whole days) and the generic filters, without naming a customer. Filters are combined with AND. Returns a bounded page of summaries and the total count. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_get_cart_items` (read-only) — Use this to list the lines of one cart: SKU, name, quantity, price and product type.
 - `magentorest_get_abandoned_carts` (read-only) — Use this to find abandoned carts: active, non-empty carts not updated for at least a number of days, most recently updated first. Each entry gives the item count and the dates, and names the owner (or Guest) only when the server runs with MAGENTO_REST_CUSTOMER_DATA=true. Returns a bounded page, the total count and the cutoff used.
 - `magentorest_get_cms_block_by_id` (read-only) — Use this to read one CMS block by ID, including its content (HTML), title, identifier, dates and whether it is active.
@@ -334,6 +336,44 @@ number, status, totals and lines. A `MAGENTO_REST_FIELDS_FILE` cannot add these
 fields back while the switch is off. The database tools are not filtered: they
 return what their SQL selects.
 
+## Filtering and sorting lists
+
+Every list tool that reads through Magento's `searchCriteria` also takes
+`filters` and `sort`:
+
+```json
+{
+  "filters": [
+    { "field": "status", "value": "processing" },
+    { "field": "grand_total", "condition": "gteq", "value": 100 },
+    { "field": "store_id", "condition": "in", "value": [1, 2] }
+  ],
+  "sort": { "field": "grand_total", "direction": "DESC" }
+}
+```
+
+- `field` is one of the tool's own columns, by Magento's name for it
+  (`entity_id`, not the `id` a result shows); the tool's input schema lists them.
+  No list holds a column that identifies a customer (email, name, customer ID, ...),
+  so a filter cannot select by person.
+- `condition` is `eq` (the default), `neq`, `like` and `nlike` (`%` is the
+  wildcard), `in` and `nin` (`value` is an array), `gt`, `gteq`, `lt`, `lteq`,
+  `from`, `to`, `null` and `notnull` (no `value`), or `finset`.
+- Filters are combined with AND, at most 10. A tool's own inputs (`status`,
+  `date_from`, ...) are ANDed with them too, also on the same column: a pair that
+  cannot both hold answers an empty page.
+- `sort` defaults to descending; without it each tool keeps its own order.
+  `search_orders` and `advanced_product_search` still take `sort_field` and
+  `sort_direction`; passing those and `sort` together is refused as
+  `invalid_argument` on `sort`. `search_orders` now sorts only on its listed
+  columns.
+- `list_orders` and `list_carts` are `search_orders` and `search_carts` without
+  the customer email and ID inputs, for a host that refuses a tool able to
+  select by customer.
+- Sales rules cannot be filtered on `from_date` or `to_date` yet: on Adobe
+  Commerce the staging module owns those dates, and that filtering has not been
+  verified there.
+
 ## Product content per store view
 
 `magentorest_get_product_content` reads a product's name, description, short
@@ -403,10 +443,10 @@ server, because the tools it names cannot exist.
 | `store` | Store configuration: store views, websites, store groups, countries, currency | get_store_configs, get_store_views, get_websites, get_store_groups, get_countries, get_currency_info |
 | `categories` | Category tree and the products in a category | get_category_tree, get_category_by_id, list_categories, get_products_in_category, create_category*, update_category*, delete_category*, move_category* |
 | `customers` | Customers, their groups and addresses | get_customer_by_id, search_customers, get_customer_groups, get_customer_addresses, create_customer*, update_customer*, delete_customer* |
-| `orders` | Orders and their comments, cancel and hold | get_order_by_id, get_order_by_increment_id, search_orders, get_order_items, get_order_comments, add_order_comment*, cancel_order*, hold_order*, unhold_order* |
+| `orders` | Orders and their comments, cancel and hold | get_order_by_id, get_order_by_increment_id, search_orders, list_orders, get_order_items, get_order_comments, add_order_comment*, cancel_order*, hold_order*, unhold_order* |
 | `sales-documents` | Invoices, shipments and credit memos | get_invoice_by_id, search_invoices, get_shipment_by_id, search_shipments, get_creditmemo_by_id, search_creditmemos, create_invoice*, create_shipment*, add_shipment_tracking*, create_creditmemo* |
 | `stock` | Stock and inventory (MSI sources and stocks) | get_product_stock, get_low_stock_products, get_inventory_sources, get_inventory_stocks, get_source_items, update_product_stock* |
-| `carts` | Carts, including abandoned ones (read-only) | get_cart_by_id, search_carts, get_cart_items, get_abandoned_carts |
+| `carts` | Carts, including abandoned ones (read-only) | get_cart_by_id, search_carts, list_carts, get_cart_items, get_abandoned_carts |
 | `cms` | CMS blocks and pages | get_cms_block_by_id, search_cms_blocks, get_cms_page_by_id, search_cms_pages, create_cms_block*, update_cms_block*, delete_cms_block*, create_cms_page*, update_cms_page*, delete_cms_page* |
 | `attributes` | Product attributes, options and attribute sets | get_product_attribute, search_product_attributes, get_attribute_options, get_attribute_sets, get_attribute_set_attributes, add_attribute_option* |
 | `media` | Product images | get_product_media, get_product_media_entry, add_product_image*, update_product_media*, delete_product_media* |

@@ -25,6 +25,7 @@ import { restPath, type SearchFilter } from "../client/index.js";
 import { currentPage, entityId, isoDate, pageSize } from "./inputs.js";
 import type { MagentoRestTool, ToolFactory } from "./rest-tool.js";
 import { listOf, type ResourceName } from "./shapes.js";
+import { type FieldList, LIST_FIELDS, listCriteria, listInputs } from "./list-filters.js";
 
 const LIST_PAGE_SIZE = 20;
 
@@ -75,15 +76,15 @@ export function salesDocumentTools({ readTool, writeTool, shapes }: ToolFactory)
       run: (args, client) => client.get(path(args[idKey] as number)),
     });
 
-  const searchMany = (kind: string, label: string, path: string, shape: ResourceName, withState: boolean): MagentoRestTool =>
+  const searchMany = (kind: string, label: string, path: string, shape: ResourceName, withState: boolean, fields: FieldList): MagentoRestTool =>
     readTool({
       name: `magentorest_search_${kind}s`,
       description: `Use this to find ${label} by order${withState ? ", state" : ""} and creation date range (YYYY-MM-DD, whole days). Filters are combined with AND. Returns a bounded page of summaries and the total count.`,
-      input: z.object(withState ? { ...baseSearchFields, state: stateField } : baseSearchFields).strict(),
+      input: z.object({ ...(withState ? { ...baseSearchFields, state: stateField } : baseSearchFields), ...listInputs(fields) }).strict(),
       shape: listOf(shapes[shape]),
       run: async (args, client) => {
         const result = await client.search(path, {
-          filterGroups: documentFilters(args as DocumentSearch),
+          ...listCriteria(args as Parameters<typeof listCriteria>[0], { filterGroups: documentFilters(args as DocumentSearch) }),
           pageSize: (args as { page_size?: number }).page_size ?? LIST_PAGE_SIZE,
           currentPage: (args as { current_page?: number }).current_page ?? 1,
         });
@@ -93,11 +94,11 @@ export function salesDocumentTools({ readTool, writeTool, shapes }: ToolFactory)
 
   return [
     getOne("invoice", "invoice_id", (id) => restPath`/invoices/${id}`, "invoice", "state, totals, currency and the invoiced lines."),
-    searchMany("invoice", "invoices", "/invoices", "invoice_summary", true),
+    searchMany("invoice", "invoices", "/invoices", "invoice_summary", true, LIST_FIELDS.invoice),
     getOne("shipment", "shipment_id", (id) => restPath`/shipment/${id}`, "shipment", "quantities, weight, the shipped lines and the tracking entries."),
-    searchMany("shipment", "shipments", "/shipments", "shipment_summary", false),
+    searchMany("shipment", "shipments", "/shipments", "shipment_summary", false, LIST_FIELDS.shipment),
     getOne("creditmemo", "creditmemo_id", (id) => restPath`/creditmemo/${id}`, "creditmemo", "state, totals, adjustments, currency and the refunded lines."),
-    searchMany("creditmemo", "credit memos (refunds)", "/creditmemos", "creditmemo_summary", true),
+    searchMany("creditmemo", "credit memos (refunds)", "/creditmemos", "creditmemo_summary", true, LIST_FIELDS.creditmemo),
 
     writeTool({
       name: "magentorest_create_invoice",

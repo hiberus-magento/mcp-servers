@@ -133,6 +133,12 @@ describe("magentorest_search_products", () => {
 });
 
 describe("magentorest_advanced_product_search", () => {
+  it("refuses sort together with sort_field or sort_direction as invalid_argument on sort, before asking Magento", async () => {
+    const { double, tool } = build({});
+    await expect(tool("magentorest_advanced_product_search").invoke({ field: "price", value: "10", sort: { field: "price" }, sort_field: "name" }, {})).rejects.toMatchObject({ code: "invalid_argument", argument: "sort" });
+    expect(double.calls).toHaveLength(0);
+  });
+
   it("passes field, value, condition and sort through as data", async () => {
     const { double, call } = build({ "GET /rest/V1/products": json(200, { items: [], total_count: 0 }) });
     await call("magentorest_advanced_product_search", { field: "price", value: "10", condition_type: "gteq", sort_field: "price", sort_direction: "ASC", page_size: 5 });
