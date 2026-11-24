@@ -3,6 +3,8 @@ name: Release
 on:
   push:
     branches: [main]
+  # A manual re-run from the current main, for a release whose publish or GitHub releases failed.
+  workflow_dispatch:
 
 # Every merge to main that carries changesets is released by that merge: the job versions the packages, commits
 # the bump to main, publishes, and creates the GitHub releases. There is no "Version Packages" pull request to
@@ -18,8 +20,8 @@ permissions:
   id-token: write
   contents: write
 
-# One release at a time, in merge order: a second merge waits for the first release to finish instead of racing
-# it to push a version commit or publish the same version.
+# One release at a time: a merge that lands during a release waits for it (GitHub keeps one pending run per group,
+# the newest), and that run then starts from the current main, so it releases everything still pending.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -31,6 +33,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          # The current main, not the commit that triggered the run: a run that waited in the concurrency group must
+          # see the version commit the run before it pushed, or it would version consumed changesets again.
+          ref: main
           fetch-depth: 0
 
       - name: Enable corepack
@@ -48,12 +53,16 @@ jobs:
 
       # Consumes the pending changesets: bumps package.json and CHANGELOG.md, then copies the versions into
       # servers.json and the READMEs' pinned install snippets. The commit is pushed with the workflow's own token,
-      # which does not start another workflow run ([skip ci] says so to anyone reading the history too). If main
-      # moved since the checkout, the commit is rebased onto it first; a merge that lands later releases itself.
+      # which does not start another workflow run ([skip ci] says so to anyone reading the history too).
+      # If main moved since the checkout, the push is refused and this run stops without publishing: the merge that
+      # moved main has its own run queued, which starts from the new main and releases everything pending. Publishing
+      # here would ship that merge's code under this version without its changelog entry.
+      # Prerelease mode (.changeset/pre.json) is not supported: it keeps consumed changesets on disk.
       - name: Version packages
+        id: version
         shell: bash
         run: |
-          if ! find .changeset -name '*.md' ! -name 'README.md' | grep -q .; then
+          if [ -z "$(find .changeset -name '*.md' ! -name 'README.md' -print -quit)" ]; then
             echo "No changesets: nothing to version."
             exit 0
           fi
@@ -62,11 +71,14 @@ jobs:
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "chore(release): version packages [skip ci]"
-          git pull --rebase origin main
-          git push origin HEAD:main
+          if ! git push origin HEAD:main; then
+            echo "main moved during this run: the queued run releases it instead."
+            echo "superseded=true" >> "$GITHUB_OUTPUT"
+          fi
 
       # After the version step: the bundles embed their package.json version at build time.
       - name: Build
+        if: steps.version.outputs.superseded != 'true'
         run: pnpm build
 
       # Publishes every package whose version is not on npm yet, so a run whose publish failed after its version
@@ -80,6 +92,7 @@ jobs:
       # deviation (design.md, Open Questions), never a long-lived token
       # committed to the repository.
       - name: Publish
+        if: steps.version.outputs.superseded != 'true'
         # An explicit bash runs with pipefail, so a failed publish is not hidden by tee.
         shell: bash
         run: pnpm changeset publish 2>&1 | tee "$RUNNER_TEMP/publish.log"
@@ -89,14 +102,18 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # One GitHub release per tag the publish created, its notes the version's CHANGELOG section (what the
-      # changesets action used to create).
+      # changesets action used to create). It also runs after a publish that failed part-way: `changeset publish`
+      # tags the packages it did publish before failing, and those tags would otherwise be lost. Each tag and release
+      # is created only if it does not exist yet, so a re-run completes what a failed one left.
       - name: Tags and GitHub releases
+        if: ${{ !cancelled() && steps.version.outputs.superseded != 'true' }}
         shell: bash
         run: |
+          [ -f "$RUNNER_TEMP/publish.log" ] || exit 0
           node scripts/github-releases.mjs "$RUNNER_TEMP/publish.log" "$RUNNER_TEMP/release-notes" > "$RUNNER_TEMP/releases.tsv"
           while IFS="$(printf '\t')" read -r tag notes; do
-            git push origin "refs/tags/$tag"
-            gh release create "$tag" --title "$tag" --notes-file "$notes"
+            git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null || git push origin "refs/tags/$tag"
+            gh release view "$tag" > /dev/null 2>&1 || gh release create "$tag" --title "$tag" --notes-file "$notes"
           done < "$RUNNER_TEMP/releases.tsv"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
