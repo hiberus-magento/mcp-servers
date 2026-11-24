@@ -36,3 +36,10 @@ Requested by Kora, approved by the user ("si, adelante"):
   - tests added for the verifier's probe, the auto-generated refusal, the partial-write message, POST of a missing primary, string-typed numbers and dates with time, and a failed create sending no DELETE.
   Non-blocking and not closable by a client: a POST /salesRules timeout after Magento saved the rule leaves an unnamed rule.
 - L8 Recheck: blocker 1 fixed (verifier). Leftover, non-blocking: a case-only code change (DEMO10 → demo10) is likely refused as taken, because MySQL coupon search ignores case; nothing is written.
+- L9 Review review-78d977ce748ba270 (risk, resilience, reliability) over 93c9428..HEAD: approved, acknowledged. Advisory findings applied as a follow-up:
+  - use_auto_generation is read as true or 1 in both places;
+  - the percent cap compares a string-typed stored amount as a number;
+  - a failed rollback keeps the coupon error as cause;
+  - a failed create read-back names the created rule, so a retry does not duplicate it;
+  - a non-list generate answer is an error, not an empty list.
+  Declined: R3-auto-to-specific-unreachable. Switching an auto-generating rule to SPECIFIC_COUPON with a code is refused on purpose, because Magento would delete that code on the rule's next save while the flag stays set.

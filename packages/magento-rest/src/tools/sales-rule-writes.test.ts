@@ -416,3 +416,48 @@ describe("generate_coupons", () => {
     expect(double.calls).toHaveLength(0);
   });
 });
+
+describe("sales rule writes: failure reporting", () => {
+  it("names the created rule when its read-back fails, so a retry does not create a second one", async () => {
+    const { tool } = build({
+      "POST /rest/V1/salesRules": json(200, { ...STORED, rule_id: 9, coupon_type: "NO_COUPON" }),
+      "GET /rest/V1/salesRules/9": json(503, { message: "down" }),
+    });
+    await expect(tool(CREATE).invoke(CREATE_ARGS, {})).rejects.toThrow(/created as rule 9/);
+  });
+
+  it("keeps the coupon failure as the cause when the rollback fails too", async () => {
+    const { tool } = build({
+      [COUPON_SEARCH]: coupons(),
+      "POST /rest/V1/salesRules": json(200, { ...STORED, rule_id: 9 }),
+      "POST /rest/V1/coupons": json(400, { message: "Error occurred when saving coupon: %1", parameters: ["x"] }),
+      "DELETE /rest/V1/salesRules/9": json(500, { message: "boom" }),
+    });
+    const error = await tool(CREATE).invoke({ ...CREATE_ARGS, coupon_type: "SPECIFIC_COUPON", coupon_code: "SPRING10" }, {}).catch((e: unknown) => e);
+    expect((error as Error).cause).toBeDefined();
+  });
+
+  it("caps a percent at 100 even when Magento returns the stored amount as a string", async () => {
+    const { double, tool } = build({ "GET /rest/V1/salesRules/3": json(200, { ...STORED, coupon_type: "NO_COUPON", simple_action: "by_fixed", discount_amount: "150.0000" }) });
+    await expect(tool(UPDATE).invoke({ rule_id: 3, simple_action: "by_percent" }, {})).rejects.toMatchObject({ code: "invalid_argument", argument: "discount_amount" });
+    expect(double.calls.map((c) => c.method).filter((m) => m !== "GET")).toEqual([]);
+  });
+
+  it("generate_coupons reads use_auto_generation as Magento may return it (1)", async () => {
+    const { tool } = build({
+      "GET /rest/V1/salesRules/3": json(200, { ...STORED, coupon_type: "SPECIFIC_COUPON", use_auto_generation: 1 }),
+      [COUPON_SEARCH]: coupons(),
+      "POST /rest/V1/coupons/generate": json(200, ["A"]),
+    });
+    const outcome = await tool(GENERATE).invoke({ rule_id: 3, qty: 1 }, {});
+    expect((outcome.structuredContent as { codes: string[] }).codes).toEqual(["A"]);
+  });
+
+  it("generate_coupons refuses to report an answer that is not a list of codes as none generated", async () => {
+    const { tool } = build({
+      "GET /rest/V1/salesRules/3": json(200, { ...STORED, coupon_type: "AUTO" }),
+      "POST /rest/V1/coupons/generate": json(200, { success: true }),
+    });
+    await expect(tool(GENERATE).invoke({ rule_id: 3, qty: 1 }, {})).rejects.toThrow(/not a list of codes/);
+  });
+});

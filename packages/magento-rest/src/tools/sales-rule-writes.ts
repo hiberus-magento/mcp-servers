@@ -86,6 +86,9 @@ interface StoredRule {
 
 const isMissing = (error: unknown): boolean => error instanceof MagentoRestError && error.kind === "not-found";
 
+/** Magento returns this flag as a boolean or as 0/1, depending on the store. */
+const autoGenerates = (rule: Record<string, unknown>): boolean => rule["use_auto_generation"] === true || Number(rule["use_auto_generation"]) === 1;
+
 /** One rule and its primary coupon's code: GET the rule, then, for a specific-coupon rule, its primary coupon. */
 export async function readSalesRule(client: MagentoRestClient, ruleId: number): Promise<StoredRule> {
   const rule = record(await client.get(restPath`/salesRules/${ruleId}`));
@@ -128,7 +131,8 @@ function checkCombination(effective: Members, given: Members, needsCode: boolean
   if (needsCode && given.coupon_code === undefined) {
     throw new ToolArgumentError("invalid_argument", "coupon_code", "A SPECIFIC_COUPON rule needs coupon_code: the code customers enter.");
   }
-  if (effective.simple_action === "by_percent" && typeof effective.discount_amount === "number" && effective.discount_amount > 100) {
+  // The stored amount can come back as a string ("150.0000"), so it is compared as a number.
+  if (effective.simple_action === "by_percent" && Number(effective.discount_amount) > 100) {
     throw new ToolArgumentError("invalid_argument", "discount_amount", "A by_percent discount is at most 100.");
   }
   if (effective.from_date !== undefined && effective.to_date !== undefined && effective.to_date < effective.from_date) {
@@ -207,13 +211,18 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
             try {
               await write.client.delete(restPath`/salesRules/${ruleId}`);
             } catch {
-              throw new Error(`The rule was created as rule ${ruleId}, but its coupon code could not be saved and deleting the rule failed: delete it or set its code with ${UPDATE_SALES_RULE_TOOL}.`);
+              throw new Error(`The rule was created as rule ${ruleId}, but its coupon code could not be saved and deleting the rule failed: delete it or set its code with ${UPDATE_SALES_RULE_TOOL}.`, { cause: error });
             }
             throw error;
           }
         }
         const after = track();
-        return readBack(after.client, after.answers, ruleId);
+        try {
+          return await readBack(after.client, after.answers, ruleId);
+        } catch (error) {
+          // The rule exists now: a caller retrying the create would make a second one.
+          throw new Error(`The rule was created as rule ${ruleId}, but reading it back failed: read it with magentorest_get_sales_rule_by_id rather than creating it again.`, { cause: error });
+        }
       },
     }),
 
@@ -260,7 +269,7 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
         // Everything that can refuse the code is checked BEFORE the PUT: a rule switched to SPECIFIC_COUPON whose code
         // then fails would stop applying to every cart, with no code to apply it.
         if (newCode !== undefined) {
-          if (stored.rule["use_auto_generation"] === true || stored.rule["use_auto_generation"] === 1) {
+          if (autoGenerates(stored.rule)) {
             // Magento refuses a hand-set code on such a rule, and deletes a primary coupon on its next save anyway.
             throw new ToolArgumentError("invalid_argument", "coupon_code", "That rule auto-generates its codes, so it takes no single code: nothing was written.");
           }
@@ -316,14 +325,18 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
           if (isMissing(error)) throw new ToolArgumentError("not_found", "rule_id", "No cart price rule with that ID: no codes were generated.");
           throw error;
         }
-        if (stored.rule["coupon_type"] !== "AUTO" && stored.rule["use_auto_generation"] !== true) {
+        if (stored.rule["coupon_type"] !== "AUTO" && !autoGenerates(stored.rule)) {
           throw new ToolArgumentError("invalid_argument", "rule_id", `That rule does not take generated codes: set its coupon_type to AUTO with ${UPDATE_SALES_RULE_TOOL} first.`);
         }
         const write = track();
         const answer = await write.client.post("/coupons/generate", {
           couponSpec: { rule_id: ruleId, quantity: qty, length: length ?? 12, format: format ?? "alphanum", ...(prefix !== undefined ? { prefix } : {}) },
         });
-        const codes = Array.isArray(answer) ? answer.filter((code): code is string => typeof code === "string") : [];
+        if (!Array.isArray(answer)) {
+          // Codes may have been made and saved; reporting none would invite a second call.
+          throw new Error(`Magento answered the generation for rule ${ruleId} with something that is not a list of codes: read its coupons with magentorest_search_coupons before generating again.`);
+        }
+        const codes = answer.filter((code): code is string => typeof code === "string");
         return { rule_id: ruleId, codes, provenance: provenanceOf(write.answers) };
       },
     }),
