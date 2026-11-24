@@ -378,9 +378,12 @@ Every list tool that reads through Magento's `searchCriteria` also takes
 - `list_orders` and `list_carts` are `search_orders` and `search_carts` without
   the customer email and ID inputs, for a host that refuses a tool able to
   select by customer.
-- Sales rules cannot be filtered on `from_date` or `to_date` yet: on Adobe
-  Commerce the staging module owns those dates, and that filtering has not been
-  verified there.
+- `get_sales_rules` takes `active_on` (`YYYY-MM-DD`): it keeps the rules whose
+  stored dates span that day, `from_date` on or before it and `to_date` empty or
+  on or after it. These are the dates the rule row stores. On Adobe Commerce with
+  content staging a scheduled update may not show in them, so `active_on` does
+  not promise the rule applies that day. `from_date` and `to_date` are still not
+  in the generic `filters` list.
 
 ## Product content per store view
 

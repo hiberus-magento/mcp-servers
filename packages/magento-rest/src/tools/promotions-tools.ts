@@ -12,22 +12,46 @@
 // finding and inspecting codes is what they are for.
 import { z } from "zod";
 import { restPath, type SearchFilter } from "../client/index.js";
-import { currentPage, entityId, pageSize } from "./inputs.js";
+import { currentPage, entityId, isoDate, pageSize } from "./inputs.js";
 import type { MagentoRestTool, ToolFactory } from "./rest-tool.js";
 import { listOf } from "./shapes.js";
 import { LIST_FIELDS, listCriteria, listInputs } from "./list-filters.js";
 
 const LIST_PAGE_SIZE = 50;
 
+/** A real calendar day: `YYYY-MM-DD` that round-trips through a UTC date, so 2026-02-30 is refused. */
+const activeOn = isoDate(
+  "Keep only the rules whose stored dates span this day (YYYY-MM-DD): from date on or before it, and no to date or a to date on or after it. These are the dates the rule row stores; on Adobe Commerce with content staging a scheduled update may not show in them, so this is not a guarantee the rule applies on that day. Combined with AND with the other filters.",
+).refine((day) => {
+  // zod still runs this when the pattern failed, so an unparsable day must return false, not throw.
+  const parsed = new Date(`${day}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(day);
+}, "expected a real calendar date");
+
+/**
+ * `from_date <= day AND (to_date IS NULL OR to_date >= day)`: groups are AND'd, filters inside a group OR'd.
+ * Both columns are dates, and Magento compares them with the day as given.
+ */
+function storedDatesSpan(day: string): SearchFilter[][] {
+  return [
+    [{ field: "from_date", value: day, conditionType: "lteq" }],
+    [
+      { field: "to_date", value: 1, conditionType: "null" },
+      { field: "to_date", value: day, conditionType: "gteq" },
+    ],
+  ];
+}
+
 export function promotionTools({ readTool, writeTool, shapes }: ToolFactory): readonly MagentoRestTool[] {
   return [
     readTool({
       name: "magentorest_get_sales_rules",
       description: "Use this to list the cart price rules (promotions): name, dates, whether active, discount type and amount, coupon type, usage limits, websites and customer groups. Returns a bounded page and the total count.",
-      input: z.object({ page_size: pageSize, current_page: currentPage, ...listInputs(LIST_FIELDS.sales_rule) }).strict(),
+      input: z.object({ active_on: activeOn.optional(), page_size: pageSize, current_page: currentPage, ...listInputs(LIST_FIELDS.sales_rule) }).strict(),
       shape: listOf(shapes.sales_rule),
-      run: async ({ page_size, current_page, ...narrow }, client) => {
-        const result = await client.search("/salesRules/search", { ...listCriteria(narrow), pageSize: page_size ?? LIST_PAGE_SIZE, currentPage: current_page ?? 1 });
+      run: async ({ active_on, page_size, current_page, ...narrow }, client) => {
+        const own = active_on === undefined ? undefined : { filterGroups: storedDatesSpan(active_on) };
+        const result = await client.search("/salesRules/search", { ...listCriteria(narrow, own), pageSize: page_size ?? LIST_PAGE_SIZE, currentPage: current_page ?? 1 });
         return { items: result.items, total_count: result.totalCount };
       },
     }),

@@ -20,7 +20,7 @@ Tools in scope (22 + 2 new): search_products, advanced_product_search, get_produ
 
 - [x] T1 (S1-S3, S8) shared `tools/list-filters.ts` + tests; denylist test over every tool. Route: inline. RED observed (module missing), GREEN 43/43.
 - [x] T2 (S1-S5, S7) wire the field sets into the list tools, constrain search_orders sort_field, add list_orders / list_carts, AND test, README + changeset. Route: inline. 8 gates green.
-- [ ] T3 (S6) sales-rule `active_on`: needs Adobe Commerce evidence (closed source); pending. from_date/to_date left out of the sales-rule field list until then.
+- [x] T3 (S6) sales-rule `active_on` (branch feat/magento-rest-sales-rule-active-on): tool-side `from_date <= D AND (to_date null OR to_date >= D)`, described as the stored row dates with the content-staging caveat. Route: inline. RED observed (unknown key `active_on`), GREEN 60/60. from_date/to_date still left out of the generic field list.
 
 ## Log
 
@@ -28,3 +28,4 @@ Tools in scope (22 + 2 new): search_products, advanced_product_search, get_produ
 - L2 Field names verified against Magento 2.4-develop di.xml: customer groups map id, code, tax_class_name; tax rates use tax_calculation_rate_id, tax_country_id, tax_region_id, code, rate, zip_*; tax rules map id, code, tax_rate_ids, customer_tax_class_ids, product_tax_class_ids.
 - L3 T1+T2 committed together (one behavior: the helper has no user without the wiring). Wire test runs a filter and sort through all 25 tools; same-column AND test on 7 tools; denylist walk over every tool's field/sort_field enums.
 - L4 Native review review-7da9d6077506ad83 (risk, readability, reliability) approved a53ac5d with suggestions only; acknowledged. Applied: shared assertOneSort, customerFilters rename, product sort_direction conflict test, free-text field exemption pinned. Declined: R2-sales-doc-description (the filters schema documents the input; rewriting 21 descriptions would only grow the manifest diff).
+- L5 (2026-11-24) Kora's owner's probe of get_sales_rules on a client's Adobe Commerce Cloud staging (0.4.1): the first 5 rules by id all had from_date filled and to_date empty, and 200 rules in total. Not shown: how a staged (scheduled) update is represented; the edition could not be confirmed through the API. Kora: "ship active_on as a tool-side filter, from_date <= D and (to_date is null or to_date >= D), documented as 'the dates the rule row stores'." Accepted, with the caveat put in the input description and the README.
