@@ -1,5 +1,25 @@
 # @hiberus-magento/magento-rest
 
+## 0.6.0
+
+### Minor Changes
+
+- 77d4ba9: New write tool `magentorest_generate_coupons`. It generates up to 100 codes for a cart price rule that takes generated codes (`AUTO`, or `SPECIFIC_COUPON` with auto-generation) and returns them. A rule that does not take generated codes is refused as `invalid_argument` on `rule_id`, and a missing rule is `not_found`.
+- b78dabd: New write tools for cart price rules. They are listed only when writes are enabled, and need `Magento_SalesRule::quote`.
+
+  - `magentorest_create_sales_rule` creates a rule without conditions. With `SPECIFIC_COUPON` it also saves the rule's code.
+  - `magentorest_update_sales_rule` sends only the members that differ from the stored rule and leaves its conditions alone.
+
+  Both answer with the rule read back. `magentorest_get_sales_rule_by_id` now also returns `coupon_code`, the code of a `SPECIFIC_COUPON` rule's primary coupon, so a host can read the same members before and after a write.
+
+### Patch Changes
+
+- 93c9428: Write-tool hints and descriptions now match what Magento does:
+
+  - `magentorest_assign_product_to_category` is an update (destructive, idempotent): when the product is already in the category, Magento replaces its position.
+  - `magentorest_add_order_comment` is an action (destructive, not idempotent): Magento writes the order's own status from the comment, and each call adds an entry.
+  - `magentorest_create_customer` now says that Magento emails the new customer, which no input can stop.
+
 ## 0.5.0
 
 ### Minor Changes
