@@ -17,10 +17,12 @@
 //     invalid. The \"int\" type was expected.") because it reads that path as
 //     `/orders/{id}` with an id of "statuses". No such collection route exists;
 //
-// The four writes change real state. Cancel, hold and unhold are `action`
-// effects (destructive, not idempotent). `add_order_comment` can EMAIL the
-// customer when `is_customer_notified` is true — outward-facing, so its
-// description says so — and defaults to silent.
+// The four writes change real state, and all are `action` effects (destructive,
+// not idempotent). `add_order_comment` is one too: Magento's addComment writes
+// the order's own status from the comment's (or rewrites the current one), and a
+// repeat adds a second entry. It can EMAIL the customer when
+// `is_customer_notified` is true — outward-facing, so its description says so —
+// and defaults to silent.
 import { z } from "zod";
 import { MagentoRestError, restPath, type MagentoRestClient, type SearchFilter } from "../client/index.js";
 import { currentPage, entityId, isoDate, pageSize, sortDirection } from "./inputs.js";
@@ -169,8 +171,8 @@ export function orderTools({ readTool, writeTool, shapes }: ToolFactory): readon
     writeTool({
       name: "magentorest_add_order_comment",
       description:
-        "Use this to add a comment to an order's history, optionally moving it to another status. Silent and hidden from the customer unless you say otherwise: setting is_customer_notified to true makes Magento EMAIL the customer.",
-      effect: "create",
+        "Use this to add a comment to an order's history, optionally moving it to another status. A status given becomes the order's own status (it must be one the order's current state allows). Silent and hidden from the customer unless you say otherwise: setting is_customer_notified to true makes Magento EMAIL the customer. Each call adds another entry.",
+      effect: "action",
       input: z
         .object({
           order_id: orderId,

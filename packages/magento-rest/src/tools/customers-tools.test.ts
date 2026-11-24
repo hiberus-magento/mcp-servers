@@ -176,4 +176,11 @@ describe("customer writes", () => {
     expect(double.calls[0]?.method).toBe("DELETE");
     expect(tool("magentorest_delete_customer").annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true });
   });
+
+describe("create_customer description", () => {
+  it("says Magento emails the new customer, since no input can stop it", () => {
+    const { tool } = build({});
+    expect(tool("magentorest_create_customer").description).toMatch(/EMAILS the customer/);
+  });
+});
 });

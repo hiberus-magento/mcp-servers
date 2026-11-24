@@ -117,7 +117,7 @@ export function customerTools({ readTool, writeTool, shapes }: ToolFactory): rea
     writeTool({
       name: "magentorest_create_customer",
       description:
-        "Use this to create a customer account from an email and a name. It takes no password: Magento's own password-reset flow is how the customer sets one. Adds a record; the email must not already exist on the website.",
+        "Use this to create a customer account from an email and a name. It takes no password: Magento's own password-reset flow is how the customer sets one. Adds a record; the email must not already exist on the website. Magento EMAILS the customer a welcome message to set a password; no input stops it (only the store's disable-email-communications setting does).",
       effect: "create",
       input: z
         .object({

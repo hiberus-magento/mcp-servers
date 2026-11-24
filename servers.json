@@ -328,7 +328,7 @@
         {
           "name": "magentorest_assign_product_to_category",
           "readOnly": false,
-          "description": "Use this to add a product to a category at a position. Adds a link; it does not move the product out of other categories."
+          "description": "Use this to add a product to a category at a position. Adds a link; if the product is already in the category, its position is replaced. It does not move the product out of other categories."
         },
         {
           "name": "magentorest_remove_product_from_category",
@@ -428,7 +428,7 @@
         {
           "name": "magentorest_create_customer",
           "readOnly": false,
-          "description": "Use this to create a customer account from an email and a name. It takes no password: Magento's own password-reset flow is how the customer sets one. Adds a record; the email must not already exist on the website."
+          "description": "Use this to create a customer account from an email and a name. It takes no password: Magento's own password-reset flow is how the customer sets one. Adds a record; the email must not already exist on the website. Magento EMAILS the customer a welcome message to set a password; no input stops it (only the store's disable-email-communications setting does)."
         },
         {
           "name": "magentorest_update_customer",
@@ -474,7 +474,7 @@
         {
           "name": "magentorest_add_order_comment",
           "readOnly": false,
-          "description": "Use this to add a comment to an order's history, optionally moving it to another status. Silent and hidden from the customer unless you say otherwise: setting is_customer_notified to true makes Magento EMAIL the customer."
+          "description": "Use this to add a comment to an order's history, optionally moving it to another status. A status given becomes the order's own status (it must be one the order's current state allows). Silent and hidden from the customer unless you say otherwise: setting is_customer_notified to true makes Magento EMAIL the customer. Each call adds another entry."
         },
         {
           "name": "magentorest_cancel_order",

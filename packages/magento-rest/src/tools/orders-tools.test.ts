@@ -271,12 +271,13 @@ describe("order writes", () => {
     expect(double.calls[0]?.body).toBeUndefined();
   });
 
-  it("a state-changing action is destructive and not idempotent; a comment is neither", () => {
+  it("a state-changing action is destructive and not idempotent, a comment included: it writes the order's status", () => {
     const { tool } = build({});
-    for (const name of ["magentorest_cancel_order", "magentorest_hold_order", "magentorest_unhold_order"]) {
+    for (const name of ["magentorest_cancel_order", "magentorest_hold_order", "magentorest_unhold_order", "magentorest_add_order_comment"]) {
       expect(tool(name).annotations, name).toMatchObject({ readOnlyHint: false, destructiveHint: true, idempotentHint: false });
     }
-    expect(tool("magentorest_add_order_comment").annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false, idempotentHint: false });
+    // Magento's addComment sets the order's own status from the comment's; the description must say so.
+    expect(tool("magentorest_add_order_comment").description).toMatch(/order's own status/);
   });
 
   it("never replays a cancel on a retryable failure", async () => {
