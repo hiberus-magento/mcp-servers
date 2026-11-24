@@ -273,7 +273,7 @@
       "id": "magento-rest",
       "package": "@hiberus-magento/magento-rest",
       "bin": "hiberus-magento-rest-mcp",
-      "version": "0.4.1",
+      "version": "0.5.0",
       "domain": "magento-rest",
       "status": "alpha",
       "description": "Magento 2 REST API client — CLI and MCP server for catalog, orders, customers, stock and content, with opt-in write tools.",

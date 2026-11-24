@@ -3,7 +3,7 @@
   "name": "io.github.hiberus-magento/magento-rest",
   "title": "Magento 2 / Adobe Commerce (REST)",
   "description": "Read and act on a Magento 2 / Adobe Commerce store through its REST API.",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "repository": {
     "url": "https://github.com/hiberus-magento/mcp-servers",
     "source": "github",
@@ -13,7 +13,7 @@
     {
       "registryType": "npm",
       "identifier": "@hiberus-magento/magento-rest",
-      "version": "0.4.1",
+      "version": "0.5.0",
       "transport": {
         "type": "stdio"
       },
