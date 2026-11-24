@@ -5,7 +5,7 @@
 // `changeset version` bumps package.json files only; servers.json's
 // `version` feeds the README's pinned install snippets (gen-readme.mjs) and
 // the packages' manifest tests, so the release workflow runs this right after
-// it, and the "Version Packages" pull request carries both.
+// it, and the version commit it pushes to main carries both.
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";

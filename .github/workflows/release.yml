@@ -4,17 +4,25 @@ on:
   push:
     branches: [main]
 
+# Every merge to main that carries changesets is released by that merge: the job versions the packages, commits
+# the bump to main, publishes, and creates the GitHub releases. There is no "Version Packages" pull request to
+# merge in between.
+#
 # OIDC trusted publishing is preferred over a long-lived NPM_TOKEN
 # (release-pipeline spec, "Release Workflow Uses OIDC Trusted Publishing").
 # `id-token: write` lets `npm publish` mint a short-lived provenance-signed
 # token from GitHub's OIDC issuer instead of reading a stored secret;
-# `contents: write` lets the changesets action push version-bump commits
-# and tags back to the repository; `pull-requests: write` lets it open the
-# "Version Packages" pull request (a permission left out of this block is none).
+# `contents: write` lets the job push the version commit and the tags, and
+# create the GitHub releases (a permission left out of this block is none).
 permissions:
   id-token: write
   contents: write
-  pull-requests: write
+
+# One release at a time, in merge order: a second merge waits for the first release to finish instead of racing
+# it to push a version commit or publish the same version.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -38,9 +46,32 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Consumes the pending changesets: bumps package.json and CHANGELOG.md, then copies the versions into
+      # servers.json and the READMEs' pinned install snippets. The commit is pushed with the workflow's own token,
+      # which does not start another workflow run ([skip ci] says so to anyone reading the history too). If main
+      # moved since the checkout, the commit is rebased onto it first; a merge that lands later releases itself.
+      - name: Version packages
+        shell: bash
+        run: |
+          if ! find .changeset -name '*.md' ! -name 'README.md' | grep -q .; then
+            echo "No changesets: nothing to version."
+            exit 0
+          fi
+          pnpm version-packages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(release): version packages [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      # After the version step: the bundles embed their package.json version at build time.
       - name: Build
         run: pnpm build
 
+      # Publishes every package whose version is not on npm yet, so a run whose publish failed after its version
+      # commit is completed by the next run, changesets or not.
+      #
       # OIDC trusted publishing requires npm CLI >= 11.5 and the target
       # package's npm Trusted Publisher configured for this repository +
       # workflow. If OIDC trust is not (yet) configured for the
@@ -48,15 +79,24 @@ jobs:
       # NPM_TOKEN in this job only — documented here as a temporary
       # deviation (design.md, Open Questions), never a long-lived token
       # committed to the repository.
-      - name: Publish (changesets)
-        uses: changesets/action@v1
-        with:
-          # Also copies the bumped versions into servers.json and the READMEs'
-          # pinned install snippets, so the version PR carries them.
-          version: pnpm version-packages
-          publish: pnpm changeset publish
+      - name: Publish
+        # An explicit bash runs with pipefail, so a failed publish is not hidden by tee.
+        shell: bash
+        run: pnpm changeset publish 2>&1 | tee "$RUNNER_TEMP/publish.log"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           # setup-node's registry-url writes an .npmrc that reads NODE_AUTH_TOKEN.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # One GitHub release per tag the publish created, its notes the version's CHANGELOG section (what the
+      # changesets action used to create).
+      - name: Tags and GitHub releases
+        shell: bash
+        run: |
+          node scripts/github-releases.mjs "$RUNNER_TEMP/publish.log" "$RUNNER_TEMP/release-notes" > "$RUNNER_TEMP/releases.tsv"
+          while IFS="$(printf '\t')" read -r tag notes; do
+            git push origin "refs/tags/$tag"
+            gh release create "$tag" --title "$tag" --notes-file "$notes"
+          done < "$RUNNER_TEMP/releases.tsv"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
