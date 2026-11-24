@@ -12,21 +12,17 @@
 // finding and inspecting codes is what they are for.
 import { z } from "zod";
 import { restPath, type SearchFilter } from "../client/index.js";
-import { currentPage, entityId, isoDate, pageSize } from "./inputs.js";
+import { calendarDay, currentPage, entityId, pageSize } from "./inputs.js";
 import type { MagentoRestTool, ToolFactory } from "./rest-tool.js";
 import { listOf } from "./shapes.js";
 import { LIST_FIELDS, listCriteria, listInputs } from "./list-filters.js";
+import { readSalesRule, salesRuleWriteTools } from "./sales-rule-writes.js";
 
 const LIST_PAGE_SIZE = 50;
 
-/** A real calendar day: `YYYY-MM-DD` that round-trips through a UTC date, so 2026-02-30 is refused. */
-const activeOn = isoDate(
+const activeOn = calendarDay(
   "Keep only the rules whose stored dates span this day (YYYY-MM-DD): from date on or before it, and no to date or a to date on or after it. These are the dates the rule row stores; on Adobe Commerce with content staging a scheduled update may not show in them, so this is not a guarantee the rule applies on that day. Combined with AND with the other filters.",
-).refine((day) => {
-  // zod still runs this when the pattern failed, so an unparsable day must return false, not throw.
-  const parsed = new Date(`${day}T00:00:00Z`);
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(day);
-}, "expected a real calendar date");
+);
 
 /**
  * `from_date <= day AND (to_date IS NULL OR to_date >= day)`: groups are AND'd, filters inside a group OR'd.
@@ -42,7 +38,8 @@ function storedDatesSpan(day: string): SearchFilter[][] {
   ];
 }
 
-export function promotionTools({ readTool, writeTool, shapes }: ToolFactory): readonly MagentoRestTool[] {
+export function promotionTools(factory: ToolFactory): readonly MagentoRestTool[] {
+  const { readTool, writeTool, shapes } = factory;
   return [
     readTool({
       name: "magentorest_get_sales_rules",
@@ -58,10 +55,10 @@ export function promotionTools({ readTool, writeTool, shapes }: ToolFactory): re
 
     readTool({
       name: "magentorest_get_sales_rule_by_id",
-      description: "Use this to read one cart price rule by ID: its dates, discount, coupon type, usage limits, websites and customer groups.",
+      description: "Use this to read one cart price rule by ID: its dates, discount, coupon type and, for a SPECIFIC_COUPON rule, its code (coupon_code), usage limits, websites and customer groups. These are the members magentorest_create_sales_rule and magentorest_update_sales_rule write.",
       input: z.object({ rule_id: entityId("sales rule") }).strict(),
       shape: shapes.sales_rule,
-      run: ({ rule_id }, client) => client.get(restPath`/salesRules/${rule_id}`),
+      run: async ({ rule_id }, client) => (await readSalesRule(client, rule_id)).rule,
     }),
 
     readTool({
@@ -107,5 +104,7 @@ export function promotionTools({ readTool, writeTool, shapes }: ToolFactory): re
       shape: [],
       run: ({ coupon_id }, client) => client.delete(restPath`/coupons/${coupon_id}`),
     }),
+
+    ...salesRuleWriteTools(factory),
   ];
 }

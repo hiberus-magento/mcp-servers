@@ -40,6 +40,16 @@ export const isoDate = (what: string) =>
     .describe(what);
 
 /**
+ * A real calendar day, `YYYY-MM-DD`, that round-trips through a UTC date, so 2026-02-30 is refused. zod still runs
+ * the refine when the pattern failed, so an unparsable day returns false rather than throwing.
+ */
+export const calendarDay = (what: string) =>
+  isoDate(what).refine((day) => {
+    const parsed = new Date(`${day}T00:00:00Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(day);
+  }, "expected a real calendar date");
+
+/**
  * Store scope of a catalog write. Through the base URL (`/rest/V1`) Magento runs as the default store view, so
  * a write would change only that store view's values; omitted, the write runs in `all`, the global values.
  */

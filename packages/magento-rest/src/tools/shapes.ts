@@ -264,6 +264,8 @@ export const BASE_SHAPES: ShapeSet = {
     "apply_to_shipping",
     "times_used",
     "coupon_type",
+    // Not a member of Magento's rule: the code of its primary coupon, added by the tools that read one rule.
+    "coupon_code",
     "use_auto_generation",
     "uses_per_customer",
     "uses_per_coupon",
