@@ -361,3 +361,34 @@ describe("shapes near the closed list stay unsupported", () => {
     expect(out["conditions_supported"]).toBe(false);
   });
 });
+
+describe("no update path replaces stored product conditions without the flag", () => {
+  // The verifier's recheck probe: a refusal must come before every write, the coupon writes included.
+  const CART = combine(COMBINE, "1", [leaf(ADDRESS, "total_qty", ">=", "2"), combine(FOUND, "1", [leaf(PRODUCT, "category_ids", "()", "3")])]);
+  const ITEM = combine(PRODUCT_COMBINE, "1", [leaf(PRODUCT, "sku", "()", "A")]);
+  const RULE = { ...STORED, coupon_type: "SPECIFIC_COUPON", condition: CART, action_condition: ITEM };
+  const routes = () => ({
+    "GET /rest/V1/salesRules/3": json(200, RULE),
+    "GET /rest/V1/coupons/search": [json(200, { items: [{ coupon_id: 5, rule_id: 3, code: "SPRING", is_primary: true }], total_count: 1 }), json(200, { items: [], total_count: 0 })],
+    "PUT /rest/V1/salesRules/3": json(200, RULE),
+    "PUT /rest/V1/coupons/5": json(200, {}),
+    "POST /rest/V1/coupons": json(200, {}),
+  });
+
+  it.each([
+    [{ conditions: [] }],
+    [{ item_conditions: [] }],
+    [{ conditions: [{ type: "total_qty_at_least", qty: 2 }] }],
+    [{ conditions: [{ type: "total_qty_at_least", qty: 2 }, { type: "cart_has_product_in_categories", category_ids: [3] }, { type: "subtotal_at_least", amount: 1 }] }],
+    [{ item_conditions: [{ type: "sku_in", skus: ["A", "B"] }] }],
+    [{ item_conditions: [{ type: "sku_in", skus: ["A"] }], conditions: [] }],
+    [{ conditions: [], is_active: false, free_shipping: "whole_cart" }],
+    [{ item_conditions: [], coupon_code: "NEWCODE" }],
+    [{ conditions: [], coupon_type: "NO_COUPON" }],
+    [{ item_conditions: [], replace_unsupported_conditions: false, name: "x" }],
+  ])("refuses %j and writes nothing", async (args) => {
+    const { double, tool } = build(routes());
+    await expect(tool(UPDATE).invoke({ rule_id: 3, ...args }, {})).rejects.toMatchObject({ code: "invalid_argument" });
+    expect(double.calls.filter((call) => call.method !== "GET")).toEqual([]);
+  });
+});
