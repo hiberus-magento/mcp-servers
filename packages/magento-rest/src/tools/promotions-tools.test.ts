@@ -42,6 +42,35 @@ describe("sales rules", () => {
     await expect(tool("magentorest_get_sales_rules").invoke({ page_size: 101 }, {})).rejects.toBeInstanceOf(ZodError);
   });
 
+  it("get_sales_rules active_on keeps the rules whose stored dates span that day, before any generic filter", async () => {
+    const { double, call } = build({ "GET /rest/V1/salesRules/search": json(200, { items: [RAW_RULE], total_count: 1 }) });
+    await call("magentorest_get_sales_rules", { active_on: "2026-03-01", filters: [{ field: "is_active", value: true }] });
+    const q = params(double.calls[0]?.url);
+    const f = (g: number, i: number, k: string): string | null => q.get(`searchCriteria[filter_groups][${g}][filters][${i}][${k}]`);
+    // from_date <= D
+    expect([f(0, 0, "field"), f(0, 0, "value"), f(0, 0, "condition_type")]).toEqual(["from_date", "2026-03-01", "lteq"]);
+    expect(f(0, 1, "field")).toBeNull();
+    // (to_date is null OR to_date >= D): two filters in one group are OR'd
+    expect([f(1, 0, "field"), f(1, 0, "condition_type")]).toEqual(["to_date", "null"]);
+    expect([f(1, 1, "field"), f(1, 1, "value"), f(1, 1, "condition_type")]).toEqual(["to_date", "2026-03-01", "gteq"]);
+    // the generic filter follows as its own group
+    expect([f(2, 0, "field"), f(2, 0, "value")]).toEqual(["is_active", "1"]);
+  });
+
+  it("get_sales_rules without active_on sends no date filter", async () => {
+    const { double, call } = build({ "GET /rest/V1/salesRules/search": json(200, { items: [], total_count: 0 }) });
+    await call("magentorest_get_sales_rules", {});
+    expect(double.calls[0]?.url).not.toContain("filter_groups");
+  });
+
+  it("get_sales_rules refuses an active_on that is not a YYYY-MM-DD date, before any request", async () => {
+    const { double, tool } = build({});
+    for (const bad of ["2026-3-1", "2026-03-01 00:00:00", "tomorrow", "2026-02-30", "2026-13-01"]) {
+      await expect(tool("magentorest_get_sales_rules").invoke({ active_on: bad }, {}), bad).rejects.toMatchObject({ name: "ZodError" });
+    }
+    expect(double.calls).toHaveLength(0);
+  });
+
   it("get_sales_rule_by_id reads one rule, projected", async () => {
     const { call } = build({ "GET /rest/V1/salesRules/3": json(200, injectLeakProbe(RAW_RULE)) });
     const out = (await call("magentorest_get_sales_rule_by_id", { rule_id: 3 })) as Record<string, unknown>;
