@@ -35,3 +35,4 @@ Requested by Kora, approved by the user ("si, adelante"):
   - the description and README say that switching back needs coupon_code;
   - tests added for the verifier's probe, the auto-generated refusal, the partial-write message, POST of a missing primary, string-typed numbers and dates with time, and a failed create sending no DELETE.
   Non-blocking and not closable by a client: a POST /salesRules timeout after Magento saved the rule leaves an unnamed rule.
+- L8 Recheck: blocker 1 fixed (verifier). Leftover, non-blocking: a case-only code change (DEMO10 → demo10) is likely refused as taken, because MySQL coupon search ignores case; nothing is written.
