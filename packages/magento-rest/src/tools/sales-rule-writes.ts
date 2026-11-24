@@ -222,7 +222,7 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
       description:
         "Use this to change members of an existing cart price rule, for example to deactivate it (is_active false) or to restore earlier values. " +
         "Only the members you pass, and only those that differ from the stored rule, are sent; its conditions are never touched. Overwrites the current values on the live store. " +
-        "A field cannot be cleared (Magento keeps a field sent empty). Changing coupon_type away from SPECIFIC_COUPON makes Magento delete the rule's code and its use count. Returns the rule as read back.",
+        "A field cannot be cleared (Magento keeps a field sent empty). Changing coupon_type away from SPECIFIC_COUPON makes Magento delete the rule's code and its use count; changing it back needs coupon_code again. Returns the rule as read back.",
       effect: "update",
       input: z
         .object({
@@ -256,14 +256,32 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
         // primary coupon (its codes auto-generated), and changing another member must not demand one.
         checkCombination(effective, given, given.coupon_type === "SPECIFIC_COUPON" && current.coupon_type !== "SPECIFIC_COUPON");
 
+        const newCode = given.coupon_code !== undefined && given.coupon_code !== currentCode ? given.coupon_code : undefined;
+        // Everything that can refuse the code is checked BEFORE the PUT: a rule switched to SPECIFIC_COUPON whose code
+        // then fails would stop applying to every cart, with no code to apply it.
+        if (newCode !== undefined) {
+          if (stored.rule["use_auto_generation"] === true || stored.rule["use_auto_generation"] === 1) {
+            // Magento refuses a hand-set code on such a rule, and deletes a primary coupon on its next save anyway.
+            throw new ToolArgumentError("invalid_argument", "coupon_code", "That rule auto-generates its codes, so it takes no single code: nothing was written.");
+          }
+          const taken = await write.client.search("/coupons/search", { filterGroups: [[{ field: "code", value: newCode }]], pageSize: 1, currentPage: 1 });
+          if (taken.items.length > 0) throw new ToolArgumentError("invalid_argument", "coupon_code", "A coupon with that code already exists: nothing was written.");
+        }
+
         if (changed.length > 0) await write.client.put(restPath`/salesRules/${ruleId}`, { rule: pick(given, changed) });
-        if (given.coupon_code !== undefined && given.coupon_code !== currentCode) {
-          // After the PUT: a rule that just became SPECIFIC_COUPON has no primary coupon yet, and one that already was
-          // keeps its own through the PUT (Magento reloads the code before saving).
-          if (stored.primaryCouponId !== undefined && current.coupon_type === "SPECIFIC_COUPON") {
-            await write.client.put(restPath`/coupons/${stored.primaryCouponId}`, { coupon: { coupon_id: stored.primaryCouponId, rule_id: ruleId, code: given.coupon_code, is_primary: true } });
-          } else {
-            await write.client.post("/coupons", { coupon: { rule_id: ruleId, code: given.coupon_code, is_primary: true } });
+        if (newCode !== undefined) {
+          try {
+            // After the PUT: a rule that just became SPECIFIC_COUPON has no primary coupon yet, and one that already was
+            // keeps its own through the PUT (Magento reloads the code before saving).
+            if (stored.primaryCouponId !== undefined && current.coupon_type === "SPECIFIC_COUPON") {
+              await write.client.put(restPath`/coupons/${stored.primaryCouponId}`, { coupon: { coupon_id: stored.primaryCouponId, rule_id: ruleId, code: newCode, is_primary: true } });
+            } else {
+              await write.client.post("/coupons", { coupon: { rule_id: ruleId, code: newCode, is_primary: true } });
+            }
+          } catch (error) {
+            if (changed.length === 0) throw error;
+            const reason = error instanceof Error ? error.message : String(error);
+            throw new Error(`The coupon code could not be saved (${reason}), but these members of rule ${ruleId} were already written: ${changed.join(", ")}. Read the rule and restore them, or retry the code.`, { cause: error });
           }
         }
 

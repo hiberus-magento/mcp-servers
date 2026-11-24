@@ -140,6 +140,12 @@ describe("create_sales_rule", () => {
     expect(sent(double.calls)).toEqual(["GET /rest/V1/coupons/search", "POST /rest/V1/salesRules", "POST /rest/V1/coupons", "DELETE /rest/V1/salesRules/9"]);
   });
 
+  it("deletes nothing when Magento refuses the rule itself", async () => {
+    const { double, tool } = build({ "POST /rest/V1/salesRules": json(400, { message: "Please specify a website." }) });
+    await expect(tool(CREATE).invoke(CREATE_ARGS, {})).rejects.toThrow();
+    expect(sent(double.calls)).toEqual(["POST /rest/V1/salesRules"]);
+  });
+
   it("names the rule left behind when the rollback fails too", async () => {
     const { tool } = build({
       [COUPON_SEARCH]: coupons(),
@@ -222,12 +228,12 @@ describe("update_sales_rule", () => {
   it("changes the code of the existing primary coupon in place", async () => {
     const { double, call } = build({
       "GET /rest/V1/salesRules/3": json(200, STORED),
-      [COUPON_SEARCH]: [coupons(PRIMARY), coupons({ ...PRIMARY, code: "DEMO20" })],
+      [COUPON_SEARCH]: [coupons(PRIMARY), coupons(), coupons({ ...PRIMARY, code: "DEMO20" })],
       "PUT /rest/V1/coupons/8": json(200, { ...PRIMARY, code: "DEMO20" }),
     });
     const out = (await call(UPDATE, { rule_id: 3, coupon_code: "DEMO20" })) as Record<string, unknown>;
-    expect(sent(double.calls)).toEqual(["GET /rest/V1/salesRules/3", "GET /rest/V1/coupons/search", "PUT /rest/V1/coupons/8", "GET /rest/V1/salesRules/3", "GET /rest/V1/coupons/search"]);
-    expect(bodyOf(double.calls[2])).toEqual({ coupon: { coupon_id: 8, rule_id: 3, code: "DEMO20", is_primary: true } });
+    expect(sent(double.calls)).toEqual(["GET /rest/V1/salesRules/3", "GET /rest/V1/coupons/search", "GET /rest/V1/coupons/search", "PUT /rest/V1/coupons/8", "GET /rest/V1/salesRules/3", "GET /rest/V1/coupons/search"]);
+    expect(bodyOf(double.calls[3])).toEqual({ coupon: { coupon_id: 8, rule_id: 3, code: "DEMO20", is_primary: true } });
     expect(out["coupon_code"]).toBe("DEMO20");
   });
 
@@ -237,12 +243,59 @@ describe("update_sales_rule", () => {
       "GET /rest/V1/salesRules/3": [json(200, plain), json(200, STORED)],
       "PUT /rest/V1/salesRules/3": json(200, STORED),
       "POST /rest/V1/coupons": json(200, PRIMARY),
-      [COUPON_SEARCH]: coupons(PRIMARY),
+      [COUPON_SEARCH]: [coupons(), coupons(PRIMARY)],
     });
     await harness.call(UPDATE, { rule_id: 3, coupon_type: "SPECIFIC_COUPON", coupon_code: "DEMO10" });
-    expect(sent(harness.double.calls)).toEqual(["GET /rest/V1/salesRules/3", "PUT /rest/V1/salesRules/3", "POST /rest/V1/coupons", "GET /rest/V1/salesRules/3", "GET /rest/V1/coupons/search"]);
-    expect(bodyOf(harness.double.calls[1])).toEqual({ rule: { coupon_type: "SPECIFIC_COUPON" } });
-    expect(bodyOf(harness.double.calls[2])).toEqual({ coupon: { rule_id: 3, code: "DEMO10", is_primary: true } });
+    expect(sent(harness.double.calls)).toEqual(["GET /rest/V1/salesRules/3", "GET /rest/V1/coupons/search", "PUT /rest/V1/salesRules/3", "POST /rest/V1/coupons", "GET /rest/V1/salesRules/3", "GET /rest/V1/coupons/search"]);
+    expect(bodyOf(harness.double.calls[2])).toEqual({ rule: { coupon_type: "SPECIFIC_COUPON" } });
+    expect(bodyOf(harness.double.calls[3])).toEqual({ coupon: { rule_id: 3, code: "DEMO10", is_primary: true } });
+  });
+
+  it("checks a new code is free before switching the rule to SPECIFIC_COUPON", async () => {
+    const { double, tool } = build({
+      "GET /rest/V1/salesRules/3": json(200, { ...STORED, coupon_type: "NO_COUPON" }),
+      [COUPON_SEARCH]: coupons({ ...PRIMARY, coupon_id: 12, rule_id: 5, code: "TAKEN" }),
+      "PUT /rest/V1/salesRules/3": json(200, STORED),
+      "POST /rest/V1/coupons": json(400, { message: "Coupon with the same code already exists." }),
+    });
+    await expect(tool(UPDATE).invoke({ rule_id: 3, coupon_type: "SPECIFIC_COUPON", coupon_code: "TAKEN" }, {})).rejects.toMatchObject({ code: "invalid_argument", argument: "coupon_code" });
+    expect(double.calls.map((c) => c.method).filter((m) => m !== "GET")).toEqual([]);
+  });
+
+  it("refuses a code for a rule that auto-generates its codes, before writing anything", async () => {
+    const { double, tool } = build({
+      "GET /rest/V1/salesRules/3": json(200, { ...STORED, use_auto_generation: true }),
+      [COUPON_SEARCH]: coupons(),
+    });
+    await expect(tool(UPDATE).invoke({ rule_id: 3, is_active: false, coupon_code: "NEW1" }, {})).rejects.toMatchObject({ code: "invalid_argument", argument: "coupon_code" });
+    expect(double.calls.map((c) => c.method).filter((m) => m !== "GET")).toEqual([]);
+  });
+
+  it("says the rule's members were already written when the coupon still fails after the PUT", async () => {
+    const { double, tool } = build({
+      "GET /rest/V1/salesRules/3": json(200, { ...STORED, coupon_type: "NO_COUPON" }),
+      [COUPON_SEARCH]: coupons(),
+      "PUT /rest/V1/salesRules/3": json(200, STORED),
+      "POST /rest/V1/coupons": json(400, { message: "Error occurred when saving coupon: %1", parameters: ["x"] }),
+    });
+    await expect(tool(UPDATE).invoke({ rule_id: 3, coupon_type: "SPECIFIC_COUPON", coupon_code: "FREE1", is_active: false }, {})).rejects.toThrow(/already written: is_active, coupon_type/);
+    expect(sent(double.calls)).toContain("PUT /rest/V1/salesRules/3");
+  });
+
+  it("adds a primary coupon to a SPECIFIC_COUPON rule that has none (not auto-generated)", async () => {
+    const { double, call } = build({
+      "GET /rest/V1/salesRules/3": json(200, STORED),
+      [COUPON_SEARCH]: [coupons(), coupons(), coupons(PRIMARY)],
+      "POST /rest/V1/coupons": json(200, PRIMARY),
+    });
+    await call(UPDATE, { rule_id: 3, coupon_code: "DEMO10" });
+    expect(sent(double.calls)).toEqual(["GET /rest/V1/salesRules/3", "GET /rest/V1/coupons/search", "GET /rest/V1/coupons/search", "POST /rest/V1/coupons", "GET /rest/V1/salesRules/3", "GET /rest/V1/coupons/search"]);
+  });
+
+  it("treats numbers sent back as strings and dates with a time as unchanged", async () => {
+    const { double, call } = build({ "GET /rest/V1/salesRules/3": json(200, { ...STORED, discount_amount: "10.0000", to_date: "2026-12-31 00:00:00", website_ids: ["1"] }), [COUPON_SEARCH]: coupons(PRIMARY) });
+    await call(UPDATE, { rule_id: 3, discount_amount: 10, to_date: "2026-12-31", website_ids: [1] });
+    expect(double.calls.map((c) => c.method)).not.toContain("PUT");
   });
 
   it("answers not_found on rule_id for a rule that does not exist, and writes nothing", async () => {
