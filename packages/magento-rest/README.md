@@ -130,8 +130,8 @@ executable to run`.
 - `magentorest_search_coupons` (read-only) — Use this to find coupons by part of the code and by the rule they belong to. Filters are combined with AND. Returns a bounded page and the total count; each coupon shows its code, limits, times used and expiry. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_get_coupon_by_id` (read-only) — Use this to read one coupon by ID: its code, rule, limits, times used and expiry. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_delete_coupon` — Use this to permanently delete one coupon by ID. Irreversible: customers holding that code can no longer redeem it. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
-- `magentorest_create_sales_rule` — Use this to create a cart price rule (a promotion) without conditions: it discounts every cart on its websites and customer groups, between its dates. Adds a rule, inactive unless is_active is true; with coupon_type SPECIFIC_COUPON it also adds coupon_code as the rule's code, which must not exist yet. If the code cannot be saved, the new rule is deleted again and nothing is kept. Returns the rule as read back. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
-- `magentorest_update_sales_rule` — Use this to change members of an existing cart price rule, for example to deactivate it (is_active false) or to restore earlier values. Only the members you pass, and only those that differ from the stored rule, are sent; its conditions are never touched. Overwrites the current values on the live store. A field cannot be cleared (Magento keeps a field sent empty). Changing coupon_type away from SPECIFIC_COUPON makes Magento delete the rule's code and its use count; changing it back needs coupon_code again. Returns the rule as read back. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
+- `magentorest_create_sales_rule` — Use this to create a cart price rule (a promotion) on its websites and customer groups, between its dates: without conditions it discounts every cart and every item. conditions limit which carts qualify (subtotal, item count, shipping country, products in the cart), item_conditions which items are discounted (category, SKU); all conditions in a list must hold. Adds a rule, inactive unless is_active is true; with coupon_type SPECIFIC_COUPON it also adds coupon_code as the rule's code, which must not exist yet. If the code cannot be saved, the new rule is deleted again and nothing is kept. Returns the rule as read back. Not verified against a live service — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
+- `magentorest_update_sales_rule` — Use this to change members of an existing cart price rule, for example to deactivate it (is_active false) or to restore earlier values. Only the members you pass, and only those that differ from the stored rule, are sent. Overwrites the current values on the live store. conditions or item_conditions replace that whole set (an empty list removes every condition in it); a set you do not pass is kept. A rule whose set holds conditions this tool cannot represent (read as conditions_supported or item_conditions_supported false) is replaced only with replace_unsupported_conditions true. A field cannot be cleared (Magento keeps a field sent empty). Changing coupon_type away from SPECIFIC_COUPON makes Magento delete the rule's code and its use count; changing it back needs coupon_code again. Returns the rule as read back. Not verified against a live service — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_generate_coupons` — Use this to generate new coupon codes for a cart price rule that takes generated codes (coupon_type AUTO, or a SPECIFIC_COUPON rule set to auto-generate). Adds qty codes (at most 100), each usable as the rule's uses_per_coupon allows until its to_date; every call adds more. Returns the codes. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_get_tax_rates` (read-only) — Use this to list the tax rates: code, rate, country, region and postcode (or postcode range). Returns a bounded page and the total count.
 - `magentorest_get_tax_rules` (read-only) — Use this to list the tax rules: code, priority, and the customer tax classes, product tax classes and tax rates each one combines. Returns a bounded page and the total count. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
@@ -398,13 +398,13 @@ read back, as `{ result, provenance }`:
   `AUTO`, which are the ones the read returns. `coupon_code` is the code of the
   rule's primary coupon. Magento keeps it as a coupon rather than on the rule,
   so the read looks it up and the writes save it through `/V1/coupons`.
-- A rule is created without conditions, so it applies to every cart on its
-  websites and customer groups between its dates. Both lists are required:
+- Without conditions, a rule applies to every cart on its websites and
+  customer groups between its dates. Both lists are required:
   Magento would accept a rule without them, and it would never apply. With
   `SPECIFIC_COUPON`, `coupon_code` is required and must not exist yet. If the
   coupon still fails, the rule just created is deleted again.
-- An update reads the rule, sends only the members that differ, and never sends
-  the conditions, which Magento then keeps. A repeat call sends nothing.
+- An update reads the rule and sends only the members that differ. A repeat
+  call sends nothing.
 - An update cannot clear a field (for example remove `to_date`). Magento keeps
   any field sent as `null`, so no member accepts `null`.
 - Moving a rule away from `SPECIFIC_COUPON` makes Magento delete its code,
@@ -413,6 +413,35 @@ read back, as `{ result, provenance }`:
 - A new code is checked before anything is written: it must be free, and a rule
   that auto-generates its codes takes none. If the coupon still fails after the
   rule was changed, the error lists which members were already written.
+
+### Conditions and free shipping
+
+The writes take conditions as a closed list of typed kinds, never as Magento's
+condition classes, and the read returns them in the same shape, so the rule read
+before a change is the input that undoes it.
+
+- `conditions` decide which carts qualify: `subtotal_at_least` and
+  `subtotal_at_most` (`amount`, the base-currency subtotal before discounts),
+  `total_qty_at_least` and `total_qty_at_most` (`qty`), `shipping_country_is`
+  and `shipping_country_is_not` (`country`, such as `ES`),
+  `cart_has_product_in_categories` and `cart_has_no_product_in_categories`
+  (`category_ids`), and `cart_has_sku` (`skus`).
+- `item_conditions` decide which items the discount applies to: `category_in`,
+  `category_not_in` (`category_ids`) and `sku_in` (`skus`).
+- Every condition in a list must hold (Magento's ALL true), with no nesting.
+  A list holds at most 20 conditions, and an id list or SKU list at most 100.
+- `free_shipping` is `none`, `matching_items` (only the discounted items) or
+  `whole_cart` (the whole shipment, once an item matches).
+- On an update, a list replaces that whole set, and `[]` removes every condition
+  in it. A list that already matches the stored set, in any order, is not sent.
+  A set you do not pass is kept.
+- A rule edited in the admin can hold conditions outside this list. The read then
+  reports `conditions_supported` (or `item_conditions_supported`) as `false` and
+  leaves the list out, and an update refuses to replace that set unless
+  `replace_unsupported_conditions` is `true`.
+- A shipping country is one country per condition. Magento offers only "is" and
+  "is not" for it, and the conditions of a set all have to hold, so "one of
+  several countries" cannot be expressed.
 
 `magentorest_generate_coupons` makes up to 100 codes per call for a rule that
 takes generated codes, which means `coupon_type` `AUTO` or a

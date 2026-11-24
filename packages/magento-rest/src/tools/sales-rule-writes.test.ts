@@ -3,7 +3,7 @@
 // RED-first. Cart price rule writes (Kora's request; feature doc odd/tasks/magento-rest-sales-rule-writes.md,
 // S1, S2, S4, S5). Magento facts these tests pin (2.4-develop source):
 //   - PUT /V1/salesRules/:id merges the non-null fields sent over the stored rule, so an update sends only what
-//     changed and never the conditions;
+//     changed (the typed conditions are pinned in sales-rule-conditions.test.ts);
 //   - RuleInterface has no coupon_code: the code is the rule's primary coupon, written through /V1/coupons.
 import { describe, expect, it } from "vitest";
 import { ZodError } from "zod";
@@ -202,7 +202,7 @@ describe("update_sales_rule", () => {
     expect(tool(UPDATE).annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true, idempotentHint: true });
   });
 
-  it("sends only the members that differ from the stored rule, never the conditions, then reads it back", async () => {
+  it("sends only the members that differ from the stored rule, then reads it back", async () => {
     const after = { ...STORED, is_active: false };
     const { double, tool } = build({
       "GET /rest/V1/salesRules/3": [json(200, STORED), json(200, after)],
@@ -344,9 +344,10 @@ describe("get_sales_rule_by_id carries every member the writes accept", () => {
   it("every member create_sales_rule accepts is a member the read returns", () => {
     const { tool } = build({});
     const createKeys = Object.keys((tool(CREATE).inputSchema as unknown as { shape: Record<string, unknown> }).shape);
-    const updateKeys = Object.keys((tool(UPDATE).inputSchema as unknown as { shape: Record<string, unknown> }).shape).filter((key) => key !== "rule_id");
+    // replace_unsupported_conditions says how to write, it is not a member of the rule.
+    const updateKeys = Object.keys((tool(UPDATE).inputSchema as unknown as { shape: Record<string, unknown> }).shape).filter((key) => key !== "rule_id" && key !== "replace_unsupported_conditions");
     // The read projects through the sales_rule allowlist, so a member missing from it would be dropped from the read.
-    const readKeys = BASE_SHAPES.sales_rule.filter((entry): entry is string => typeof entry === "string");
+    const readKeys = BASE_SHAPES.sales_rule.map((entry) => (typeof entry === "string" ? entry : entry[0]));
     expect(createKeys.filter((key) => !readKeys.includes(key))).toEqual([]);
     expect(updateKeys.sort()).toEqual(createKeys.sort());
   });
