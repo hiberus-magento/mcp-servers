@@ -50,7 +50,7 @@ executable to run`.
 - `magentorest_update_product_content` — Use this to change a product's content in ONE store view: any of name, description, short description, meta title and meta description, and image labels by id. Only the values that differ from the current ones are sent; the result is the content read back. A store view is required (all and admin are refused). Requires Magento 2.4.7 or later. Side effect: Magento then writes a store-view value for every image of the product, so those images stop inheriting later changes made to the default values in this store view. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_update_product_attribute` — Use this to set ONE attribute of a product by code (name, price, status, description, a custom attribute, ...). Overwrites the current value. The identity attributes sku, id, entity_id and type_id are refused.
 - `magentorest_delete_product` — Use this to permanently delete a product by SKU. Irreversible: the product, its images and its URL rewrites are removed.
-- `magentorest_assign_product_to_category` — Use this to add a product to a category at a position. Adds a link; it does not move the product out of other categories.
+- `magentorest_assign_product_to_category` — Use this to add a product to a category at a position. Adds a link; if the product is already in the category, its position is replaced. It does not move the product out of other categories.
 - `magentorest_remove_product_from_category` — Use this to remove a product from one category. The product itself and its other category links are kept.
 - `magentorest_get_store_configs` (read-only) — Use this to read each store view's configuration: code, locale, base currency, timezone, weight unit and base URLs.
 - `magentorest_get_store_views` (read-only) — Use this to list every store view with its code, name, website, store group and whether it is active.
@@ -70,7 +70,7 @@ executable to run`.
 - `magentorest_search_customers` (read-only) — Use this to find customers by part of the email or name, by group or website, or by creation date range (YYYY-MM-DD). Filters are combined with AND. Returns a bounded page of summaries and the total count.
 - `magentorest_get_customer_groups` (read-only) — Use this to list the customer groups with their code and tax class.
 - `magentorest_get_customer_addresses` (read-only) — Use this to list a customer's addresses by location: country, region and which is the default billing or shipping address, plus city and postcode only when the server runs with MAGENTO_REST_CUSTOMER_DATA=true. Street, telephone and the addressee are not returned.
-- `magentorest_create_customer` — Use this to create a customer account from an email and a name. It takes no password: Magento's own password-reset flow is how the customer sets one. Adds a record; the email must not already exist on the website.
+- `magentorest_create_customer` — Use this to create a customer account from an email and a name. It takes no password: Magento's own password-reset flow is how the customer sets one. Adds a record; the email must not already exist on the website. Magento EMAILS the customer a welcome message to set a password; no input stops it (only the store's disable-email-communications setting does).
 - `magentorest_update_customer` — Use this to change a customer's email, name or group. Only the fields you pass change; at least one is required. Overwrites the current values.
 - `magentorest_delete_customer` — Use this to permanently delete a customer account by ID. Irreversible: the account and its address book are removed; past orders keep their own copy of the details.
 - `magentorest_get_order_by_id` (read-only) — Use this to read one order by entity ID: status, state, totals, currency and the order lines; who placed it (customer ID, name, email) only when the server runs with MAGENTO_REST_CUSTOMER_DATA=true. Billing and shipping addresses and payment details are not returned.
@@ -79,7 +79,7 @@ executable to run`.
 - `magentorest_list_orders` (read-only) — Use this to list orders by status, creation date range (YYYY-MM-DD, whole days), grand-total range and the generic filters, without naming a customer. Filters are combined with AND. Newest first unless you sort otherwise. Returns a bounded page of summaries and the total count. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_get_order_items` (read-only) — Use this to list the lines of one order: SKU, name, quantities ordered, shipped, invoiced and refunded, price and row total, tax and discount.
 - `magentorest_get_order_comments` (read-only) — Use this to read an order's status history: each entry's status, comment text, date and whether the customer was notified or can see it.
-- `magentorest_add_order_comment` — Use this to add a comment to an order's history, optionally moving it to another status. Silent and hidden from the customer unless you say otherwise: setting is_customer_notified to true makes Magento EMAIL the customer.
+- `magentorest_add_order_comment` — Use this to add a comment to an order's history, optionally moving it to another status. A status given becomes the order's own status (it must be one the order's current state allows). Silent and hidden from the customer unless you say otherwise: setting is_customer_notified to true makes Magento EMAIL the customer. Each call adds another entry.
 - `magentorest_cancel_order` — Use this to cancel an order that has not been invoiced. Changes its state to canceled and releases the reserved stock; it cannot be undone from here.
 - `magentorest_hold_order` — Use this to put an order on hold, which stops it being invoiced or shipped until it is released with magentorest_unhold_order.
 - `magentorest_unhold_order` — Use this to release an order from hold so it can be invoiced and shipped again.
@@ -126,10 +126,13 @@ executable to run`.
 - `magentorest_update_product_media` — Use this to change a media entry's label, position, roles or hidden flag. Only the fields you pass change; at least one is required. Overwrites the current values.
 - `magentorest_delete_product_media` — Use this to permanently delete one media entry of a product. Irreversible: the image stops showing on the storefront.
 - `magentorest_get_sales_rules` (read-only) — Use this to list the cart price rules (promotions): name, dates, whether active, discount type and amount, coupon type, usage limits, websites and customer groups. Returns a bounded page and the total count. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
-- `magentorest_get_sales_rule_by_id` (read-only) — Use this to read one cart price rule by ID: its dates, discount, coupon type, usage limits, websites and customer groups. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
+- `magentorest_get_sales_rule_by_id` (read-only) — Use this to read one cart price rule by ID: its dates, discount, coupon type and, for a SPECIFIC_COUPON rule, its code (coupon_code), usage limits, websites and customer groups. These are the members magentorest_create_sales_rule and magentorest_update_sales_rule write. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_search_coupons` (read-only) — Use this to find coupons by part of the code and by the rule they belong to. Filters are combined with AND. Returns a bounded page and the total count; each coupon shows its code, limits, times used and expiry. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_get_coupon_by_id` (read-only) — Use this to read one coupon by ID: its code, rule, limits, times used and expiry. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_delete_coupon` — Use this to permanently delete one coupon by ID. Irreversible: customers holding that code can no longer redeem it. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
+- `magentorest_create_sales_rule` — Use this to create a cart price rule (a promotion) without conditions: it discounts every cart on its websites and customer groups, between its dates. Adds a rule, inactive unless is_active is true; with coupon_type SPECIFIC_COUPON it also adds coupon_code as the rule's code, which must not exist yet. If the code cannot be saved, the new rule is deleted again and nothing is kept. Returns the rule as read back. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
+- `magentorest_update_sales_rule` — Use this to change members of an existing cart price rule, for example to deactivate it (is_active false) or to restore earlier values. Only the members you pass, and only those that differ from the stored rule, are sent; its conditions are never touched. Overwrites the current values on the live store. A field cannot be cleared (Magento keeps a field sent empty). Changing coupon_type away from SPECIFIC_COUPON makes Magento delete the rule's code and its use count; changing it back needs coupon_code again. Returns the rule as read back. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
+- `magentorest_generate_coupons` — Use this to generate new coupon codes for a cart price rule that takes generated codes (coupon_type AUTO, or a SPECIFIC_COUPON rule set to auto-generate). Adds qty codes (at most 100), each usable as the rule's uses_per_coupon allows until its to_date; every call adds more. Returns the codes. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_get_tax_rates` (read-only) — Use this to list the tax rates: code, rate, country, region and postcode (or postcode range). Returns a bounded page and the total count.
 - `magentorest_get_tax_rules` (read-only) — Use this to list the tax rules: code, priority, and the customer tax classes, product tax classes and tax rates each one combines. Returns a bounded page and the total count. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_get_tax_classes` (read-only) — Use this to list the tax classes, optionally only the CUSTOMER or only the PRODUCT ones. Returns one page of up to 100 and the total count.
@@ -385,6 +388,38 @@ Every list tool that reads through Magento's `searchCriteria` also takes
   not promise the rule applies that day. `from_date` and `to_date` are still not
   in the generic `filters` list.
 
+## Cart price rule writes
+
+`magentorest_create_sales_rule` and `magentorest_update_sales_rule` write the
+members `magentorest_get_sales_rule_by_id` reads, and both answer with the rule
+read back, as `{ result, provenance }`:
+
+- `coupon_type` takes Magento's own values, `NO_COUPON`, `SPECIFIC_COUPON` and
+  `AUTO`, which are the ones the read returns. `coupon_code` is the code of the
+  rule's primary coupon. Magento keeps it as a coupon rather than on the rule,
+  so the read looks it up and the writes save it through `/V1/coupons`.
+- A rule is created without conditions, so it applies to every cart on its
+  websites and customer groups between its dates. Both lists are required:
+  Magento would accept a rule without them, and it would never apply. With
+  `SPECIFIC_COUPON`, `coupon_code` is required and must not exist yet. If the
+  coupon still fails, the rule just created is deleted again.
+- An update reads the rule, sends only the members that differ, and never sends
+  the conditions, which Magento then keeps. A repeat call sends nothing.
+- An update cannot clear a field (for example remove `to_date`). Magento keeps
+  any field sent as `null`, so no member accepts `null`.
+- Moving a rule away from `SPECIFIC_COUPON` makes Magento delete its code,
+  together with the code's use count. Moving it back requires `coupon_code`
+  again.
+- A new code is checked before anything is written: it must be free, and a rule
+  that auto-generates its codes takes none. If the coupon still fails after the
+  rule was changed, the error lists which members were already written.
+
+`magentorest_generate_coupons` makes up to 100 codes per call for a rule that
+takes generated codes, which means `coupon_type` `AUTO` or a
+`SPECIFIC_COUPON` rule set to auto-generate. It checks the rule first and
+returns the codes. The input is `code_prefix` rather than `prefix`, because
+`prefix` is a customer's name prefix on the personal-field list.
+
 ## Product content per store view
 
 `magentorest_get_product_content` reads a product's name, description, short
@@ -461,7 +496,7 @@ server, because the tools it names cannot exist.
 | `cms` | CMS blocks and pages | get_cms_block_by_id, search_cms_blocks, get_cms_page_by_id, search_cms_pages, create_cms_block*, update_cms_block*, delete_cms_block*, create_cms_page*, update_cms_page*, delete_cms_page* |
 | `attributes` | Product attributes, options and attribute sets | get_product_attribute, search_product_attributes, get_attribute_options, get_attribute_sets, get_attribute_set_attributes, add_attribute_option* |
 | `media` | Product images | get_product_media, get_product_media_entry, add_product_image*, update_product_media*, delete_product_media* |
-| `promotions` | Cart price rules and coupons | get_sales_rules, get_sales_rule_by_id, search_coupons, get_coupon_by_id, delete_coupon* |
+| `promotions` | Cart price rules and coupons | get_sales_rules, get_sales_rule_by_id, search_coupons, get_coupon_by_id, create_sales_rule*, update_sales_rule*, generate_coupons*, delete_coupon* |
 | `tax` | Tax rates, rules and classes (read-only) | get_tax_rates, get_tax_rules, get_tax_classes |
 | `analytics` | Revenue, order counts and sales figures computed from orders (read-only) | get_revenue, get_order_count, get_product_sales, get_revenue_by_country, get_customer_ordered_products_by_email |
 | `database` | Direct access to the Magento database; needs `MAGENTO_REST_DATABASE_CONNECTION` | db_status, db_list_tables, db_describe_table, db_query, db_magento_tables, db_product_by_sku, db_recent_orders, db_stats, db_execute* |
@@ -490,7 +525,7 @@ the resource. Paths are under *Magento Admin* in the integration's
 | `cms` | `Magento_Cms::block`, `Magento_Cms::page` (Content > Elements > Blocks / Pages) | `Magento_Cms::save`, `Magento_Cms::page_delete` (Pages > Save Page / Delete Page) |
 | `attributes` | `Magento_Catalog::attributes_attributes` (Stores > Attributes > Product); `Magento_Catalog::sets` (… > Attribute Set) | — |
 | `media` | `Magento_Catalog::catalog` (Catalog; the list); `Magento_Catalog::attributes_attributes` (one entry) | — |
-| `promotions` | `Magento_SalesRule::quote` (Marketing > Promotions > Cart Price Rules) | — |
+| `promotions` | `Magento_SalesRule::quote` (Marketing > Promotions > Cart Price Rules) | nothing more: the same resource covers creating and changing rules and their coupons |
 | `tax` | `Magento_Tax::manage_tax` (Stores > Taxes) | — |
 | `analytics` | `Magento_Sales::actions_view`; `Magento_Customer::customer` for `get_customer_ordered_products_by_email` | — |
 

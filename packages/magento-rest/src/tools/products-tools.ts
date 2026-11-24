@@ -225,8 +225,9 @@ export function productTools({ readTool, writeTool, shapes }: ToolFactory): read
 
     writeTool({
       name: "magentorest_assign_product_to_category",
-      description: "Use this to add a product to a category at a position. Adds a link; it does not move the product out of other categories.",
-      effect: "create",
+      description: "Use this to add a product to a category at a position. Adds a link; if the product is already in the category, its position is replaced. It does not move the product out of other categories.",
+      // Magento upserts the link (CategoryLinkRepository::save): an existing position is overwritten, a repeat is a no-op.
+      effect: "update",
       input: z.object({ category_id: entityId("category"), sku, position: z.number().int().min(0).optional().describe("Position within the category (default 0).") }).strict(),
       shape: [],
       run: ({ category_id, sku, position }, client) =>

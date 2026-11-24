@@ -92,14 +92,19 @@ describe(`magento-rest tool surface on the built bundle: ${serverPath}`, () => {
     });
 
     // The product content pair has R-20's own shape ({ found, sku, store_view, content, images, provenance }); every
-    // other read answers { result, provenance }, and every other write answers text.
+    // other read answers { result, provenance }, and so do the sales rule writes (the rule read back); coupon
+    // generation answers { rule_id, codes, provenance }; every other write answers text.
     const SHAPED = new Set(["magentorest_get_product_content", "magentorest_update_product_content"]);
+    const GENERATED = "magentorest_generate_coupons";
+    const READ_BACK = new Set(["magentorest_create_sales_rule", "magentorest_update_sales_rule"]);
 
-    it("every read tool declares an object output schema with provenance; only the content write declares one among the writes", () => {
+    it("every read tool declares an object output schema with provenance; among the writes only the content, sales rule and coupon generation writes declare one", () => {
       for (const tool of listed) {
         if (SHAPED.has(tool.name)) {
           expect(tool.outputSchema?.required, tool.name).toEqual(["found", "sku", "store_view", "provenance"]);
-        } else if (reads.includes(tool.name)) {
+        } else if (tool.name === GENERATED) {
+          expect(tool.outputSchema?.required, tool.name).toEqual(["rule_id", "codes", "provenance"]);
+        } else if (reads.includes(tool.name) || READ_BACK.has(tool.name)) {
           expect(tool.outputSchema?.type, tool.name).toBe("object");
           expect(tool.outputSchema?.required, tool.name).toEqual(["result", "provenance"]);
         } else {

@@ -18,10 +18,10 @@ const RAW_RULE = { rule_id: 3, name: "Demo 10%", description: "d", from_date: "2
 const RAW_COUPON = { coupon_id: 8, rule_id: 3, code: "DEMO10", usage_limit: 100, usage_per_customer: 1, times_used: 4, expiration_date: "2026-12-31", is_primary: true, created_at: "2026-01-01 00:00:00", type: 0, extension_attributes: { secret: "x" } };
 
 describe("promotionTools surface", () => {
-  it("exposes four reads and one write, all prefixed", () => {
+  it("exposes four reads and four writes, all prefixed", () => {
     const { tools } = build({});
     expect(tools.filter((t) => t.access === "read").map((t) => t.name).sort()).toEqual(["magentorest_get_coupon_by_id", "magentorest_get_sales_rule_by_id", "magentorest_get_sales_rules", "magentorest_search_coupons"]);
-    expect(tools.filter((t) => t.access === "write").map((t) => t.name)).toEqual(["magentorest_delete_coupon"]);
+    expect(tools.filter((t) => t.access === "write").map((t) => t.name).sort()).toEqual(["magentorest_create_sales_rule", "magentorest_delete_coupon", "magentorest_generate_coupons", "magentorest_update_sales_rule"]);
   });
 });
 
@@ -72,7 +72,7 @@ describe("sales rules", () => {
   });
 
   it("get_sales_rule_by_id reads one rule, projected", async () => {
-    const { call } = build({ "GET /rest/V1/salesRules/3": json(200, injectLeakProbe(RAW_RULE)) });
+    const { call } = build({ "GET /rest/V1/salesRules/3": json(200, injectLeakProbe(RAW_RULE)), "GET /rest/V1/coupons/search": json(200, { items: [RAW_COUPON], total_count: 1 }) });
     const out = (await call("magentorest_get_sales_rule_by_id", { rule_id: 3 })) as Record<string, unknown>;
     expect(out["discount_amount"]).toBe(10);
     expect(out["website_ids"]).toEqual([1]);

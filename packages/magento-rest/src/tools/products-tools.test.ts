@@ -238,3 +238,11 @@ describe("product writes", () => {
     expect(double.calls[1]?.method).toBe("DELETE");
   });
 });
+
+describe("assign_product_to_category hints", () => {
+  it("is an update: an existing link gets its position replaced, and a repeat changes nothing", () => {
+    const { tool } = build({});
+    expect(tool("magentorest_assign_product_to_category").annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true, idempotentHint: true });
+    expect(tool("magentorest_assign_product_to_category").description).toMatch(/already in the category, its position is replaced/);
+  });
+});
