@@ -20,6 +20,7 @@ const sent = (calls: readonly RecordedCall[]): string[] => calls.map((call) => `
 
 const CREATE = "magentorest_create_sales_rule";
 const UPDATE = "magentorest_update_sales_rule";
+const GENERATE = "magentorest_generate_coupons";
 
 const STORED = {
   rule_id: 3,
@@ -65,7 +66,7 @@ describe("create_sales_rule", () => {
 
   it("takes no customer input: only customer group ids", () => {
     const { tool } = build({});
-    for (const name of [CREATE, UPDATE]) {
+    for (const name of [CREATE, UPDATE, GENERATE]) {
       const keys = Object.keys((tool(name).inputSchema as unknown as { shape: Record<string, unknown> }).shape);
       expect(keys.filter((key) => isPersonalField(key)), name).toEqual([]);
       expect(keys.filter((key) => key.startsWith("customer") && key !== "customer_group_ids"), name).toEqual([]);
@@ -295,5 +296,70 @@ describe("get_sales_rule_by_id carries every member the writes accept", () => {
     const readKeys = BASE_SHAPES.sales_rule.filter((entry): entry is string => typeof entry === "string");
     expect(createKeys.filter((key) => !readKeys.includes(key))).toEqual([]);
     expect(updateKeys.sort()).toEqual(createKeys.sort());
+  });
+});
+
+describe("generate_coupons", () => {
+  const AUTO_RULE = { ...STORED, coupon_type: "AUTO", use_auto_generation: true };
+
+  it("is a create: not destructive, not idempotent (each call adds codes)", () => {
+    const { tool } = build({});
+    expect(tool(GENERATE).access).toBe("write");
+    expect(tool(GENERATE).annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false, idempotentHint: false });
+  });
+
+  it("checks the rule takes generated codes, then generates them and returns the codes with provenance", async () => {
+    const { double, tool } = build({
+      "GET /rest/V1/salesRules/3": json(200, AUTO_RULE),
+      "POST /rest/V1/coupons/generate": json(200, ["SPR-AB12", "SPR-CD34"]),
+    });
+    const outcome = await tool(GENERATE).invoke({ rule_id: 3, qty: 2, length: 4, format: "alphanum", code_prefix: "SPR-" }, {});
+    expect(sent(double.calls)).toEqual(["GET /rest/V1/salesRules/3", "POST /rest/V1/coupons/generate"]);
+    expect(bodyOf(double.calls[1])).toEqual({ couponSpec: { rule_id: 3, quantity: 2, length: 4, format: "alphanum", prefix: "SPR-" } });
+    const structured = outcome.structuredContent as { rule_id: number; codes: string[]; provenance: { endpoint: string } };
+    expect(structured.rule_id).toBe(3);
+    expect(structured.codes).toEqual(["SPR-AB12", "SPR-CD34"]);
+    expect(structured.provenance.endpoint).toBe("POST /rest/V1/coupons/generate");
+  });
+
+  it("defaults to 12 alphanumeric characters with no prefix", async () => {
+    const { double, call } = build({ "GET /rest/V1/salesRules/3": json(200, AUTO_RULE), "POST /rest/V1/coupons/generate": json(200, ["A"]) });
+    await call(GENERATE, { rule_id: 3, qty: 1 });
+    expect(bodyOf(double.calls[1])).toEqual({ couponSpec: { rule_id: 3, quantity: 1, length: 12, format: "alphanum" } });
+  });
+
+  it("refuses a rule that does not take generated codes, on rule_id, before generating", async () => {
+    const { double, tool } = build({ "GET /rest/V1/salesRules/3": json(200, { ...STORED, coupon_type: "NO_COUPON", use_auto_generation: false }) });
+    await expect(tool(GENERATE).invoke({ rule_id: 3, qty: 1 }, {})).rejects.toMatchObject({ code: "invalid_argument", argument: "rule_id" });
+    expect(sent(double.calls)).toEqual(["GET /rest/V1/salesRules/3"]);
+  });
+
+  it("accepts a specific-coupon rule set to auto-generate its codes", async () => {
+    const { double, call } = build({
+      "GET /rest/V1/salesRules/3": json(200, { ...STORED, coupon_type: "SPECIFIC_COUPON", use_auto_generation: true }),
+      [COUPON_SEARCH]: coupons(),
+      "POST /rest/V1/coupons/generate": json(200, ["A"]),
+    });
+    await call(GENERATE, { rule_id: 3, qty: 1 });
+    expect(double.calls.at(-1)?.method).toBe("POST");
+  });
+
+  it("answers not_found on rule_id for a rule that does not exist", async () => {
+    const { double, tool } = build({ "GET /rest/V1/salesRules/77": json(404, { message: "The rule with the specified ID doesn't exist." }) });
+    await expect(tool(GENERATE).invoke({ rule_id: 77, qty: 1 }, {})).rejects.toMatchObject({ code: "not_found", argument: "rule_id" });
+    expect(sent(double.calls)).toEqual(["GET /rest/V1/salesRules/77"]);
+  });
+
+  it.each([
+    ["no quantity", {}],
+    ["a quantity of 0", { qty: 0 }],
+    ["more than 100 codes", { qty: 101 }],
+    ["an unknown format", { qty: 1, format: "hex" }],
+    ["a length of 0", { qty: 1, length: 0 }],
+    ["a prefix with spaces", { qty: 1, code_prefix: "A B" }],
+  ])("refuses %s in the schema, before any request", async (_label, patch) => {
+    const { double, tool } = build({});
+    await expect(tool(GENERATE).invoke({ rule_id: 3, ...patch }, {})).rejects.toBeInstanceOf(ZodError);
+    expect(double.calls).toHaveLength(0);
   });
 });

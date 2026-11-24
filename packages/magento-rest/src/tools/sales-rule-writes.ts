@@ -17,17 +17,28 @@
 //   - coupon_type is Magento's own REST value (NO_COUPON, SPECIFIC_COUPON, AUTO), the value the read returns, so a
 //     host can read before and write back the same members.
 //
+//   - POST /V1/coupons/generate needs a rule with coupon_type AUTO or use_auto_generation, has no quantity cap and
+//     saves one coupon per code synchronously: the rule is checked first (a typed refusal instead of Magento's
+//     wrapped one), and a call makes at most 100 codes.
+//
 // Conditions are not offered: a rule is created without any, and an update leaves the stored ones untouched.
 import { z } from "zod";
 import { MagentoRestError, restPath, type MagentoRestClient } from "../client/index.js";
 import { calendarDay, entityId } from "./inputs.js";
 import { project } from "./project.js";
-import { readOutputSchema } from "./output-schema.js";
+import { provenanceSchema, readOutputSchema } from "./output-schema.js";
 import { provenanceOf, type MagentoRestTool, type ToolFactory } from "./rest-tool.js";
 import { ToolArgumentError } from "./tool-error.js";
 
 export const CREATE_SALES_RULE_TOOL = "magentorest_create_sales_rule";
 export const UPDATE_SALES_RULE_TOOL = "magentorest_update_sales_rule";
+export const GENERATE_COUPONS_TOOL = "magentorest_generate_coupons";
+
+/** Magento has no cap and generates synchronously, one saved coupon per code; this keeps a call short. */
+const MAX_GENERATED = 100;
+const COUPON_FORMATS = ["alphanum", "alpha", "num"] as const;
+
+const generatedSchema = z.object({ rule_id: z.number(), codes: z.array(z.string()), provenance: provenanceSchema });
 
 const SIMPLE_ACTIONS = ["by_percent", "by_fixed", "cart_fixed", "buy_x_get_y"] as const;
 const COUPON_TYPES = ["NO_COUPON", "SPECIFIC_COUPON", "AUTO"] as const;
@@ -258,6 +269,44 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
 
         const after = track();
         return readBack(after.client, after.answers, ruleId);
+      },
+    }),
+
+    shapedTool({
+      name: GENERATE_COUPONS_TOOL,
+      description:
+        "Use this to generate new coupon codes for a cart price rule that takes generated codes (coupon_type AUTO, or a SPECIFIC_COUPON rule set to auto-generate). " +
+        "Adds qty codes (at most 100), each usable as the rule's uses_per_coupon allows until its to_date; every call adds more. Returns the codes.",
+      effect: "create",
+      input: z
+        .object({
+          rule_id: entityId("cart price rule the codes are for"),
+          qty: z.number().int().min(1).max(MAX_GENERATED).describe(`How many codes to generate (at most ${MAX_GENERATED}).`),
+          length: z.number().int().min(1).max(32).optional().describe("Characters in each code, not counting the prefix (default 12; Magento lengthens it when too few codes of that length remain)."),
+          format: z.enum(COUPON_FORMATS).optional().describe("Characters used: alphanum (default), alpha or num."),
+          // Not `prefix`: that is a customer's name prefix on the personal-field list a host checks inputs against.
+          code_prefix: z.string().regex(/^[A-Za-z0-9_-]{1,32}$/, "letters, digits, _ and - only (max 32)").optional().describe("Text every code starts with."),
+        })
+        .strict(),
+      output: generatedSchema,
+      run: async ({ rule_id: ruleId, qty, length, format, code_prefix: prefix }, track) => {
+        const check = track();
+        let stored: StoredRule;
+        try {
+          stored = await readSalesRule(check.client, ruleId);
+        } catch (error) {
+          if (isMissing(error)) throw new ToolArgumentError("not_found", "rule_id", "No cart price rule with that ID: no codes were generated.");
+          throw error;
+        }
+        if (stored.rule["coupon_type"] !== "AUTO" && stored.rule["use_auto_generation"] !== true) {
+          throw new ToolArgumentError("invalid_argument", "rule_id", `That rule does not take generated codes: set its coupon_type to AUTO with ${UPDATE_SALES_RULE_TOOL} first.`);
+        }
+        const write = track();
+        const answer = await write.client.post("/coupons/generate", {
+          couponSpec: { rule_id: ruleId, quantity: qty, length: length ?? 12, format: format ?? "alphanum", ...(prefix !== undefined ? { prefix } : {}) },
+        });
+        const codes = Array.isArray(answer) ? answer.filter((code): code is string => typeof code === "string") : [];
+        return { rule_id: ruleId, codes, provenance: provenanceOf(write.answers) };
       },
     }),
   ];

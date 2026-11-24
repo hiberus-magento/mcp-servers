@@ -132,6 +132,7 @@ executable to run`.
 - `magentorest_delete_coupon` — Use this to permanently delete one coupon by ID. Irreversible: customers holding that code can no longer redeem it. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_create_sales_rule` — Use this to create a cart price rule (a promotion) without conditions: it discounts every cart on its websites and customer groups, between its dates. Adds a rule, inactive unless is_active is true; with coupon_type SPECIFIC_COUPON it also adds coupon_code as the rule's code, which must not exist yet. If the code cannot be saved, the new rule is deleted again and nothing is kept. Returns the rule as read back. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_update_sales_rule` — Use this to change members of an existing cart price rule, for example to deactivate it (is_active false) or to restore earlier values. Only the members you pass, and only those that differ from the stored rule, are sent; its conditions are never touched. Overwrites the current values on the live store. A field cannot be cleared (Magento keeps a field sent empty). Changing coupon_type away from SPECIFIC_COUPON makes Magento delete the rule's code and its use count. Returns the rule as read back. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
+- `magentorest_generate_coupons` — Use this to generate new coupon codes for a cart price rule that takes generated codes (coupon_type AUTO, or a SPECIFIC_COUPON rule set to auto-generate). Adds qty codes (at most 100), each usable as the rule's uses_per_coupon allows until its to_date; every call adds more. Returns the codes. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_get_tax_rates` (read-only) — Use this to list the tax rates: code, rate, country, region and postcode (or postcode range). Returns a bounded page and the total count.
 - `magentorest_get_tax_rules` (read-only) — Use this to list the tax rules: code, priority, and the customer tax classes, product tax classes and tax rates each one combines. Returns a bounded page and the total count. **Not verified against a live service** — this tool has not been run against a real Magento instance; its request shape and response projection are covered by unit tests against a test double and by the conformance suite.
 - `magentorest_get_tax_classes` (read-only) — Use this to list the tax classes, optionally only the CUSTOMER or only the PRODUCT ones. Returns one page of up to 100 and the total count.
@@ -409,6 +410,12 @@ read back, as `{ result, provenance }`:
 - Moving a rule away from `SPECIFIC_COUPON` makes Magento delete its code,
   together with the code's use count.
 
+`magentorest_generate_coupons` makes up to 100 codes per call for a rule that
+takes generated codes, which means `coupon_type` `AUTO` or a
+`SPECIFIC_COUPON` rule set to auto-generate. It checks the rule first and
+returns the codes. The input is `code_prefix` rather than `prefix`, because
+`prefix` is a customer's name prefix on the personal-field list.
+
 ## Product content per store view
 
 `magentorest_get_product_content` reads a product's name, description, short
@@ -485,7 +492,7 @@ server, because the tools it names cannot exist.
 | `cms` | CMS blocks and pages | get_cms_block_by_id, search_cms_blocks, get_cms_page_by_id, search_cms_pages, create_cms_block*, update_cms_block*, delete_cms_block*, create_cms_page*, update_cms_page*, delete_cms_page* |
 | `attributes` | Product attributes, options and attribute sets | get_product_attribute, search_product_attributes, get_attribute_options, get_attribute_sets, get_attribute_set_attributes, add_attribute_option* |
 | `media` | Product images | get_product_media, get_product_media_entry, add_product_image*, update_product_media*, delete_product_media* |
-| `promotions` | Cart price rules and coupons | get_sales_rules, get_sales_rule_by_id, search_coupons, get_coupon_by_id, create_sales_rule*, update_sales_rule*, delete_coupon* |
+| `promotions` | Cart price rules and coupons | get_sales_rules, get_sales_rule_by_id, search_coupons, get_coupon_by_id, create_sales_rule*, update_sales_rule*, generate_coupons*, delete_coupon* |
 | `tax` | Tax rates, rules and classes (read-only) | get_tax_rates, get_tax_rules, get_tax_classes |
 | `analytics` | Revenue, order counts and sales figures computed from orders (read-only) | get_revenue, get_order_count, get_product_sales, get_revenue_by_country, get_customer_ordered_products_by_email |
 | `database` | Direct access to the Magento database; needs `MAGENTO_REST_DATABASE_CONNECTION` | db_status, db_list_tables, db_describe_table, db_query, db_magento_tables, db_product_by_sku, db_recent_orders, db_stats, db_execute* |

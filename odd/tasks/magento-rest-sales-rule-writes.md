@@ -19,7 +19,7 @@ Requested by Kora, approved by the user ("si, adelante"):
 
 - [x] T1 (S7) audit of 34 write tools: 3 fixed (assign_product_to_category → update; add_order_comment → action; create_customer description names the welcome email). Route: inline; Magento side effects checked by a read-only researcher. RED 3 failing, GREEN 1205/1205.
 - [x] T2 (S1, S2, S4-S6) create_sales_rule + update_sales_rule (diff-only PUT, conditions never sent), by_id adds coupon_code, README ACL + section. Route: inline; Magento PUT semantics researched first (high risk: item 1). RED 38 failing (tools missing), GREEN 1243/1243; 8 gates green; tools/list diff vs 0.4.1: +2 tools, only intended changes.
-- [ ] T3 (S3) generate_coupons. Route: inline.
+- [x] T3 (S3) generate_coupons: checks the rule takes generated codes, POST /coupons/generate, at most 100, returns { rule_id, codes, provenance }. Route: inline. RED 13 failing, GREEN 811/811 (tools); 8 gates green.
 
 ## Log
 
@@ -28,3 +28,4 @@ Requested by Kora, approved by the user ("si, adelante"):
 - L3 T1 review review-b4707a0c67eb97f4 (risk, readability) over origin/main..93c9428 (includes the active_on commit): approved, acknowledged. Two advisory findings applied (nested describe blocks moved to top level); R2-null-filter-magic-value declined (the comment at the call site explains the 1).
 - L4 Magento 2.4-develop SalesRule research (read-only, source): every route requires Magento_SalesRule::quote. PUT /V1/salesRules/:id loads the stored rule and merges only the non-null fields sent (ToModel::toModel array_filter + array_merge), so unsent fields, conditions included, are kept, and null cannot clear a field. RuleInterface has no coupon_code: the code is a primary coupon via POST /V1/coupons. coupon_type in REST is NO_COUPON | SPECIFIC_COUPON | AUTO. A create without website_ids/customer_group_ids saves an unbound rule. Model\Rule::afterSave deletes the primary coupon when coupon_type leaves SPECIFIC_COUPON. coupons/generate needs use_auto_generation or AUTO, returns string[], and has no cap.
 - L5 T2 decisions: coupon_type takes Magento's REST values (NO_COUPON | SPECIFIC_COUPON | AUTO) rather than Kora's lowercase spelling, so read and write share one shape (S5). No member accepts null (Magento keeps a null field), so a date cannot be cleared. A code is required only when a rule becomes SPECIFIC_COUPON. by_percent is capped at 100. A failed coupon save deletes the rule this call created.
+- L6 T3: the input is code_prefix, not Kora's `prefix`: `prefix` is a customer's name prefix on the personal-field denylist (customer-data.ts), and the no-customer-input test caught it. A host checking input names would refuse the tool over it.
