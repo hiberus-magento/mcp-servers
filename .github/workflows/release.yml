@@ -72,6 +72,13 @@ jobs:
           git add -A
           git commit -m "chore(release): version packages [skip ci]"
           if ! git push origin HEAD:main; then
+            # Only a main that really moved is left to the queued run; any other refusal (auth, network, a branch
+            # protection) fails the job, since no other run would release this.
+            git fetch origin main
+            if [ "$(git rev-parse origin/main)" = "$(git rev-parse HEAD~1)" ]; then
+              echo "The version commit could not be pushed, and main has not moved." >&2
+              exit 1
+            fi
             echo "main moved during this run: the queued run releases it instead."
             echo "superseded=true" >> "$GITHUB_OUTPUT"
           fi
@@ -103,8 +110,9 @@ jobs:
 
       # One GitHub release per tag the publish created, its notes the version's CHANGELOG section (what the
       # changesets action used to create). It also runs after a publish that failed part-way: `changeset publish`
-      # tags the packages it did publish before failing, and those tags would otherwise be lost. Each tag and release
-      # is created only if it does not exist yet, so a re-run completes what a failed one left.
+      # tags the packages it did publish before failing, and those tags would otherwise be lost. It knows only the tags
+      # this run's publish created: a re-run (workflow_dispatch) completes a failed publish, but a GitHub release that
+      # failed to be created after its package was published has to be created by hand (gh release create <tag>).
       - name: Tags and GitHub releases
         if: ${{ !cancelled() && steps.version.outputs.superseded != 'true' }}
         shell: bash
