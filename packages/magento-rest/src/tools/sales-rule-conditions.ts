@@ -178,7 +178,12 @@ const children = (node: Record<string, unknown>): unknown[] | undefined => {
   return Array.isArray(list) ? list : undefined;
 };
 
-/** A node that only an extension attribute would change the meaning of (2.4.7+ attribute_scope). */
+/**
+ * A product leaf limited to parent or child items ("Parent only" / "Children only", attribute_scope). The admin has
+ * offered that limit since 2.4.6, but REST reports it only from 2.4.9 on: on 2.4.6-2.4.8 a limited leaf reads exactly
+ * like an unlimited one, which is why an update asks for replace_unsupported_conditions before replacing a stored set
+ * that holds product leaves (hasProductLeaves).
+ */
 const scoped = (node: Record<string, unknown>): boolean => {
   const scope = record(node["extension_attributes"])?.["attribute_scope"];
   return scope !== undefined && scope !== null && scope !== "";
@@ -284,6 +289,11 @@ function readTree<T>(tree: unknown, rootType: string, read: (node: unknown) => T
 export const readCartConditions = (tree: unknown): CartCondition[] | undefined => readTree(tree, COMBINE, cartCondition);
 /** The stored `action_condition` as item conditions; undefined when it holds anything outside the list. */
 export const readItemConditions = (tree: unknown): ItemCondition[] | undefined => readTree(tree, PRODUCT_COMBINE, productLeaf);
+
+const PRODUCT_KINDS: ReadonlySet<string> = new Set(["cart_has_product_in_categories", "cart_has_no_product_in_categories", "cart_has_sku", "category_in", "category_not_in", "sku_in"]);
+
+/** Whether a set holds a product condition, whose parent/child limit Magento before 2.4.9 does not report. */
+export const hasProductLeaves = (list: readonly AnyCondition[]): boolean => list.some((condition) => PRODUCT_KINDS.has(condition.type));
 
 /** One condition in a form that ignores the order of its ids and SKUs. */
 const canonical = (condition: AnyCondition): string => {

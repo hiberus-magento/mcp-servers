@@ -34,6 +34,7 @@ import {
   freeShippingOf,
   freeShippingSchema,
   freeShippingValue,
+  hasProductLeaves,
   itemConditionsSchema,
   itemTree,
   readCartConditions,
@@ -172,9 +173,14 @@ function checkDuplicates(args: ConditionArgs): void {
   }
 }
 
+/** The input name of each tree or value an update writes, for messages. */
+const CONDITION_INPUT_NAMES: Readonly<Record<string, string>> = { condition: "conditions", action_condition: "item_conditions", simple_free_shipping: "free_shipping" };
+
 /**
- * What an update sends for the typed conditions given: each set only when it differs from the stored one, and a
- * stored set outside the closed list only with `replaceUnsupported`. Refuses before anything is written.
+ * What an update sends for the typed conditions given: each set only when it differs from the stored one. A stored
+ * set outside the closed list, or one holding product conditions (whose parent/child limit Magento before 2.4.9 does
+ * not report, so it may hold more than it reads as), is replaced only with `replaceUnsupported`. Refuses before
+ * anything is written.
  */
 function conditionChanges(args: ConditionArgs, rule: Record<string, unknown>, replaceUnsupported: boolean): Record<string, unknown> {
   checkDuplicates(args);
@@ -194,7 +200,16 @@ function conditionChanges(args: ConditionArgs, rule: Record<string, unknown>, re
         );
       }
       out[tree] = build();
-    } else if (!sameConditions(given, stored as readonly (CartCondition | ItemCondition)[])) {
+    } else {
+      const current = stored as readonly (CartCondition | ItemCondition)[];
+      if (sameConditions(given, current)) continue;
+      if (hasProductLeaves(current) && !replaceUnsupported) {
+        throw new ToolArgumentError(
+          "invalid_argument",
+          key,
+          `The rule's ${key} hold product conditions, and Magento before 2.4.9 does not report whether one is limited to parent or child items ("Parent only" / "Children only" in the admin), so replacing them could drop that limit: nothing was written. Pass replace_unsupported_conditions true to replace them, once you know they carry no such limit (for example, because you wrote them).`,
+        );
+      }
       out[tree] = build();
     }
   }
@@ -332,7 +347,7 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
         "Use this to change members of an existing cart price rule, for example to deactivate it (is_active false) or to restore earlier values. " +
         "Only the members you pass, and only those that differ from the stored rule, are sent. Overwrites the current values on the live store. " +
         "conditions or item_conditions replace that whole set (an empty list removes every condition in it); a set you do not pass is kept. " +
-        "A rule whose set holds conditions this tool cannot represent (read as conditions_supported or item_conditions_supported false) is replaced only with replace_unsupported_conditions true. " +
+        "A set that holds conditions this tool cannot represent (read as conditions_supported or item_conditions_supported false), or that already holds product conditions (category or SKU), is replaced only with replace_unsupported_conditions true: Magento before 2.4.9 does not report a product condition's parent/child limit. " +
         "A field cannot be cleared (Magento keeps a field sent empty). Changing coupon_type away from SPECIFIC_COUPON makes Magento delete the rule's code and its use count; changing it back needs coupon_code again. Returns the rule as read back.",
       effect: "update",
       input: z
@@ -342,7 +357,9 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
           replace_unsupported_conditions: z
             .boolean()
             .optional()
-            .describe("Replace a condition set this tool cannot represent (read as conditions_supported or item_conditions_supported false); without it such a set is never replaced."),
+            .describe(
+              "Replace a stored condition set this tool cannot represent (read as conditions_supported or item_conditions_supported false), or one that holds product conditions, whose parent/child limit Magento before 2.4.9 does not report; without it such a set is never replaced.",
+            ),
         })
         .strict() as z.ZodObject<
         { rule_id: z.ZodNumber; replace_unsupported_conditions: z.ZodOptional<z.ZodBoolean> } & {
@@ -383,7 +400,7 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
         // primary coupon (its codes auto-generated), and changing another member must not demand one.
         checkCombination(effective, given, given.coupon_type === "SPECIFIC_COUPON" && current.coupon_type !== "SPECIFIC_COUPON");
         const typed = conditionChanges(typedArgs, stored.rule, replaceUnsupported === true);
-        const written = [...changed, ...Object.keys(typed)];
+        const written = [...changed, ...Object.keys(typed).map((key) => CONDITION_INPUT_NAMES[key] ?? key)];
 
         const newCode = given.coupon_code !== undefined && given.coupon_code !== currentCode ? given.coupon_code : undefined;
         // Everything that can refuse the code is checked BEFORE the PUT: a rule switched to SPECIFIC_COUPON whose code

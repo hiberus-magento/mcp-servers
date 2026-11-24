@@ -210,7 +210,8 @@ describe("update_sales_rule replaces the condition sets", () => {
   it("clears a set with an empty list: a root with no conditions", async () => {
     const stored = { ...STORED, condition: CART_TREE, action_condition: ITEM_TREE };
     const { double, call } = build({ "GET /rest/V1/salesRules/3": json(200, stored), [PUT]: json(200, STORED) });
-    await call(UPDATE, { rule_id: 3, conditions: [], item_conditions: [] });
+    // Both stored sets hold product conditions, so the flag is needed (see the 2.4.9 tests below).
+    await call(UPDATE, { rule_id: 3, conditions: [], item_conditions: [], replace_unsupported_conditions: true });
     expect(bodyOf(puts(double.calls)[0])).toEqual({ rule: { condition: EMPTY_CART, action_condition: EMPTY_ITEMS } });
   });
 
@@ -267,9 +268,96 @@ describe("update_sales_rule replaces the condition sets", () => {
     expect(double.calls).toHaveLength(0);
   });
 
+  it("sends nothing when the read of an admin-saved rule is passed back", async () => {
+    const admin = {
+      ...STORED,
+      simple_free_shipping: 2,
+      condition: combine(COMBINE, "1", [
+        leaf(ADDRESS, "base_subtotal", ">=", "100.0000"),
+        leaf(ADDRESS, "total_qty", "<=", "3"),
+        { condition_type: FOUND, aggregator_type: "all", value: 0, conditions: [leaf(PRODUCT, "category_ids", "()", "9, 4")] },
+        combine(FOUND, "1", [leaf(PRODUCT, "sku", "()", "B;A")]),
+      ]),
+      action_condition: { condition_type: PRODUCT_COMBINE, aggregator_type: "all", value: 1, conditions: [leaf(PRODUCT, "category_ids", "!()", "5,2"), leaf(PRODUCT, "sku", "()", "Z , Y")] },
+    };
+    const snap = (await build({ "GET /rest/V1/salesRules/3": json(200, admin) }).call(READ, { rule_id: 3 })) as Record<string, unknown>;
+    const { double, call } = build({ "GET /rest/V1/salesRules/3": json(200, admin) });
+    await call(UPDATE, { rule_id: 3, conditions: snap["conditions"], item_conditions: snap["item_conditions"], free_shipping: snap["free_shipping"] });
+    expect(puts(double.calls)).toHaveLength(0);
+  });
+
+  it("writes the cart set and leaves an unsupported item set unsent", async () => {
+    const stored = { ...STORED, action_condition: combine(PRODUCT_COMBINE, "1", [leaf(PRODUCT, "sku", "==", "A")]) };
+    const { double, call } = build({ "GET /rest/V1/salesRules/3": json(200, stored), [PUT]: json(200, stored) });
+    await call(UPDATE, { rule_id: 3, conditions: [{ type: "total_qty_at_least", qty: 2 }] });
+    expect(bodyOf(puts(double.calls)[0])).toEqual({ rule: { condition: combine(COMBINE, "1", [leaf(ADDRESS, "total_qty", ">=", "2")]) } });
+  });
+
+  it("names the condition inputs already written when the coupon fails after the rule was changed", async () => {
+    const { tool } = build({
+      "GET /rest/V1/salesRules/3": json(200, STORED),
+      "GET /rest/V1/coupons/search": json(200, { items: [], total_count: 0 }),
+      [PUT]: json(200, STORED),
+      "POST /rest/V1/coupons": json(400, { message: "refused" }),
+    });
+    const outcome = tool(UPDATE).invoke({ rule_id: 3, coupon_type: "SPECIFIC_COUPON", coupon_code: "NEW10", conditions: [{ type: "subtotal_at_least", amount: 50 }], free_shipping: "whole_cart" }, {});
+    await expect(outcome).rejects.toThrow(/already written: coupon_type, conditions, free_shipping\./);
+  });
+
   it("refuses null in place of a list: clearing is an empty list", async () => {
     const { double, tool } = build({});
     await expect(tool(UPDATE).invoke({ rule_id: 3, conditions: null }, {})).rejects.toBeInstanceOf(ZodError);
     expect(double.calls).toHaveLength(0);
+  });
+});
+
+describe("product conditions on Magento before 2.4.9", () => {
+  // "Parent only" / "Children only" (attribute_scope) exists in the admin from 2.4.6, but REST reports it only from
+  // 2.4.9: on 2.4.6-2.4.8 a limited product condition reads exactly like an unlimited one, so replacing a stored set
+  // that holds one could drop the limit.
+  const PUT = "PUT /rest/V1/salesRules/3";
+  const withProducts = { ...STORED, condition: combine(COMBINE, "1", [combine(FOUND, "1", [leaf(PRODUCT, "category_ids", "()", "3")])]), action_condition: ITEM_TREE };
+
+  it.each([
+    ["conditions", { conditions: [{ type: "subtotal_at_least", amount: 50 }] }],
+    ["item_conditions", { item_conditions: [] }],
+  ])("refuses to replace a stored %s set that holds product conditions, and writes nothing", async (argument, extra) => {
+    const { double, tool } = build({ "GET /rest/V1/salesRules/3": json(200, withProducts) });
+    await expect(tool(UPDATE).invoke({ rule_id: 3, is_active: false, ...extra }, {})).rejects.toMatchObject({ code: "invalid_argument", argument });
+    expect(puts(double.calls)).toHaveLength(0);
+  });
+
+  it("replaces it with replace_unsupported_conditions true", async () => {
+    const { double, call } = build({ "GET /rest/V1/salesRules/3": json(200, withProducts), [PUT]: json(200, STORED) });
+    await call(UPDATE, { rule_id: 3, conditions: [{ type: "subtotal_at_least", amount: 50 }], replace_unsupported_conditions: true });
+    expect(bodyOf(puts(double.calls)[0])).toEqual({ rule: { condition: combine(COMBINE, "1", [leaf(ADDRESS, "base_subtotal", ">=", "50")]) } });
+  });
+
+  it("needs no flag when the given set matches the stored one: nothing is sent", async () => {
+    const { double, call } = build({ "GET /rest/V1/salesRules/3": json(200, withProducts) });
+    await call(UPDATE, { rule_id: 3, conditions: [{ type: "cart_has_product_in_categories", category_ids: [3] }], item_conditions: ALL_ITEMS });
+    expect(puts(double.calls)).toHaveLength(0);
+  });
+
+  it("needs no flag to replace a stored set without product conditions, even with new product conditions", async () => {
+    const stored = { ...STORED, condition: combine(COMBINE, "1", [leaf(ADDRESS, "total_qty", ">=", "2")]) };
+    const { double, call } = build({ "GET /rest/V1/salesRules/3": json(200, stored), [PUT]: json(200, STORED) });
+    await call(UPDATE, { rule_id: 3, conditions: [{ type: "cart_has_sku", skus: ["SKU-1"] }] });
+    expect(bodyOf(puts(double.calls)[0])).toEqual({ rule: { condition: combine(COMBINE, "1", [combine(FOUND, "1", [leaf(PRODUCT, "sku", "()", "SKU-1")])]) } });
+  });
+});
+
+describe("shapes near the closed list stay unsupported", () => {
+  it.each([
+    ["FOUND with ANY", combine(COMBINE, "1", [{ ...combine(FOUND, "1", [leaf(PRODUCT, "sku", "()", "A")]), aggregator_type: "any" }])],
+    ["NOT FOUND with a SKU", combine(COMBINE, "1", [combine(FOUND, "0", [leaf(PRODUCT, "sku", "()", "A")])])],
+    ["FOUND with is-not-one-of categories", combine(COMBINE, "1", [combine(FOUND, "1", [leaf(PRODUCT, "category_ids", "!()", "3")])])],
+    ["a subselect", combine(COMBINE, "1", [{ ...combine("Magento\\SalesRule\\Model\\Rule\\Condition\\Product\\Subselect", "1", [leaf(PRODUCT, "sku", "()", "A")]), attribute_name: "qty", operator: ">=" }])],
+    ["a product leaf under the cart root", combine(COMBINE, "1", [leaf(PRODUCT, "sku", "()", "A")])],
+    ["subtotal with discount", combine(COMBINE, "1", [leaf(ADDRESS, "base_subtotal_with_discount", ">=", "5")])],
+    ["a null child", combine(COMBINE, "1", [null])],
+  ])("reports %s as unsupported", async (_label, tree) => {
+    const out = (await build({ "GET /rest/V1/salesRules/3": json(200, { ...STORED, condition: tree }) }).call(READ, { rule_id: 3 })) as Record<string, unknown>;
+    expect(out["conditions_supported"]).toBe(false);
   });
 });
