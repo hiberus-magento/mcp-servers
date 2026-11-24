@@ -111,8 +111,26 @@ function assembleTools(): readonly MagentoRestTool[] {
 // tools are shared across requests rather than rebuilt for each one.
 const tools = assembleTools();
 
+/**
+ * The SDK checks a call's arguments against the tool's schema before the handler runs, and answers a failure with
+ * plain text ("MCP error -32602 ..."), no typed error. Each tool's `invoke` parses the very same schema itself and
+ * answers a typed `invalid_argument` naming the argument (Kora contract R-8), so the SDK's copy of that check hands
+ * the arguments through unchanged instead. `tools/list` still advertises the full schema, and outputs are still
+ * checked. The SDK is bundled at a pinned version; the conformance suite fails if this hook stops working.
+ */
+function deferArgumentChecksToTools(server: McpServer): void {
+  (server as unknown as { validateToolInput: unknown }).validateToolInput = async (_tool: unknown, args: unknown): Promise<unknown> => args;
+}
+
+// Checked once at startup, not per HTTP request: an SDK without the hook stops the server here.
+if (typeof (McpServer.prototype as unknown as { validateToolInput?: unknown }).validateToolInput !== "function") {
+  logger.error("magento-rest: refusing to start — the bundled MCP SDK no longer validates tool input through validateToolInput, so typed argument errors need a new hook.");
+  process.exit(1);
+}
+
 function buildServer(): McpServer {
   const server = new McpServer({ name: "magento-rest", version: serverVersion() }, { jsonSchemaValidator: noElicitationValidator });
+  deferArgumentChecksToTools(server);
   for (const tool of tools) {
     server.registerTool(
       tool.name,

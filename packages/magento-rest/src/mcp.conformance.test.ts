@@ -215,6 +215,25 @@ describe(`magento-rest tool surface on the built bundle: ${serverPath}`, () => {
       expect(result.structuredContent?.error).toMatchObject({ code: "permission_missing", resource: "Magento_Sales::actions_view", http_status: 401 });
     });
 
+    it("answers an argument its schema refuses with a typed invalid_argument naming it, not the SDK's plain text", async () => {
+      type Answer = { readonly isError?: boolean; readonly structuredContent?: { readonly error?: Record<string, unknown> }; readonly content?: readonly { readonly text?: string }[] };
+      const badId = (await callTool({}, "magentorest_get_order_by_id", { order_id: 0 })) as Answer;
+      expect(badId.isError).toBe(true);
+      expect(badId.structuredContent?.error).toMatchObject({ code: "invalid_argument", argument: "order_id" });
+      expect(badId.content?.[0]?.text).not.toContain("-32602");
+      const cases: readonly [Record<string, string>, string, Record<string, unknown>, string][] = [
+        [{}, "magentorest_list_orders", { filters: [{ field: "customer_email", value: "x" }] }, "filters.0.field"],
+        [{}, "magentorest_list_orders", { customer_email: "x" }, "customer_email"],
+        [{ MCP_WRITES_ENABLED: "true" }, "magentorest_update_product_content", { sku: "", store_view: "default", content: { meta_title: "x" } }, "sku"],
+      ];
+      for (const [env, name, args, argument] of cases) {
+        const answer = (await callTool(env, name, args)) as Answer;
+        expect(answer.isError, name).toBe(true);
+        expect(answer.structuredContent?.error, name).toMatchObject({ code: "invalid_argument", argument });
+        expect(answer.content?.[0]?.text, name).not.toContain("-32602");
+      }
+    });
+
     it("leaves who placed an order out of the answer by default", async () => {
       const result = await callTool({}, "magentorest_get_order_by_id", { order_id: 5 });
       expect(result.structuredContent?.result).toEqual({ entity_id: 5, increment_id: "DEMO000000001", status: "processing" });

@@ -326,6 +326,14 @@ global scope, not a store view, so a base URL of `https://<host>/rest/all/V1`
 JSON is over 100,000 bytes is refused with an error: ask for fewer records. Write
 tools answer with text, as before.
 
+A failed call, read or write, answers `isError` with a typed
+`structuredContent.error`: `code` (`unauthorized`, `permission_missing`,
+`rate_limited`, `timeout`, `unavailable`, `invalid_argument`, `not_found` or
+`upstream_error`) and the member that code needs (`resource`, `retry_after_ms`,
+`http_status` or `argument`). An argument the tool's schema refuses is
+`invalid_argument` with `argument` naming it, e.g. `order_id` or
+`filters.0.field`.
+
 ## Customer data is off by default
 
 Results carry **no customer personal data** unless the server runs with
