@@ -81,7 +81,7 @@ const members = {
     .int()
     .min(0)
     .max(1_000_000)
-    .describe("Magento's Discount Qty Step. For buy_x_get_y, the X: items bought to get discount_amount items free; at least 1. For the other actions, the discounted quantity is rounded down to a multiple of it (0 for none)."),
+    .describe("Magento's Discount Qty Step. For buy_x_get_y, the X: items bought to get discount_amount items free; at least 1. For by_percent and by_fixed, the discounted quantity is rounded down to a multiple of it (0 for none); cart_fixed ignores it."),
   apply_to_shipping: z.boolean().describe("Whether the discount also applies to the shipping amount."),
   stop_rules_processing: z.boolean().describe("Whether rules with a later sort order stop being applied after this one."),
   coupon_type: z.enum(COUPON_TYPES).describe("NO_COUPON (applies without a code), SPECIFIC_COUPON (needs coupon_code), or AUTO (codes made with magentorest_generate_coupons)."),
@@ -251,21 +251,41 @@ function checkCombination(effective: Members, given: Members, needsCode: boolean
   if (effective.simple_action === "by_percent" && Number(effective.discount_amount) > 100) {
     throw new ToolArgumentError("invalid_argument", "discount_amount", "A by_percent discount is at most 100.");
   }
-  // Magento's BuyXGetY gives no discount, without an error, when X is 0 or Y is greater than X. Checked only when the
-  // write CHANGES one of the three, so other changes to a stored rule without a step, or a replayed read, still go through.
-  if (effective.simple_action === "buy_x_get_y" && (changing.simple_action !== undefined || changing.discount_step !== undefined || changing.discount_amount !== undefined)) {
-    const step = Number(effective.discount_step ?? 0);
-    if (!(step >= 1)) {
-      throw new ToolArgumentError("invalid_argument", "discount_step", "A buy_x_get_y rule needs discount_step (the X, items bought) of at least 1: Magento gives no discount without it.");
-    }
-    if (Number(effective.discount_amount) > step) {
-      // Blame the member the caller changed: lowering only the step is a step problem.
-      const argument = changing.discount_step !== undefined && changing.discount_amount === undefined ? "discount_step" : "discount_amount";
-      throw new ToolArgumentError("invalid_argument", argument, "On a buy_x_get_y rule, discount_amount (the Y, items free) must not exceed discount_step (the X): Magento gives no discount otherwise.");
-    }
-  }
   if (effective.from_date !== undefined && effective.to_date !== undefined && effective.to_date < effective.from_date) {
     throw new ToolArgumentError("invalid_argument", "to_date", "to_date must not be before from_date.");
+  }
+  checkBuyXGetY(effective, changing);
+}
+
+/**
+ * Magento's BuyXGetY gives no discount, without an error, when X (discount_step) is 0, Y (discount_amount) is 0 or
+ * greater than X, or the discount_qty cap is at or below X (Utility::getItemQty caps the quantity first, so the free
+ * items are never reached). Checked only when the write CHANGES one of these members, so other changes to a stored
+ * rule, or a replayed read, still go through.
+ */
+function checkBuyXGetY(effective: Members, changing: Members): void {
+  if (effective.simple_action !== "buy_x_get_y") return;
+  if ([changing.simple_action, changing.discount_step, changing.discount_amount, changing.discount_qty].every((value) => value === undefined)) return;
+  // Blame the member the caller changed; a step change that breaks a stored Y or cap is a step problem.
+  const blame = (own: "discount_amount" | "discount_qty"): string => (changing[own] === undefined && changing.discount_step !== undefined ? "discount_step" : own);
+  const step = Number(effective.discount_step ?? 0);
+  if (!(step >= 1)) {
+    throw new ToolArgumentError("invalid_argument", "discount_step", "A buy_x_get_y rule needs discount_step (the X, items bought) of at least 1: Magento gives no discount without it.");
+  }
+  const amount = Number(effective.discount_amount ?? 0);
+  if (!(amount > 0)) {
+    throw new ToolArgumentError("invalid_argument", "discount_amount", "A buy_x_get_y rule needs discount_amount (the Y, items free) above 0: Magento gives no discount without it.");
+  }
+  if (amount > step) {
+    throw new ToolArgumentError("invalid_argument", blame("discount_amount"), "On a buy_x_get_y rule, discount_amount (the Y, items free) must not exceed discount_step (the X): Magento gives no discount otherwise.");
+  }
+  const cap = Number(effective.discount_qty ?? 0);
+  if (cap > 0 && cap <= step) {
+    throw new ToolArgumentError(
+      "invalid_argument",
+      blame("discount_qty"),
+      "On a buy_x_get_y rule, discount_qty (the most items discounted) must be 0 (no limit) or above discount_step (the X): Magento caps the quantity first and gives no discount otherwise.",
+    );
   }
 }
 
@@ -368,6 +388,7 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
         "Only the members you pass, and only those that differ from the stored rule, are sent. Overwrites the current values on the live store. " +
         "conditions or item_conditions replace that whole set (an empty list removes every condition in it); a set you do not pass is kept. " +
         "A set that holds conditions this tool cannot represent (read as conditions_supported or item_conditions_supported false), or that already holds product conditions (category or SKU), is replaced only with replace_unsupported_conditions true: Magento before 2.4.9 does not report a product condition's parent/child limit. " +
+        "On a buy_x_get_y rule, a change to simple_action, discount_step, discount_amount or discount_qty is refused unless discount_step (X) is at least 1, discount_amount (Y) is above 0 and at most X, and discount_qty is 0 or above X: Magento gives no discount otherwise. " +
         "A field cannot be cleared (Magento keeps a field sent empty). Changing coupon_type away from SPECIFIC_COUPON makes Magento delete the rule's code and its use count; changing it back needs coupon_code again. Returns the rule as read back.",
       effect: "update",
       input: z

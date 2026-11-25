@@ -203,6 +203,15 @@ describe("update_sales_rule", () => {
     expect(tool(UPDATE).annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true, idempotentHint: true });
   });
 
+  it("says when a buy_x_get_y change is refused, and which actions the quantity step applies to", () => {
+    const { tool } = build({});
+    expect(tool(UPDATE).description).toContain("buy_x_get_y");
+    expect(tool(UPDATE).description).toContain("discount_step");
+    const step = (tool(CREATE).inputSchema as unknown as { shape: Record<string, { unwrap: () => { description?: string } }> }).shape["discount_step"];
+    expect(step?.unwrap().description ?? "").toContain("by_percent and by_fixed");
+    expect(step?.unwrap().description ?? "").not.toContain("other actions");
+  });
+
   it("sends only the members that differ from the stored rule, then reads it back", async () => {
     const after = { ...STORED, is_active: false };
     const { double, tool } = build({
@@ -467,6 +476,28 @@ describe("discount_step: the verifier's probes", () => {
   it("lowering only the step below the stored Y blames discount_step", () => refuses({ ...BXGY, discount_amount: "2.0000" }, { discount_step: 1 }, "discount_step"));
   it("an unchanged step on a stored rule with Y above X writes nothing and is not refused", () => puts({ ...BXGY, discount_amount: "3.0000" }, { discount_step: 2 }, null));
   it("an undefined step alone is nothing to change", () => refuses(BXGY, { discount_step: undefined }, "rule_id"));
+
+  // Review findings 1 and 2: Y = 0, and a discount_qty cap at or below X, also leave Magento with no discount.
+  it("create refuses a Y of 0, before writing", async () => {
+    const { double, tool } = build({});
+    await expect(tool(CREATE).invoke({ ...CREATE_ARGS, simple_action: "buy_x_get_y", discount_amount: 0, discount_step: 2 }, {})).rejects.toMatchObject({ code: "invalid_argument", argument: "discount_amount" });
+    expect(double.calls).toEqual([]);
+  });
+  it("update refuses changing Y to 0", () => refuses(BXGY, { discount_amount: 0 }, "discount_amount"));
+  it("create refuses a discount_qty at or below X, before writing", async () => {
+    for (const discount_qty of [1, 2]) {
+      const { double, tool } = build({});
+      await expect(tool(CREATE).invoke({ ...CREATE_ARGS, simple_action: "buy_x_get_y", discount_amount: 1, discount_step: 2, discount_qty }, {})).rejects.toMatchObject({ code: "invalid_argument", argument: "discount_qty" });
+      expect(double.calls).toEqual([]);
+    }
+  });
+  it("create accepts a discount_qty above X, or 0 for no limit", async () => {
+    for (const discount_qty of [0, 3]) expect((await posts({ ...CREATE_ARGS, simple_action: "buy_x_get_y", discount_amount: 1, discount_step: 2, discount_qty }))["discount_qty"]).toBe(discount_qty);
+  });
+  it("update refuses changing discount_qty to X on a buy_x_get_y rule", () => refuses(BXGY, { discount_qty: 2 }, "discount_qty"));
+  it("update refuses raising the step to the stored discount_qty, blaming discount_step", () => refuses({ ...BXGY, discount_qty: "3.0000" }, { discount_step: 3 }, "discount_step"));
+  it("discount_qty at or below the step is not checked on the other actions", () => puts({ ...STORED, coupon_type: "NO_COUPON", discount_step: 3 }, { discount_qty: 2 }, { discount_qty: 2 }));
+  it("an unchanged discount_qty at or below X on a stored rule is not refused", () => puts({ ...BXGY, discount_qty: 1 }, { discount_qty: 1, is_active: false }, { is_active: false }));
   it("a step out of range is refused by the schema", async () => {
     for (const discount_step of [1_000_001, -1]) await expect(upd(BXGY).tool(UPDATE).invoke({ rule_id: 3, discount_step }, {})).rejects.toBeInstanceOf(ZodError);
   });
