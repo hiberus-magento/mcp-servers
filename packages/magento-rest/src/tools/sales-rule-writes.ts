@@ -21,10 +21,29 @@
 //     saves one coupon per code synchronously: the rule is checked first (a typed refusal instead of Magento's
 //     wrapped one), and a call makes at most 100 codes.
 //
-// Conditions are not offered: a rule is created without any, and an update leaves the stored ones untouched.
+//   - Conditions are typed (sales-rule-conditions.ts): a closed list of kinds, never Magento's condition classes. A
+//     condition set given to an update replaces the stored set whole, and is sent only when it differs; a set not
+//     given is kept. A stored set outside that list is replaced only when the caller says so.
 import { z } from "zod";
 import { MagentoRestError, restPath, type MagentoRestClient } from "../client/index.js";
 import { calendarDay, entityId } from "./inputs.js";
+import {
+  cartConditionsSchema,
+  cartTree,
+  duplicateIn,
+  freeShippingOf,
+  freeShippingSchema,
+  freeShippingValue,
+  hasProductLeaves,
+  itemConditionsSchema,
+  itemTree,
+  readCartConditions,
+  readItemConditions,
+  sameConditions,
+  type CartCondition,
+  type FreeShipping,
+  type ItemCondition,
+} from "./sales-rule-conditions.js";
 import { project } from "./project.js";
 import { provenanceSchema, readOutputSchema } from "./output-schema.js";
 import { provenanceOf, type MagentoRestTool, type ToolFactory } from "./rest-tool.js";
@@ -69,6 +88,19 @@ const members = {
   sort_order: count("Priority: lower numbers apply first."),
 } as const;
 
+/** The typed conditions and free shipping: written as Magento's trees and raw value, not as members. */
+const conditionMembers = {
+  conditions: cartConditionsSchema,
+  item_conditions: itemConditionsSchema,
+  free_shipping: freeShippingSchema,
+} as const;
+
+interface ConditionArgs {
+  conditions?: CartCondition[] | undefined;
+  item_conditions?: ItemCondition[] | undefined;
+  free_shipping?: FreeShipping | undefined;
+}
+
 type Member = keyof typeof members;
 type Members = { -readonly [K in Member]?: z.infer<(typeof members)[K]> | undefined };
 
@@ -91,7 +123,7 @@ const autoGenerates = (rule: Record<string, unknown>): boolean => rule["use_auto
 
 /** One rule and its primary coupon's code: GET the rule, then, for a specific-coupon rule, its primary coupon. */
 export async function readSalesRule(client: MagentoRestClient, ruleId: number): Promise<StoredRule> {
-  const rule = record(await client.get(restPath`/salesRules/${ruleId}`));
+  const rule = withTypedConditions(record(await client.get(restPath`/salesRules/${ruleId}`)));
   if (rule["coupon_type"] !== "SPECIFIC_COUPON") return { rule: { ...rule, coupon_code: null }, primaryCouponId: undefined };
   const primary = record(
     (
@@ -105,6 +137,84 @@ export async function readSalesRule(client: MagentoRestClient, ruleId: number): 
   const code = typeof primary["code"] === "string" ? primary["code"] : null;
   const id = typeof primary["coupon_id"] === "number" ? primary["coupon_id"] : undefined;
   return { rule: { ...rule, coupon_code: code }, primaryCouponId: code === null ? undefined : id };
+}
+
+/**
+ * The rule plus its conditions and free shipping in the shape the writes take. A set outside the closed list reads
+ * as `<set>_supported: false` with no list, so a caller is never shown part of it as if it were all of it.
+ */
+function withTypedConditions(rule: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...rule };
+  const cart = readCartConditions(rule["condition"]);
+  const items = readItemConditions(rule["action_condition"]);
+  const freeShipping = freeShippingOf(rule["simple_free_shipping"]);
+  out["conditions_supported"] = cart !== undefined;
+  if (cart !== undefined) out["conditions"] = cart;
+  out["item_conditions_supported"] = items !== undefined;
+  if (items !== undefined) out["item_conditions"] = items;
+  if (freeShipping !== undefined) out["free_shipping"] = freeShipping;
+  return out;
+}
+
+/** The trees and value a create sends for the typed conditions given (an empty set sends nothing). */
+function conditionBody(args: ConditionArgs): Record<string, unknown> {
+  checkDuplicates(args);
+  return {
+    ...(args.conditions !== undefined && args.conditions.length > 0 ? { condition: cartTree(args.conditions) } : {}),
+    ...(args.item_conditions !== undefined && args.item_conditions.length > 0 ? { action_condition: itemTree(args.item_conditions) } : {}),
+    ...(args.free_shipping !== undefined ? { simple_free_shipping: freeShippingValue(args.free_shipping) } : {}),
+  };
+}
+
+function checkDuplicates(args: ConditionArgs): void {
+  for (const key of ["conditions", "item_conditions"] as const) {
+    const problem = duplicateIn(args[key] ?? []);
+    if (problem !== undefined) throw new ToolArgumentError("invalid_argument", key, problem);
+  }
+}
+
+/** The input name of each tree or value an update writes, for messages. */
+const CONDITION_INPUT_NAMES: Readonly<Record<string, string>> = { condition: "conditions", action_condition: "item_conditions", simple_free_shipping: "free_shipping" };
+
+/**
+ * What an update sends for the typed conditions given: each set only when it differs from the stored one. A stored
+ * set outside the closed list, or one holding product conditions (whose parent/child limit Magento before 2.4.9 does
+ * not report, so it may hold more than it reads as), is replaced only with `replaceUnsupported`. Refuses before
+ * anything is written.
+ */
+function conditionChanges(args: ConditionArgs, rule: Record<string, unknown>, replaceUnsupported: boolean): Record<string, unknown> {
+  checkDuplicates(args);
+  const out: Record<string, unknown> = {};
+  const sets = [
+    { key: "conditions", given: args.conditions, stored: rule["conditions"], tree: "condition", build: () => cartTree(args.conditions ?? []) },
+    { key: "item_conditions", given: args.item_conditions, stored: rule["item_conditions"], tree: "action_condition", build: () => itemTree(args.item_conditions ?? []) },
+  ] as const;
+  for (const { key, given, stored, tree, build } of sets) {
+    if (given === undefined) continue;
+    if (stored === undefined) {
+      if (!replaceUnsupported) {
+        throw new ToolArgumentError(
+          "invalid_argument",
+          key,
+          `The rule's ${key} hold conditions this tool cannot represent (set in the admin), so replacing them would lose them: nothing was written. Pass replace_unsupported_conditions true to replace them anyway.`,
+        );
+      }
+      out[tree] = build();
+    } else {
+      const current = stored as readonly (CartCondition | ItemCondition)[];
+      if (sameConditions(given, current)) continue;
+      if (hasProductLeaves(current) && !replaceUnsupported) {
+        throw new ToolArgumentError(
+          "invalid_argument",
+          key,
+          `The rule's ${key} hold product conditions, and Magento before 2.4.9 does not report whether one is limited to parent or child items ("Parent only" / "Children only" in the admin), so replacing them could drop that limit: nothing was written. Pass replace_unsupported_conditions true to replace them, once you know they carry no such limit (for example, because you wrote them).`,
+        );
+      }
+      out[tree] = build();
+    }
+  }
+  if (args.free_shipping !== undefined && rule["free_shipping"] !== args.free_shipping) out["simple_free_shipping"] = freeShippingValue(args.free_shipping);
+  return out;
 }
 
 /** Two arrays of ids holding the same ids, in any order. */
@@ -167,7 +277,8 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
     shapedTool({
       name: CREATE_SALES_RULE_TOOL,
       description:
-        "Use this to create a cart price rule (a promotion) without conditions: it discounts every cart on its websites and customer groups, between its dates. " +
+        "Use this to create a cart price rule (a promotion) on its websites and customer groups, between its dates: without conditions it discounts every cart and every item. " +
+        "conditions limit which carts qualify (subtotal, item count, shipping country, products in the cart), item_conditions which items are discounted (category, SKU); all conditions in a list must hold. " +
         "Adds a rule, inactive unless is_active is true; with coupon_type SPECIFIC_COUPON it also adds coupon_code as the rule's code, which must not exist yet. " +
         "If the code cannot be saved, the new rule is deleted again and nothing is kept. Returns the rule as read back.",
       effect: "create",
@@ -190,18 +301,22 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
           uses_per_coupon: members.uses_per_coupon.optional(),
           uses_per_customer: members.uses_per_customer.optional(),
           sort_order: members.sort_order.optional(),
+          conditions: conditionMembers.conditions.optional(),
+          item_conditions: conditionMembers.item_conditions.optional(),
+          free_shipping: conditionMembers.free_shipping.optional(),
         })
         .strict(),
       output,
       run: async (args, track) => {
         checkCombination(args, args, args.coupon_type === "SPECIFIC_COUPON");
+        const typed = conditionBody(args);
         const write = track();
         const code = args.coupon_code;
         if (code !== undefined) {
           const taken = await write.client.search("/coupons/search", { filterGroups: [[{ field: "code", value: code }]], pageSize: 1, currentPage: 1 });
           if (taken.items.length > 0) throw new ToolArgumentError("invalid_argument", "coupon_code", "A coupon with that code already exists: nothing was created.");
         }
-        const created = record(await write.client.post("/salesRules", { rule: pick(args, RULE_MEMBERS) }));
+        const created = record(await write.client.post("/salesRules", { rule: { ...pick(args, RULE_MEMBERS), ...typed } }));
         const ruleId = created["rule_id"];
         if (typeof ruleId !== "number") throw new Error("Magento accepted the rule but answered without its rule_id, so it cannot be read back: confirm with magentorest_get_sales_rules.");
         if (code !== undefined) {
@@ -230,19 +345,39 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
       name: UPDATE_SALES_RULE_TOOL,
       description:
         "Use this to change members of an existing cart price rule, for example to deactivate it (is_active false) or to restore earlier values. " +
-        "Only the members you pass, and only those that differ from the stored rule, are sent; its conditions are never touched. Overwrites the current values on the live store. " +
+        "Only the members you pass, and only those that differ from the stored rule, are sent. Overwrites the current values on the live store. " +
+        "conditions or item_conditions replace that whole set (an empty list removes every condition in it); a set you do not pass is kept. " +
+        "A set that holds conditions this tool cannot represent (read as conditions_supported or item_conditions_supported false), or that already holds product conditions (category or SKU), is replaced only with replace_unsupported_conditions true: Magento before 2.4.9 does not report a product condition's parent/child limit. " +
         "A field cannot be cleared (Magento keeps a field sent empty). Changing coupon_type away from SPECIFIC_COUPON makes Magento delete the rule's code and its use count; changing it back needs coupon_code again. Returns the rule as read back.",
       effect: "update",
       input: z
         .object({
           rule_id: entityId("cart price rule to change"),
-          ...Object.fromEntries(Object.entries(members).map(([key, schema]) => [key, schema.optional()])),
+          ...Object.fromEntries(Object.entries({ ...members, ...conditionMembers }).map(([key, schema]) => [key, schema.optional()])),
+          replace_unsupported_conditions: z
+            .boolean()
+            .optional()
+            .describe(
+              "Replace a stored condition set this tool cannot represent (read as conditions_supported or item_conditions_supported false), or one that holds product conditions, whose parent/child limit Magento before 2.4.9 does not report; without it such a set is never replaced.",
+            ),
         })
-        .strict() as z.ZodObject<{ rule_id: z.ZodNumber } & { [K in Member]: z.ZodOptional<(typeof members)[K]> }>,
+        .strict() as z.ZodObject<
+        { rule_id: z.ZodNumber; replace_unsupported_conditions: z.ZodOptional<z.ZodBoolean> } & {
+          [K in Member]: z.ZodOptional<(typeof members)[K]>;
+        } & { [K in keyof typeof conditionMembers]: z.ZodOptional<(typeof conditionMembers)[K]> }
+      >,
       output,
       run: async (input, track) => {
-        const { rule_id: ruleId, ...given } = input as { rule_id: number } & Members;
-        if ((Object.keys(given) as Member[]).every((key) => given[key] === undefined)) {
+        const {
+          rule_id: ruleId,
+          replace_unsupported_conditions: replaceUnsupported,
+          conditions,
+          item_conditions: itemConditions,
+          free_shipping: freeShipping,
+          ...given
+        } = input as { rule_id: number; replace_unsupported_conditions?: boolean } & Members & ConditionArgs;
+        const typedArgs: ConditionArgs = { conditions, item_conditions: itemConditions, free_shipping: freeShipping };
+        if ((Object.keys(given) as Member[]).every((key) => given[key] === undefined) && Object.values(typedArgs).every((value) => value === undefined)) {
           throw new ToolArgumentError("invalid_argument", "rule_id", "Nothing to change: pass at least one member besides rule_id.");
         }
         if (given.coupon_code !== undefined && given.coupon_type !== undefined && given.coupon_type !== "SPECIFIC_COUPON") {
@@ -264,6 +399,8 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
         // A code is required only when the rule BECOMES a specific-coupon rule: one that already is may have no
         // primary coupon (its codes auto-generated), and changing another member must not demand one.
         checkCombination(effective, given, given.coupon_type === "SPECIFIC_COUPON" && current.coupon_type !== "SPECIFIC_COUPON");
+        const typed = conditionChanges(typedArgs, stored.rule, replaceUnsupported === true);
+        const written = [...changed, ...Object.keys(typed).map((key) => CONDITION_INPUT_NAMES[key] ?? key)];
 
         const newCode = given.coupon_code !== undefined && given.coupon_code !== currentCode ? given.coupon_code : undefined;
         // Everything that can refuse the code is checked BEFORE the PUT: a rule switched to SPECIFIC_COUPON whose code
@@ -277,7 +414,7 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
           if (taken.items.length > 0) throw new ToolArgumentError("invalid_argument", "coupon_code", "A coupon with that code already exists: nothing was written.");
         }
 
-        if (changed.length > 0) await write.client.put(restPath`/salesRules/${ruleId}`, { rule: pick(given, changed) });
+        if (written.length > 0) await write.client.put(restPath`/salesRules/${ruleId}`, { rule: { ...pick(given, changed), ...typed } });
         if (newCode !== undefined) {
           try {
             // After the PUT: a rule that just became SPECIFIC_COUPON has no primary coupon yet, and one that already was
@@ -288,9 +425,9 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
               await write.client.post("/coupons", { coupon: { rule_id: ruleId, code: newCode, is_primary: true } });
             }
           } catch (error) {
-            if (changed.length === 0) throw error;
+            if (written.length === 0) throw error;
             const reason = error instanceof Error ? error.message : String(error);
-            throw new Error(`The coupon code could not be saved (${reason}), but these members of rule ${ruleId} were already written: ${changed.join(", ")}. Read the rule and restore them, or retry the code.`, { cause: error });
+            throw new Error(`The coupon code could not be saved (${reason}), but these members of rule ${ruleId} were already written: ${written.join(", ")}. Read the rule and restore them, or retry the code.`, { cause: error });
           }
         }
 

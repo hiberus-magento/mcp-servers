@@ -38,6 +38,9 @@ const ORDER_ITEM: Shape = [
   "product_type",
 ];
 
+/** Every field a typed sales rule condition has, across its kinds. */
+const SALES_RULE_CONDITION: Shape = ["type", "amount", "qty", "country", "category_ids", "skus"];
+
 const SHIPMENT_TRACK: Shape = ["entity_id", "parent_id", "order_id", "carrier_code", "title", "track_number", "created_at"];
 
 const CART_ITEM: Shape = ["item_id", "quote_id", "sku", "name", "qty", "price", "product_type"];
@@ -272,6 +275,13 @@ export const BASE_SHAPES: ShapeSet = {
     "simple_free_shipping",
     "website_ids",
     "customer_group_ids",
+    // Not members of Magento's rule: its condition trees and free shipping in the typed shape the writes take, added
+    // by the tools that read one rule (sales-rule-conditions.ts). A list is absent when its flag is false.
+    ["conditions", SALES_RULE_CONDITION],
+    "conditions_supported",
+    ["item_conditions", SALES_RULE_CONDITION],
+    "item_conditions_supported",
+    "free_shipping",
   ],
   coupon: ["coupon_id", "rule_id", "code", "usage_limit", "usage_per_customer", "times_used", "expiration_date", "is_primary", "created_at", "type"],
   tax_rate: ["id", "code", "rate", "tax_country_id", "tax_region_id", "tax_postcode", "zip_is_range", "zip_from", "zip_to"],
