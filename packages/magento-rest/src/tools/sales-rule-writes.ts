@@ -236,7 +236,7 @@ function unchanged(key: Member, given: unknown, stored: unknown): boolean {
 }
 
 /** The checks that need more than one member, on the rule as it will be after the write. */
-function checkCombination(effective: Members, given: Members, needsCode: boolean): void {
+function checkCombination(effective: Members, given: Members, needsCode: boolean, changing: Members = given): void {
   for (const key of SET_MEMBERS) {
     const ids = given[key] as readonly number[] | undefined;
     if (ids !== undefined && new Set(ids).size !== ids.length) throw new ToolArgumentError("invalid_argument", key, `${key} lists an id more than once.`);
@@ -252,14 +252,16 @@ function checkCombination(effective: Members, given: Members, needsCode: boolean
     throw new ToolArgumentError("invalid_argument", "discount_amount", "A by_percent discount is at most 100.");
   }
   // Magento's BuyXGetY gives no discount, without an error, when X is 0 or Y is greater than X. Checked only when the
-  // call touches one of the three, so other changes to a stored rule without a step still go through.
-  if (effective.simple_action === "buy_x_get_y" && (given.simple_action !== undefined || given.discount_step !== undefined || given.discount_amount !== undefined)) {
+  // write CHANGES one of the three, so other changes to a stored rule without a step, or a replayed read, still go through.
+  if (effective.simple_action === "buy_x_get_y" && (changing.simple_action !== undefined || changing.discount_step !== undefined || changing.discount_amount !== undefined)) {
     const step = Number(effective.discount_step ?? 0);
     if (!(step >= 1)) {
       throw new ToolArgumentError("invalid_argument", "discount_step", "A buy_x_get_y rule needs discount_step (the X, items bought) of at least 1: Magento gives no discount without it.");
     }
     if (Number(effective.discount_amount) > step) {
-      throw new ToolArgumentError("invalid_argument", "discount_amount", "On a buy_x_get_y rule, discount_amount (the Y, items free) must not exceed discount_step (the X): Magento gives no discount otherwise.");
+      // Blame the member the caller changed: lowering only the step is a step problem.
+      const argument = changing.discount_step !== undefined && changing.discount_amount === undefined ? "discount_step" : "discount_amount";
+      throw new ToolArgumentError("invalid_argument", argument, "On a buy_x_get_y rule, discount_amount (the Y, items free) must not exceed discount_step (the X): Magento gives no discount otherwise.");
     }
   }
   if (effective.from_date !== undefined && effective.to_date !== undefined && effective.to_date < effective.from_date) {
@@ -416,7 +418,7 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
         const effective: Members = { ...current, ...pick(given, RULE_MEMBERS) };
         // A code is required only when the rule BECOMES a specific-coupon rule: one that already is may have no
         // primary coupon (its codes auto-generated), and changing another member must not demand one.
-        checkCombination(effective, given, given.coupon_type === "SPECIFIC_COUPON" && current.coupon_type !== "SPECIFIC_COUPON");
+        checkCombination(effective, given, given.coupon_type === "SPECIFIC_COUPON" && current.coupon_type !== "SPECIFIC_COUPON", pick(given, changed) as Members);
         const typed = conditionChanges(typedArgs, stored.rule, replaceUnsupported === true);
         const written = [...changed, ...Object.keys(typed).map((key) => CONDITION_INPUT_NAMES[key] ?? key)];
 

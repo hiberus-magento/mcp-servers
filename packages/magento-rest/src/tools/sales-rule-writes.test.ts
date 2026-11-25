@@ -425,6 +425,64 @@ describe("discount_step (Buy X)", () => {
   });
 });
 
+// The independent verifier's probes, kept as regression tests. The buy_x_get_y check runs on what an update CHANGES,
+// so replaying a read (the update's "restore earlier values" use) is never refused.
+describe("discount_step: the verifier's probes", () => {
+  const BXGY = { ...STORED, coupon_type: "NO_COUPON", simple_action: "buy_x_get_y", discount_amount: "1.0000", discount_step: 2 };
+  const writes = (calls: readonly RecordedCall[]) => calls.filter((c) => c.method !== "GET");
+  const upd = (stored: object) => build({ "GET /rest/V1/salesRules/3": json(200, stored), "PUT /rest/V1/salesRules/3": json(200, {}) });
+  const refuses = async (stored: object, args: object, argument: string) => {
+    const { double, tool } = upd(stored);
+    await expect(tool(UPDATE).invoke({ rule_id: 3, ...args }, {})).rejects.toMatchObject({ code: "invalid_argument", argument });
+    expect(writes(double.calls)).toEqual([]);
+  };
+  const puts = async (stored: object, args: object, rule: object | null) => {
+    const { double, call } = upd(stored);
+    await call(UPDATE, { rule_id: 3, ...args });
+    const put = double.calls.find((c) => c.method === "PUT");
+    expect(put ? bodyOf(put) : null).toEqual(rule === null ? null : { rule });
+  };
+  const posts = async (args: object) => {
+    const created = { ...STORED, rule_id: 9, coupon_type: "NO_COUPON" };
+    const { double, call } = build({ "POST /rest/V1/salesRules": json(200, created), "GET /rest/V1/salesRules/9": json(200, created) });
+    await call(CREATE, args);
+    return (bodyOf(double.calls[0]) as { rule: Record<string, unknown> }).rule;
+  };
+
+  it("a null stored step with an amount change is refused", () => refuses({ ...BXGY, discount_step: null }, { discount_amount: 2 }, "discount_step"));
+  it("a null stored step with an is_active change goes through", () => puts({ ...BXGY, discount_step: null }, { is_active: false }, { is_active: false }));
+  it("a stored step of '0' with an amount change is refused", () => refuses({ ...BXGY, discount_step: "0" }, { discount_amount: 2 }, "discount_step"));
+  it("a step on by_percent is sent without the buy_x_get_y check", () => puts({ ...STORED, coupon_type: "NO_COUPON" }, { discount_step: 3 }, { discount_step: 3 }));
+  it("a step of 0 on by_percent is sent", () => puts({ ...STORED, coupon_type: "NO_COUPON", discount_step: 5 }, { discount_step: 0 }, { discount_step: 0 }));
+  it("switching away from buy_x_get_y with step 0 goes through", () => puts({ ...BXGY, discount_step: 0 }, { simple_action: "by_fixed" }, { simple_action: "by_fixed" }));
+  it("switching away to by_percent still caps the percent", () => refuses({ ...BXGY, discount_amount: "150.0000" }, { simple_action: "by_percent" }, "discount_amount"));
+  it("Y equal to X is allowed", () => puts(BXGY, { discount_amount: 2 }, { discount_amount: 2 }));
+  it("an unchanged amount on a stored rule with step 0 writes nothing and is not refused", () => puts({ ...BXGY, discount_step: 0 }, { discount_amount: 1 }, null));
+  it("replaying the stored action with an is_active change on step 0 sends only is_active", () =>
+    puts({ ...BXGY, discount_step: 0 }, { simple_action: "buy_x_get_y", discount_amount: 1, is_active: false }, { is_active: false }));
+  it("switching to buy_x_get_y with all three sends them", () =>
+    puts({ ...STORED, coupon_type: "NO_COUPON" }, { simple_action: "buy_x_get_y", discount_step: 2, discount_amount: 1 }, { simple_action: "buy_x_get_y", discount_amount: 1, discount_step: 2 }));
+  it("switching to buy_x_get_y with a Y above the stored X is refused", () => refuses({ ...STORED, coupon_type: "NO_COUPON", discount_step: 1 }, { simple_action: "buy_x_get_y", discount_amount: 2 }, "discount_amount"));
+  it("lowering the step to 0 is refused", () => refuses(BXGY, { discount_step: 0 }, "discount_step"));
+  it("lowering only the step below the stored Y blames discount_step", () => refuses({ ...BXGY, discount_amount: "2.0000" }, { discount_step: 1 }, "discount_step"));
+  it("an unchanged step on a stored rule with Y above X writes nothing and is not refused", () => puts({ ...BXGY, discount_amount: "3.0000" }, { discount_step: 2 }, null));
+  it("an undefined step alone is nothing to change", () => refuses(BXGY, { discount_step: undefined }, "rule_id"));
+  it("a step out of range is refused by the schema", async () => {
+    for (const discount_step of [1_000_001, -1]) await expect(upd(BXGY).tool(UPDATE).invoke({ rule_id: 3, discount_step }, {})).rejects.toBeInstanceOf(ZodError);
+  });
+
+  it("create with Y equal to X sends both", async () => expect(await posts({ ...CREATE_ARGS, simple_action: "buy_x_get_y", discount_amount: 2, discount_step: 2 })).toMatchObject({ discount_amount: 2, discount_step: 2 }));
+  it("create on by_percent sends a step of 0", async () => expect((await posts({ ...CREATE_ARGS, discount_step: 0 }))["discount_step"]).toBe(0));
+  it("create without a step sends none", async () => expect(await posts(CREATE_ARGS)).not.toHaveProperty("discount_step"));
+
+  it("both reads return discount_step", async () => {
+    const RULE = { rule_id: 3, name: "BXGY", simple_action: "buy_x_get_y", discount_amount: "1.0000", discount_step: "2", coupon_type: "NO_COUPON", website_ids: [1], customer_group_ids: [0] };
+    const { call } = build({ "GET /rest/V1/salesRules/3": json(200, RULE), "GET /rest/V1/salesRules/search": json(200, { items: [RULE], total_count: 1 }) });
+    expect(JSON.stringify(await call("magentorest_get_sales_rule_by_id", { rule_id: 3 }))).toContain('"discount_step":"2"');
+    expect(JSON.stringify(await call("magentorest_get_sales_rules", {}))).toContain('"discount_step":"2"');
+  });
+});
+
 describe("generate_coupons", () => {
   const AUTO_RULE = { ...STORED, coupon_type: "AUTO", use_auto_generation: true };
 

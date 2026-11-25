@@ -416,9 +416,11 @@ read back, as `{ result, provenance }`:
 - `discount_step` is Magento's "Discount Qty Step". For `buy_x_get_y` it is
   the X (items bought) and `discount_amount` is the Y (items free): "buy 2, get
   1" is `discount_step: 2, discount_amount: 1`. Magento gives no discount, and
-  reports no error, when X is 0 or Y is greater than X, so a write that sets
-  `buy_x_get_y`, `discount_step` or `discount_amount` is refused in those
-  cases. A call that changes other members of such a stored rule is not. For
+  reports no error, when X is 0 or Y is greater than X, so a write that
+  changes `simple_action`, `discount_step` or `discount_amount` on a
+  `buy_x_get_y` rule is refused in those cases. A call that changes only other
+  members of such a stored rule is not, even when it repeats the stored
+  values (for example, to replay a read). For
   the other actions, the discounted quantity is rounded down to a multiple of
   the step.
 
