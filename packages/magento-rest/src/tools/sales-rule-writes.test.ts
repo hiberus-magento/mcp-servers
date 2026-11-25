@@ -33,6 +33,7 @@ const STORED = {
   simple_action: "by_percent",
   discount_amount: 10,
   discount_qty: 0,
+  discount_step: 0,
   apply_to_shipping: false,
   stop_rules_processing: false,
   coupon_type: "SPECIFIC_COUPON",
@@ -329,7 +330,7 @@ describe("get_sales_rule_by_id carries every member the writes accept", () => {
     const q = new URL(double.calls[1]?.url ?? "").searchParams;
     expect([q.get("searchCriteria[filter_groups][0][filters][0][field]"), q.get("searchCriteria[filter_groups][0][filters][0][value]")]).toEqual(["rule_id", "3"]);
     expect([q.get("searchCriteria[filter_groups][1][filters][0][field]"), q.get("searchCriteria[filter_groups][1][filters][0][value]")]).toEqual(["is_primary", "1"]);
-    const writable = ["name", "description", "is_active", "website_ids", "customer_group_ids", "from_date", "to_date", "simple_action", "discount_amount", "discount_qty", "apply_to_shipping", "stop_rules_processing", "coupon_type", "coupon_code", "uses_per_coupon", "uses_per_customer", "sort_order"];
+    const writable = ["name", "description", "is_active", "website_ids", "customer_group_ids", "from_date", "to_date", "simple_action", "discount_amount", "discount_qty", "discount_step", "apply_to_shipping", "stop_rules_processing", "coupon_type", "coupon_code", "uses_per_coupon", "uses_per_customer", "sort_order"];
     for (const key of writable) expect(out, key).toHaveProperty(key);
     expect(out["coupon_code"]).toBe("DEMO10");
   });
@@ -350,6 +351,77 @@ describe("get_sales_rule_by_id carries every member the writes accept", () => {
     const readKeys = BASE_SHAPES.sales_rule.map((entry) => (typeof entry === "string" ? entry : entry[0]));
     expect(createKeys.filter((key) => !readKeys.includes(key))).toEqual([]);
     expect(updateKeys.sort()).toEqual(createKeys.sort());
+  });
+});
+
+// Magento's BuyXGetY action (2.4-develop) gives no discount when discount_step (X) is 0 or discount_amount (Y) is
+// greater than X, without an error; for the other actions discount_step rounds the discounted quantity down to a
+// multiple of it.
+describe("discount_step (Buy X)", () => {
+  const BUY_X = { ...CREATE_ARGS, simple_action: "buy_x_get_y", discount_amount: 1 };
+  const STORED_BUY_X = { ...STORED, coupon_type: "NO_COUPON", simple_action: "buy_x_get_y", discount_amount: "1.0000", discount_step: 2 };
+  const writes = (calls: readonly RecordedCall[]) => calls.map((c) => c.method).filter((m) => m !== "GET");
+
+  it("create sends discount_step: buy 2, get 1", async () => {
+    const created = { ...STORED_BUY_X, rule_id: 9 };
+    const { double, call } = build({ "POST /rest/V1/salesRules": json(200, created), "GET /rest/V1/salesRules/9": json(200, created) });
+    const out = (await call(CREATE, { ...BUY_X, discount_step: 2 })) as Record<string, unknown>;
+    expect((bodyOf(double.calls[0]) as { rule: Record<string, unknown> }).rule).toMatchObject({ simple_action: "buy_x_get_y", discount_amount: 1, discount_step: 2 });
+    expect(out["discount_step"]).toBe(2);
+  });
+
+  it("create sends discount_step for the other actions too (a quantity step)", async () => {
+    const created = { ...STORED, rule_id: 9, coupon_type: "NO_COUPON", discount_step: 3 };
+    const { double, call } = build({ "POST /rest/V1/salesRules": json(200, created), "GET /rest/V1/salesRules/9": json(200, created) });
+    await call(CREATE, { ...CREATE_ARGS, discount_step: 3 });
+    expect((bodyOf(double.calls[0]) as { rule: Record<string, unknown> }).rule["discount_step"]).toBe(3);
+  });
+
+  it("create refuses buy_x_get_y without a discount_step of at least 1, before writing", async () => {
+    for (const args of [BUY_X, { ...BUY_X, discount_step: 0 }]) {
+      const { double, tool } = build({});
+      await expect(tool(CREATE).invoke(args, {})).rejects.toMatchObject({ code: "invalid_argument", argument: "discount_step" });
+      expect(double.calls).toEqual([]);
+    }
+  });
+
+  it("create refuses buy_x_get_y whose discount_amount (Y) exceeds discount_step (X), before writing", async () => {
+    const { double, tool } = build({});
+    await expect(tool(CREATE).invoke({ ...BUY_X, discount_amount: 3, discount_step: 2 }, {})).rejects.toMatchObject({ code: "invalid_argument", argument: "discount_amount" });
+    expect(double.calls).toEqual([]);
+  });
+
+  it("create refuses a discount_step that is not a whole number", async () => {
+    const { tool } = build({});
+    await expect(tool(CREATE).invoke({ ...BUY_X, discount_step: 1.5 }, {})).rejects.toBeInstanceOf(ZodError);
+  });
+
+  it("update sends only a changed discount_step, and nothing when it is unchanged", async () => {
+    const changed = build({ "GET /rest/V1/salesRules/3": [json(200, STORED_BUY_X), json(200, { ...STORED_BUY_X, discount_step: 4 })], "PUT /rest/V1/salesRules/3": json(200, {}) });
+    await changed.call(UPDATE, { rule_id: 3, discount_step: 4 });
+    expect(bodyOf(changed.double.calls.find((c) => c.method === "PUT"))).toEqual({ rule: { discount_step: 4 } });
+    const same = build({ "GET /rest/V1/salesRules/3": json(200, { ...STORED_BUY_X, discount_step: "2" }) });
+    await same.call(UPDATE, { rule_id: 3, discount_step: 2 });
+    expect(writes(same.double.calls)).toEqual([]);
+  });
+
+  it("update refuses switching to buy_x_get_y while the stored discount_step is 0, before writing", async () => {
+    const { double, tool } = build({ "GET /rest/V1/salesRules/3": json(200, { ...STORED, coupon_type: "NO_COUPON", discount_amount: 1, discount_step: 0 }) });
+    await expect(tool(UPDATE).invoke({ rule_id: 3, simple_action: "buy_x_get_y" }, {})).rejects.toMatchObject({ code: "invalid_argument", argument: "discount_step" });
+    expect(writes(double.calls)).toEqual([]);
+  });
+
+  it("update refuses a Y above the stored X on a buy_x_get_y rule, before writing", async () => {
+    const { double, tool } = build({ "GET /rest/V1/salesRules/3": json(200, { ...STORED_BUY_X, discount_step: "2" }) });
+    await expect(tool(UPDATE).invoke({ rule_id: 3, discount_amount: 3 }, {})).rejects.toMatchObject({ code: "invalid_argument", argument: "discount_amount" });
+    expect(writes(double.calls)).toEqual([]);
+  });
+
+  it("update still changes other members of a stored buy_x_get_y rule that has no step", async () => {
+    const stored = { ...STORED_BUY_X, discount_step: 0 };
+    const { double, call } = build({ "GET /rest/V1/salesRules/3": [json(200, stored), json(200, { ...stored, is_active: false })], "PUT /rest/V1/salesRules/3": json(200, {}) });
+    await call(UPDATE, { rule_id: 3, is_active: false });
+    expect(bodyOf(double.calls.find((c) => c.method === "PUT"))).toEqual({ rule: { is_active: false } });
   });
 });
 

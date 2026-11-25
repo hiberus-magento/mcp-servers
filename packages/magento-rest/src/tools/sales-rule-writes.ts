@@ -74,8 +74,14 @@ const members = {
   from_date: calendarDay("First day the rule applies (YYYY-MM-DD)."),
   to_date: calendarDay("Last day the rule applies (YYYY-MM-DD)."),
   simple_action: z.enum(SIMPLE_ACTIONS).describe("Discount type: by_percent of each item, by_fixed amount per item, cart_fixed amount for the whole cart, buy_x_get_y."),
-  discount_amount: z.number().min(0).max(100_000_000).describe("Discount amount: a percent (at most 100) for by_percent, else an amount; for buy_x_get_y, the Y."),
+  discount_amount: z.number().min(0).max(100_000_000).describe("Discount amount: a percent (at most 100) for by_percent, else an amount; for buy_x_get_y, the Y (items given free), at most discount_step."),
   discount_qty: z.number().min(0).max(1_000_000).describe("Maximum quantity the discount applies to (0 for no limit)."),
+  discount_step: z
+    .number()
+    .int()
+    .min(0)
+    .max(1_000_000)
+    .describe("Magento's Discount Qty Step. For buy_x_get_y, the X: items bought to get discount_amount items free; at least 1. For the other actions, the discounted quantity is rounded down to a multiple of it (0 for none)."),
   apply_to_shipping: z.boolean().describe("Whether the discount also applies to the shipping amount."),
   stop_rules_processing: z.boolean().describe("Whether rules with a later sort order stop being applied after this one."),
   coupon_type: z.enum(COUPON_TYPES).describe("NO_COUPON (applies without a code), SPECIFIC_COUPON (needs coupon_code), or AUTO (codes made with magentorest_generate_coupons)."),
@@ -245,6 +251,17 @@ function checkCombination(effective: Members, given: Members, needsCode: boolean
   if (effective.simple_action === "by_percent" && Number(effective.discount_amount) > 100) {
     throw new ToolArgumentError("invalid_argument", "discount_amount", "A by_percent discount is at most 100.");
   }
+  // Magento's BuyXGetY gives no discount, without an error, when X is 0 or Y is greater than X. Checked only when the
+  // call touches one of the three, so other changes to a stored rule without a step still go through.
+  if (effective.simple_action === "buy_x_get_y" && (given.simple_action !== undefined || given.discount_step !== undefined || given.discount_amount !== undefined)) {
+    const step = Number(effective.discount_step ?? 0);
+    if (!(step >= 1)) {
+      throw new ToolArgumentError("invalid_argument", "discount_step", "A buy_x_get_y rule needs discount_step (the X, items bought) of at least 1: Magento gives no discount without it.");
+    }
+    if (Number(effective.discount_amount) > step) {
+      throw new ToolArgumentError("invalid_argument", "discount_amount", "On a buy_x_get_y rule, discount_amount (the Y, items free) must not exceed discount_step (the X): Magento gives no discount otherwise.");
+    }
+  }
   if (effective.from_date !== undefined && effective.to_date !== undefined && effective.to_date < effective.from_date) {
     throw new ToolArgumentError("invalid_argument", "to_date", "to_date must not be before from_date.");
   }
@@ -294,6 +311,7 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
           simple_action: members.simple_action,
           discount_amount: members.discount_amount,
           discount_qty: members.discount_qty.optional(),
+          discount_step: members.discount_step.optional(),
           apply_to_shipping: members.apply_to_shipping.optional(),
           stop_rules_processing: members.stop_rules_processing.optional(),
           coupon_type: members.coupon_type,
