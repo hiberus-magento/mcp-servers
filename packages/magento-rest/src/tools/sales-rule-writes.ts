@@ -74,8 +74,14 @@ const members = {
   from_date: calendarDay("First day the rule applies (YYYY-MM-DD)."),
   to_date: calendarDay("Last day the rule applies (YYYY-MM-DD)."),
   simple_action: z.enum(SIMPLE_ACTIONS).describe("Discount type: by_percent of each item, by_fixed amount per item, cart_fixed amount for the whole cart, buy_x_get_y."),
-  discount_amount: z.number().min(0).max(100_000_000).describe("Discount amount: a percent (at most 100) for by_percent, else an amount; for buy_x_get_y, the Y."),
+  discount_amount: z.number().min(0).max(100_000_000).describe("Discount amount: a percent (at most 100) for by_percent, else an amount; for buy_x_get_y, the Y (items given free), at most discount_step."),
   discount_qty: z.number().min(0).max(1_000_000).describe("Maximum quantity the discount applies to (0 for no limit)."),
+  discount_step: z
+    .number()
+    .int()
+    .min(0)
+    .max(1_000_000)
+    .describe("Magento's Discount Qty Step. For buy_x_get_y, the X: items bought to get discount_amount items free; at least 1. For by_percent and by_fixed, the discounted quantity is rounded down to a multiple of it (0 for none); cart_fixed ignores it."),
   apply_to_shipping: z.boolean().describe("Whether the discount also applies to the shipping amount."),
   stop_rules_processing: z.boolean().describe("Whether rules with a later sort order stop being applied after this one."),
   coupon_type: z.enum(COUPON_TYPES).describe("NO_COUPON (applies without a code), SPECIFIC_COUPON (needs coupon_code), or AUTO (codes made with magentorest_generate_coupons)."),
@@ -230,7 +236,7 @@ function unchanged(key: Member, given: unknown, stored: unknown): boolean {
 }
 
 /** The checks that need more than one member, on the rule as it will be after the write. */
-function checkCombination(effective: Members, given: Members, needsCode: boolean): void {
+function checkCombination(effective: Members, given: Members, needsCode: boolean, changing: Members = given): void {
   for (const key of SET_MEMBERS) {
     const ids = given[key] as readonly number[] | undefined;
     if (ids !== undefined && new Set(ids).size !== ids.length) throw new ToolArgumentError("invalid_argument", key, `${key} lists an id more than once.`);
@@ -247,6 +253,39 @@ function checkCombination(effective: Members, given: Members, needsCode: boolean
   }
   if (effective.from_date !== undefined && effective.to_date !== undefined && effective.to_date < effective.from_date) {
     throw new ToolArgumentError("invalid_argument", "to_date", "to_date must not be before from_date.");
+  }
+  checkBuyXGetY(effective, changing);
+}
+
+/**
+ * Magento's BuyXGetY gives no discount, without an error, when X (discount_step) is 0, Y (discount_amount) is 0 or
+ * greater than X, or the discount_qty cap is at or below X (Utility::getItemQty caps the quantity first, so the free
+ * items are never reached). Checked only when the write CHANGES one of these members, so other changes to a stored
+ * rule, or a replayed read, still go through.
+ */
+function checkBuyXGetY(effective: Members, changing: Members): void {
+  if (effective.simple_action !== "buy_x_get_y") return;
+  if ([changing.simple_action, changing.discount_step, changing.discount_amount, changing.discount_qty].every((value) => value === undefined)) return;
+  // Blame the member the caller changed; a step change that breaks a stored Y or cap is a step problem.
+  const blame = (own: "discount_amount" | "discount_qty"): string => (changing[own] === undefined && changing.discount_step !== undefined ? "discount_step" : own);
+  const step = Number(effective.discount_step ?? 0);
+  if (!(step >= 1)) {
+    throw new ToolArgumentError("invalid_argument", "discount_step", "A buy_x_get_y rule needs discount_step (the X, items bought) of at least 1: Magento gives no discount without it.");
+  }
+  const amount = Number(effective.discount_amount ?? 0);
+  if (!(amount > 0)) {
+    throw new ToolArgumentError("invalid_argument", "discount_amount", "A buy_x_get_y rule needs discount_amount (the Y, items free) above 0: Magento gives no discount without it.");
+  }
+  if (amount > step) {
+    throw new ToolArgumentError("invalid_argument", blame("discount_amount"), "On a buy_x_get_y rule, discount_amount (the Y, items free) must not exceed discount_step (the X): Magento gives no discount otherwise.");
+  }
+  const cap = Number(effective.discount_qty ?? 0);
+  if (cap > 0 && cap <= step) {
+    throw new ToolArgumentError(
+      "invalid_argument",
+      blame("discount_qty"),
+      "On a buy_x_get_y rule, discount_qty (the most items discounted) must be 0 (no limit) or above discount_step (the X): Magento caps the quantity first and gives no discount otherwise.",
+    );
   }
 }
 
@@ -294,6 +333,7 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
           simple_action: members.simple_action,
           discount_amount: members.discount_amount,
           discount_qty: members.discount_qty.optional(),
+          discount_step: members.discount_step.optional(),
           apply_to_shipping: members.apply_to_shipping.optional(),
           stop_rules_processing: members.stop_rules_processing.optional(),
           coupon_type: members.coupon_type,
@@ -348,6 +388,7 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
         "Only the members you pass, and only those that differ from the stored rule, are sent. Overwrites the current values on the live store. " +
         "conditions or item_conditions replace that whole set (an empty list removes every condition in it); a set you do not pass is kept. " +
         "A set that holds conditions this tool cannot represent (read as conditions_supported or item_conditions_supported false), or that already holds product conditions (category or SKU), is replaced only with replace_unsupported_conditions true: Magento before 2.4.9 does not report a product condition's parent/child limit. " +
+        "On a buy_x_get_y rule, a change to simple_action, discount_step, discount_amount or discount_qty is refused unless discount_step (X) is at least 1, discount_amount (Y) is above 0 and at most X, and discount_qty is 0 or above X: Magento gives no discount otherwise. " +
         "A field cannot be cleared (Magento keeps a field sent empty). Changing coupon_type away from SPECIFIC_COUPON makes Magento delete the rule's code and its use count; changing it back needs coupon_code again. Returns the rule as read back.",
       effect: "update",
       input: z
@@ -398,7 +439,7 @@ export function salesRuleWriteTools({ shapedTool, shapes }: ToolFactory): readon
         const effective: Members = { ...current, ...pick(given, RULE_MEMBERS) };
         // A code is required only when the rule BECOMES a specific-coupon rule: one that already is may have no
         // primary coupon (its codes auto-generated), and changing another member must not demand one.
-        checkCombination(effective, given, given.coupon_type === "SPECIFIC_COUPON" && current.coupon_type !== "SPECIFIC_COUPON");
+        checkCombination(effective, given, given.coupon_type === "SPECIFIC_COUPON" && current.coupon_type !== "SPECIFIC_COUPON", pick(given, changed) as Members);
         const typed = conditionChanges(typedArgs, stored.rule, replaceUnsupported === true);
         const written = [...changed, ...Object.keys(typed).map((key) => CONDITION_INPUT_NAMES[key] ?? key)];
 
